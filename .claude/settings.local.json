@@ -1,0 +1,18 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(npm --version)",
+      "Bash(npm install *)",
+      "Bash(npm test *)",
+      "Bash(npm run *)",
+      "Bash(docker *)",
+      "Bash(curl -s http://localhost:3000/health)",
+      "Bash(curl *)",
+      "Bash(node -e \"const fs=require\\('fs'\\);const b=Buffer.from\\('/9j/4AAQSkZJRgABAQEAAQABAAD/2wBDAAYEBQYFBAYGBQYHBwYIChAKCgkJChQODwwQFxQYGBcUFhYaHSUfGhsjHBYWICwgIyYnKSopGR8tMC0oMCUoKSj/2wBDAQcHBwoIChMKChMoGhYaKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCgoKCj/wAARCAABAAEDASIAAhEBAxEB/8QAFQABAQAAAAAAAAAAAAAAAAAAAAr/xAAUEAEAAAAAAAAAAAAAAAAAAAAA/8QAFAEBAAAAAAAAAAAAAAAAAAAAAP/EABQRAQAAAAAAAAAAAAAAAAAAAAD/2gAMAwEAAhEDEQA/AKpgB//Z','base64'\\);fs.writeFileSync\\('test.jpg',b\\);console.log\\('written',b.length,'bytes'\\);\")",
+      "Bash(node *)",
+      "PowerShell(Add-Type -AssemblyName System.Drawing; $bmp = New-Object System.Drawing.Bitmap 800, 400; $g = [System.Drawing.Graphics]::FromImage\\($bmp\\); $g.Clear\\([System.Drawing.Color]::DarkSlateBlue\\); $font = New-Object System.Drawing.Font 'Arial', 60, \\([System.Drawing.FontStyle]::Bold\\); $brush = [System.Drawing.Brushes]::White; $g.DrawString\\('34 ABC 123', $font, $brush, 130, 140\\); $g.Dispose\\(\\); $bmp.Save\\('C:\\\\Users\\\\recep.yasar\\\\Claude\\\\parkTrack2\\\\test2.jpg', [System.Drawing.Imaging.ImageFormat]::Jpeg\\); $bmp.Dispose\\(\\); \\(Get-Item 'C:\\\\Users\\\\recep.yasar\\\\Claude\\\\parkTrack2\\\\test2.jpg'\\).Length)",
+      "PowerShell(Resolve-DnsName *)",
+      "PowerShell(Test-NetConnection *)"
+    ]
+  }
+}

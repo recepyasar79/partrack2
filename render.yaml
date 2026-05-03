@@ -1,0 +1,107 @@
+databases:
+  - name: parktrack-db
+    plan: starter
+    databaseName: parktrack
+    region: frankfurt
+
+services:
+  - type: web
+    name: parktrack-api
+    runtime: node
+    plan: starter
+    region: frankfurt
+    rootDir: backend
+    buildCommand: npm install && npm run migrate
+    startCommand: npm start
+    healthCheckPath: /health
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: Europe/Istanbul
+      - key: DATABASE_URL
+        fromDatabase:
+          name: parktrack-db
+          property: connectionString
+      - key: JWT_SECRET
+        generateValue: true
+      - key: JWT_EXPIRES_IN
+        value: 7d
+      - key: BOOTSTRAP_ADMIN_USER
+        sync: false
+      - key: BOOTSTRAP_ADMIN_PASS
+        sync: false
+      - key: FRONTEND_URL
+        sync: false
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+      - key: R2_PUBLIC_URL
+        sync: false
+      - key: WHATSAPP_API_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_TEMPLATE_NAME
+        value: ihlal_bildirimi
+      - key: SENTRY_DSN
+        sync: false
+
+  - type: cron
+    name: parktrack-foto-temizle
+    runtime: node
+    plan: starter
+    region: frankfurt
+    rootDir: backend
+    schedule: "0 3 * * *"
+    buildCommand: npm install
+    startCommand: npm run job:foto-temizle
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: Europe/Istanbul
+      - key: DATABASE_URL
+        fromDatabase:
+          name: parktrack-db
+          property: connectionString
+      - key: FOTO_KEEP_DAYS
+        value: "90"
+      - key: R2_ACCOUNT_ID
+        sync: false
+      - key: R2_ACCESS_KEY_ID
+        sync: false
+      - key: R2_SECRET_ACCESS_KEY
+        sync: false
+      - key: R2_BUCKET
+        sync: false
+
+  - type: cron
+    name: parktrack-bildirim-retry
+    runtime: node
+    plan: starter
+    region: frankfurt
+    rootDir: backend
+    schedule: "*/5 * * * *"
+    buildCommand: npm install
+    startCommand: npm run job:bildirim-retry
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: TZ
+        value: Europe/Istanbul
+      - key: DATABASE_URL
+        fromDatabase:
+          name: parktrack-db
+          property: connectionString
+      - key: WHATSAPP_API_TOKEN
+        sync: false
+      - key: WHATSAPP_PHONE_NUMBER_ID
+        sync: false
+      - key: WHATSAPP_TEMPLATE_NAME
+        value: ihlal_bildirimi

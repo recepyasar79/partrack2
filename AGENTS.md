@@ -1,0 +1,573 @@
+# AGENTS.md - Site Otopark Yönetim Sistemi (ParkTrack)
+
+## Proje Bilgileri
+- **Proje Adı:** ParkTrack - Site Otopark Yönetim Sistemi
+- **Amaç:** Site içindeki araç park düzenini otomatikleştirerek her dairenin sadece 1 aracının gece konaklamasını sağlamak
+- **Hedef Kullanıcılar:** Güvenlik görevlileri, site yöneticileri
+
+## İş Kuralları (KRİTİK)
+1. Her daireye sayısız araç plakası tanımlanabilir
+2. Her daireye ait tanımlı araçlardan **sadece 1 tanesi** gece konaklaması yapabilir
+3. Kontrol saati: **Akşam 20:00 (8 PM)**
+4. Bloklar: **A, B, C, D** (4 blok)
+5. Her blokta: **34 daire** (toplam 136 daire)
+6. Daire formatı: `{Blok}{SıraNo}` örn: B3, A21, D34
+
+## Teknoloji Stack'i
+### Önerilen Yapı (Web Tabanlı - Mobil First)
+- **Frontend:** React + Vite + TailwindCSS
+- **Backend:** Node.js + Express veya Python + FastAPI
+- **Veritabanı:** SQLite (hafif) veya PostgreSQL
+- **Görsel İşleme:** Tesseract.js (OCR ile plaka tanıma)
+- **Kamera:** getUserMedia API
+
+## Proje Yapısı
+parktrack/
+├── frontend/
+│ ├── src/
+│ │ ├── components/
+│ │ │ ├── DaireForm.jsx
+│ │ │ ├── AracListesi.jsx
+│ │ │ ├── FotoYukleme.jsx
+│ │ │ ├── IhlalListesi.jsx
+│ │ │ └── AramaFiltre.jsx
+│ │ ├── pages/
+│ │ │ ├── DaireYonetimi.jsx
+│ │ │ ├── AracListesi.jsx
+│ │ │ ├── GunlukKontrol.jsx
+│ │ │ └── Raporlar.jsx
+│ │ ├── services/
+│ │ │ ├── api.js
+│ │ │ ├── plateOCR.js
+│ │ │ └── validation.js
+│ │ └── utils/
+│ │ ├── formatters.js
+│ │ └── constants.js
+│ └── package.json
+├── backend/
+│ ├── models/
+│ │ ├── Daire.js
+│ │ ├── Arac.js
+│ │ └── Kontrol.js
+│ ├── routes/
+│ │ ├── daireler.js
+│ │ ├── kontroller.js
+│ │ └── raporlar.js
+│ └── server.js
+└── database/
+└── schema.sql
+
+text
+
+## Veritabanı Şeması (SQLite)
+```sql
+-- Daireler tablosu
+CREATE TABLE daireler (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    daire_no TEXT UNIQUE NOT NULL,
+    blok CHAR(1) CHECK(blok IN ('A','B','C','D')),
+    sıra_no INTEGER CHECK(sıra_no BETWEEN 1 AND 34),
+    sahip_ad TEXT NOT NULL,
+    sahip_tel TEXT NOT NULL,
+    kayit_zamani DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Araçlar tablosu
+CREATE TABLE araclar (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    daire_id INTEGER NOT NULL,
+    plaka TEXT UNIQUE NOT NULL,
+    kayit_zamani DATETIME DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (daire_id) REFERENCES daireler(id)
+);
+
+-- Günlük kontroller
+CREATE TABLE gunluk_kontroller (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kontrol_tarihi DATE NOT NULL,
+    plaka TEXT NOT NULL,
+    foto_url TEXT,
+    yukleme_zamani DATETIME DEFAULT CURRENT_TIMESTAMP
+);
+
+-- İhlaller
+CREATE TABLE ihlaller (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kontrol_tarihi DATE NOT NULL,
+    daire_no TEXT NOT NULL,
+    plaka_sayisi INTEGER,
+    ihlal_tipi TEXT
+);
+API Endpoints
+text
+GET    /api/daireler              - Tüm daireler
+POST   /api/daireler              - Daire ekle
+PUT    /api/daireler/:id          - Daire güncelle
+DELETE /api/daireler/:id          - Daire sil
+GET    /api/araclar/daire/:id     - Dairenin araçları
+POST   /api/kontroller/foto-upload     - Fotoğraf yükle
+POST   /api/kontroller/analiz-et       - İhlalleri tespit et
+GET    /api/kontroller/ihlaller        - İhlalleri listele
+Validasyon Kuralları
+javascript
+// Daire No: A1'den D34'e kadar
+const daireNoRegex = /^[A-D]([1-9]|[1-2][0-9]|3[0-4])$/;
+
+// Plaka formatı (basit)
+const plakaRegex = /^[0-9]{2}[A-Z]{1,3}[0-9]{2,4}$/;
+
+// Telefon formatı (10 haneli)
+const telRegex = /^05[0-9]{9}$/;
+Ana Ekranlar
+1. Daire/Plaka Tanımlama Formu
+Alanlar:
+
+Daire No (dropdown: A1-A34, B1-B34, C1-C34, D1-D34)
+
+Ad Soyad (text input, required)
+
+Telefon (tel input, maskeli, required)
+
+Plaka (text input, required)
+Plaka (text input, optional)
+Kayıt zamanı (otomatik)
+
+Kurallar:
+
+Aynı plaka farklı daireye kaydedilemez
+
+Bir daireye istenilen kadar araç plakası tanımlanabilir.
+
+2. Tüm Araç Listesi
+Özellikler:
+
+Tablo görünümü
+
+Arama kutusu (plaka, ad, daire no)
+
+Blok filtresi (A/B/C/D)
+
+Export butonu (Excel/CSV)
+
+3. Fotoğraf Yükleme (Güvenlik Görevlisi)
+Özellikler:
+
+Cep telefonundan kamera ile araç plakası yükleme
+
+Toplu yükleme
+
+Yükleme ilerleme çubuğu
+
+Yüklenen fotoğraf sayacı
+
+4. İhlal Raporu
+"Akşam Kontrolünü Tamamla" butonu yapınca:
+
+Hangi dairede 1'den fazla araç var listesi
+
+Kayıtsız araçlar listesi
+
+Raporu göster / dışa aktar
+
+İhlal Tespit Mantığı
+javascript
+function checkViolations(todayPlates) {
+    // 1. Her plaka için hangi daireye ait olduğunu bul
+    // 2. Daire bazında plaka sayısını hesapla
+    // 3. 1'den fazla plakası olan daireleri listele
+    // 4. Kayıtlı olmayan plakaları ayrı listele
+    return { ihlalYapanDaireler, kayitsizPlakalar };
+}
+Mobil Uyumluluk (Çok Önemli)
+Mobil first tasarım (güvenlik sahada kullanacak)
+
+Büyük butonlar (min 44x44px)
+
+Kamera direkt açılmalı
+
+Offline çalışabilmeli (PWA)
+
+Hızlı Kurulum Komutları
+bash
+# Backend (Node.js)
+mkdir parktrack && cd parktrack
+mkdir backend frontend database
+cd backend
+npm init -y
+npm install express sqlite3 cors multer
+npm install -D nodemon
+
+# Frontend (React)
+cd ../frontend
+npm create vite@latest . -- --template react
+npm install axios tailwindcss
+Environment Variables
+env
+PORT=3000
+DATABASE_URL=./database/parktrack.db
+UPLOAD_DIR=./uploads
+MAX_PHOTOS=500
+Test Listesi
+Yeni daire ekleme
+
+Aynı plakayı 2 daireye ekleme (engellemeli)
+
+Bir daireye 3. plaka ekleme (engellemeli)
+
+Fotoğraf yükleme
+
+Plaka tanıma çalışıyor mu
+
+2+ araç ihlali tespiti
+
+Arama/filtre çalışıyor mu
+
+Rapor çıktısı
+
+Gelecek Geliştirmeler
+WhatsApp bildirimi (ihlal olunca)
+
+Aylık istatistik raporları
+
+Otomatik plaka tanıma iyileştirmesi
+
+Önemli Notlar
+Veri gizliliğine dikkat et (plaka ve telefonlar)
+
+Günlük otomatik yedekleme yap
+
+Güvenlik görevlisine uygulama eğitimi ver
+
+---
+
+## Uygulama Planı (Fazlar)
+
+### Kararlar (Netleştirildi)
+- **Auth:** Rol bazlı — `güvenlik` ve `yönetici` rolleri (JWT + bcrypt)
+- **Hosting:** Cloud (internete açık) — **Render** (backend + PostgreSQL), **Vercel** (frontend)
+- **Foto storage:** **Cloudflare R2 ZORUNLU** (Render disk ephemeral)
+- **OCR:** Tesseract.js + manuel düzeltme (kullanıcı OCR sonucunu onaylar/düzeltir)
+- **Bildirim:** Ekranda liste + WhatsApp otomatik mesaj + ihlal geçmişi/log
+  - Mesaj şablonu: *"Dairenize tanımlı birden fazla araç site otoparkında tespit edildi. Lütfen en kısa sürede fazla olan araç/araçları çıkartınız."*
+- **DB:** PostgreSQL (Render managed)
+- **Backend dili:** Node.js + Express
+- **Migration tooling:** Knex.js (SQL migration'lar + seed)
+- **Saat dilimi:** `Europe/Istanbul` — backend/DB/frontend her yerde explicit
+
+### Kritik Operasyonel/Yasal Hazırlıklar (Faz'lardan Önce)
+Bu maddeler kod yazılmadan paralel başlatılmalı:
+1. **WhatsApp Business API başvurusu** — Meta Business Verification (1-3 gün) + mesaj template onayı (`ihlal_bildirimi` template Meta'ya yollanmalı)
+2. **KVKK Aydınlatma Metni** — site yönetimi/avukatla hazırlanmalı (plaka + telefon kişisel veri)
+3. **R2/S3 hesap açılışı** — Cloudflare R2 hesabı, bucket, API token
+4. **Render + Vercel hesap açılışı** — production servisler için ödeme bilgisi
+5. **Domain alımı** (opsiyonel ama önerilir, örn `parktrack.site.tr`)
+
+### Rol Yetki Matrisi
+| İşlem | Yönetici | Güvenlik |
+|---|---|---|
+| Daire/araç CRUD | ✅ | ❌ (sadece görüntüleme) |
+| Foto yükleme + OCR | ✅ | ✅ |
+| Akşam kontrolünü tamamla | ✅ | ✅ |
+| İhlal listesi görme | ✅ | ✅ |
+| WhatsApp bildirim gönderme | ✅ | ✅ (manuel onayla) |
+| Geçmiş raporları + log | ✅ | ✅ (sadece görüntüleme) |
+| Kullanıcı yönetimi | ✅ | ❌ |
+
+### Faz 1 — Proje İskeleti & Setup
+**Klasör yapısı:**
+```
+parktrack/
+├── backend/         (Node.js + Express + PostgreSQL)
+├── frontend/        (React + Vite + TailwindCSS)
+├── database/        (knex migrations/ + seeds/)
+└── .github/workflows/ (CI/CD pipeline)
+```
+- `backend/package.json`: express, pg, knex, cors, multer, multer-s3 (R2 için), dotenv, jsonwebtoken, bcrypt, axios, express-rate-limit, helmet, dayjs (timezone)
+- `frontend`: Vite + React, Tailwind, axios, react-router-dom, react-hook-form, browser-image-compression (foto sıkıştırma)
+- `.env` (DATABASE_URL, JWT_SECRET, WHATSAPP_API_KEY, WHATSAPP_PHONE_ID, R2_ACCOUNT_ID, R2_ACCESS_KEY, R2_SECRET, R2_BUCKET, BOOTSTRAP_ADMIN_USER, BOOTSTRAP_ADMIN_PASS, TZ=Europe/Istanbul)
+- `.gitignore`, README, `.env.example`
+- **Bootstrap admin:** İlk deploy'da `BOOTSTRAP_ADMIN_USER`/`BOOTSTRAP_ADMIN_PASS` env var'ları varsa migration sonrası otomatik yönetici oluştur (chicken-egg çözümü)
+- **CI/CD:** `.github/workflows/test.yml` — PR'da Jest + Vitest + Playwright çalıştır
+- **CI/CD:** `.github/workflows/deploy.yml` — main'e merge'de Render + Vercel auto-deploy trigger
+
+### Faz 2 — Veritabanı & Backend Çekirdeği
+- **Knex migration'ları** (`database/migrations/`): **9 tablo**:
+  1. `users` (id, kullanici_adi UNIQUE, sifre_hash, rol ENUM('yonetici','guvenlik'), aktif BOOL, son_giris, olusturma_zamani)
+  2. `daireler` — **KVKK alanları eklendi**: + `kvkk_riza BOOL`, `kvkk_riza_tarihi TIMESTAMPTZ`, `bildirim_opt_in BOOL`, `aktif BOOL` (soft delete)
+  3. `araclar` — + `aktif BOOL`, `silinme_zamani` (soft delete, geçmiş ihlal kayıtları için)
+  4. `gunluk_kontroller` (mevcut + `foto_url` R2 URL'i)
+  5. `ihlaller` — `(id, kontrol_tarihi, daire_id FK, daire_no_snapshot, plaka_listesi JSONB, ihlal_tipi, bildirim_id FK, olusturma_zamani)` — UNIQUE(kontrol_tarihi, daire_id) **idempotency için**
+  6. `bildirimler` — `(id, ihlal_id FK, daire_no, telefon, mesaj, gonderim_durumu ENUM('beklemede','gonderildi','basarisiz'), deneme_sayisi, gonderim_zamani, hata_mesaji)`
+  7. `daire_sahip_tarihce` — **YENİ:** `(id, daire_id FK, sahip_ad, sahip_tel, baslangic_tarihi, bitis_tarihi)` — sahip değişimi tarihçesi
+  8. `misafir_araclar` — **YENİ:** `(id, daire_id FK, plaka, baslangic_tarihi, bitis_tarihi, aciklama, ekleyen_user_id FK)` — geçici misafir muafiyeti
+  9. `audit_log` — **YENİ:** `(id, user_id FK, eylem, tablo_adi, kayit_id, eski_deger JSONB, yeni_deger JSONB, ip_adres, zaman)` — kim ne yaptı
+- **Index'ler:** `araclar(plaka)`, `daireler(daire_no)`, `ihlaller(kontrol_tarihi, daire_id)`, `bildirimler(gonderim_durumu)`
+- `backend/db.js`: pg pool + Knex bağlantısı
+- `backend/migrations/seed.js`: bootstrap admin (env var'dan), 5-10 örnek daire (sadece development)
+- `backend/middleware/auth.js`: JWT doğrula + rol kontrol middleware'i
+- `backend/middleware/audit.js`: Otomatik audit log yazma (mutating endpoint'lerde)
+- `backend/server.js`: Express + CORS (cloud whitelist) + helmet (güvenlik header'ları) + R2 statik proxy
+- `backend/utils/timezone.js`: dayjs `Europe/Istanbul` helper'ları (kontrol_tarihi her yerde TR saatinde)
+- **Validasyon middleware'i**: daire no regex, plaka (Türk plaka çeşitliliği: standart + diplomatik CC/CD + askeri + geçici G), telefon
+- **Auth endpoint'leri:**
+  - `POST /api/auth/login` (kullanici_adi + sifre → JWT, son_giris güncellenir)
+  - `POST /api/auth/register` (sadece yönetici)
+  - `POST /api/auth/sifre-sifirla` (yönetici başka kullanıcının şifresini sıfırlar)
+  - `POST /api/auth/sifre-degistir` (kullanıcı kendi şifresini değiştirir)
+  - `GET /api/auth/me`
+- **CRUD endpoint'leri** (rol bazlı korumalı):
+  - `GET/POST/PUT/DELETE /api/daireler` (POST/PUT/DELETE: yönetici, soft delete)
+  - `GET/POST/DELETE /api/araclar` (POST/DELETE: yönetici, soft delete)
+  - `POST /api/daireler/:id/sahip-degistir` (eski sahibi tarihçeye taşı, yeni sahip ata)
+  - `GET/POST/DELETE /api/misafir-araclar` (geçici muafiyet)
+  - `POST /api/daireler/bulk-import` (CSV/Excel toplu yükleme — yönetici)
+  - `GET /api/audit-log` (yönetici)
+  - **Kritik kural:** Aynı plaka 2 aktif daireye eklenemez (UNIQUE WHERE aktif=true + 409 response)
+
+### Faz 3 — Frontend Çekirdek (Auth + Daire & Araç Yönetimi)
+- `App.jsx` + react-router (mobil-first layout, alt navbar, **role-aware**)
+- **Login sayfası** (`/login`): kullanıcı adı + şifre, JWT localStorage'a
+- **Şifre değiştirme** sayfası (kullanıcı kendi)
+- **Kullanıcı yönetimi** (`/kullanicilar`, sadece yönetici): kullanıcı ekle, şifre sıfırla, deaktive et
+- `ProtectedRoute` ve `RoleRoute` HOC'ları
+- **Sayfa: Daire Yönetimi** (`/daireler`) — sadece yönetici düzenleyebilir
+  - DaireForm: blok+sıra dropdown (A1-D34), ad-soyad, telefon (maskeli), plaka(lar)
+  - **KVKK aydınlatma metni + açık rıza checkbox'ı (zorunlu)**
+  - **WhatsApp bildirim opt-in checkbox'ı (ayrı)** — "İhlal durumunda WhatsApp ile bilgilendirilmeyi kabul ediyorum"
+  - Bir daireye birden fazla plaka ekleme, Türkçe hata mesajları, pagination
+  - **"Sahip Değiştir" butonu** → eski sahip tarihçeye gider, yeni sahip ataması
+  - **"Toplu İçe Aktar" butonu** → CSV/Excel template indir, doldur, yükle
+- **Sayfa: Misafir Araç** (`/misafir-araclar`) — geçici muafiyet ekle (plaka + tarih aralığı + açıklama)
+- **Sayfa: Araç Listesi** (`/araclar`) — herkes görüntüler
+  - Tablo: plaka, daire, sahip, telefon (sayfa başı 50 satır, pagination)
+  - Arama (plaka/ad/daire), blok filtresi (A/B/C/D), CSV export (UTF-8 BOM)
+- **Sayfa: Audit Log** (`/audit`, sadece yönetici) — kim ne yaptı, tarih filtresi
+- `services/api.js` (auth header otomatik, 401 → login redirect), `utils/validation.js`, `utils/constants.js`
+
+### Faz 4 — Fotoğraf Yükleme & OCR
+- **Backend:** `POST /api/kontroller/foto-upload`
+  - **multer-s3** ile direkt **Cloudflare R2**'ye yükle (Render disk ephemeral, lokal disk YOK)
+  - Dosya tipi (jpg/png/webp) + boyut (max 10MB) doğrulaması
+  - foto_url R2 public/signed URL olarak döner
+- **Frontend:** `/kontrol` sayfası (güvenlik + yönetici)
+  - `<input capture="environment">` → telefon kamerası direkt açılır
+  - **Foto sıkıştırma client-side** (`browser-image-compression`): 5-10MB jpeg → ~500KB (3G uyumluluk)
+  - Toplu yükleme + progress bar + sayaç
+  - Yavaş bağlantıda retry + kuyruk
+- **OCR:** Tesseract.js client-side plaka okuma
+  - Lazy load (worker bundle ~10MB, ana sayfada yüklenmesin)
+  - Her foto için OCR sonucu input'ta gösterilir → kullanıcı düzeltir → onaylar
+  - Türkçe plaka karakter whitelist'i (`0-9 A-Z`)
+  - **Plaka format çeşitliliği:** standart (`34ABC123`), diplomatik (`CC`, `CD`), askeri, geçici (`G` prefix) — validator esnek
+
+### Faz 5 — İhlal Tespiti, WhatsApp Bildirim & Rapor
+- **Backend:** `POST /api/kontroller/analiz-et`
+  - Bugünkü plakaları al (TR saati ile gün sınırı) → daire bazında grupla
+  - **Misafir araç filtresi:** Bugünün tarihinde aktif `misafir_araclar` kayıtları sayımdan düşülür
+  - **2 ihlal tipi:** (1) bir daireye 2+ araç, (2) kayıtsız plaka
+  - `ihlaller` tablosuna yaz — **idempotent:** UNIQUE(kontrol_tarihi, daire_id) ihlali → mevcut kayıt güncellenir, çift bildirim atılmaz
+  - Aynı gün 2. çağrıda sadece **yeni eklenen** ihlaller bildirilir
+- **WhatsApp servisi:** `backend/services/whatsapp.js`
+  - **WhatsApp Business Cloud API (Meta)** — onaylı `ihlal_bildirimi` template'i kullanılır
+  - `POST /api/bildirimler/gonder` — ihlal id alır, **opt-in kontrolü** (`bildirim_opt_in=true` değilse atma)
+  - **Retry stratejisi:** Geçici hata (network, 5xx) → exponential backoff 3 deneme; kalıcı hata (invalid number) → tek deneme
+  - **Cron worker:** beklemede/başarısız bildirimleri 5dk'da bir retry (max 3 deneme)
+  - Gönderim sonucu (success/fail/hata + deneme_sayisi) loglanır
+- **Frontend:**
+  - **Sayfa: Akşam Kontrolü** (`/kontrol/akşam`)
+    - "Akşam Kontrolünü Tamamla" büyük buton
+    - **20:00 öncesi uyarı:** "Henüz akşam kontrolü saati gelmedi, devam etmek istiyor musunuz?"
+    - **Aynı gün tekrar:** "Bugün için kontrol zaten yapıldı, sadece yeni ihlaller eklenecek"
+    - Sonuç ekranı: ihlal listesi (daire + plakalar + telefon + opt-in durumu)
+    - Her ihlalin yanında "WhatsApp gönder" butonu (opt-in yoksa pasif + uyarı)
+    - Toplu gönder butonu (sadece opt-in'liler)
+  - **Sayfa: Raporlar** (`/raporlar`)
+    - **İhlal Geçmişi:** tarih aralığı filtresi, daire bazlı gruplama, "X dairesi son 30 günde 3 ihlal yaptı"
+    - **Bildirim Logları:** kime/ne zaman/hangi mesaj gönderildi, durum (gönderildi/başarısız/beklemede), deneme sayısı
+    - PDF/CSV export (UTF-8 BOM)
+
+### Faz 6 — Mobil, PWA & Bakım Cron'ları
+- TailwindCSS responsive (sm/md/lg breakpoints)
+- Min 44x44px buton boyutu (güvenlik sahada kullanacak)
+- PWA manifest + service worker (offline cache; auth gerekli sayfalar token kontrol)
+- Loading state'leri, hata toast'ları (Türkçe)
+- Seed script: 5-10 örnek daire/araç + 1 yönetici + 1 güvenlik kullanıcısı
+- **Bakım cron'ları** (Render Cron Jobs):
+  - Günlük 03:00: 90 günden eski fotoğrafları R2'den ve `gunluk_kontroller`'dan sil (KVKK + maliyet)
+  - 5dk'da bir: `bildirimler` tablosunda `gonderim_durumu='beklemede'` olanları retry
+  - Haftalık: DB backup export (Render otomatik yapsa da ek güvenlik)
+- **KVKK aydınlatma metni** sayfası (`/kvkk`) — public, login gerektirmez
+
+### Faz 7 — Cloud Deploy, Monitoring & Güvenlik (Render)
+- **Backend:** **Render Web Service** (Starter plan önerilir, free tier'da 15dk uyku var) + **Render PostgreSQL** (managed, günlük otomatik backup)
+- **Frontend:** Vercel'e deploy
+- **Foto storage:** **Cloudflare R2** (multer-s3 ile) — bucket public read veya signed URL stratejisi
+- `render.yaml` blueprint: web service + postgres + cron jobs + env var tanımları
+- HTTPS zorunlu (Render otomatik SSL), CORS whitelist (frontend domain)
+- helmet middleware: güvenlik header'ları (CSP, X-Frame-Options vs)
+- Rate limiting: login 5/dk, foto upload 50/dk, genel API 100/dk
+- Secret yönetimi: Render dashboard env var (tüm sensitive değerler)
+- Login brute-force koruma (rate limit + 10 başarısız sonrası 15dk IP lockout)
+- WhatsApp API key güvenliği (sadece backend'de)
+- **Health check:** `GET /health` (DB ping + R2 ping)
+- **Uptime monitoring:** UptimeRobot veya Better Stack ile 5dk'da ping (free tier sleep'i de önler)
+- **Error tracking:** Sentry (backend + frontend) — production hatalar otomatik raporlanır
+- **CI/CD pipeline:**
+  - GitHub Actions: PR → test (Jest + Vitest + Playwright) + lint
+  - main merge → Render auto-deploy webhook + Vercel auto-deploy
+  - DB migration'lar deploy öncesi otomatik (`knex migrate:latest`)
+- **Ortam ayrımı:** dev (lokal), staging (Render preview), production (Render main)
+- **WhatsApp Meta hazırlığı:**
+  - Meta Business Manager hesabı + business verification
+  - Phone number kayıt + onay
+  - `ihlal_bildirimi` template Meta'ya submit (Türkçe + parametreli)
+  - Webhook URL setup (delivery receipts için, opsiyonel)
+
+---
+
+## Test Planı
+
+### Test Stack'i
+- **Backend:** Jest + Supertest (API integration), pg-mem (in-memory PostgreSQL)
+- **Frontend:** Vitest + React Testing Library + MSW (API mock)
+- **E2E:** Playwright (mobil viewport simülasyonu)
+- **CI:** GitHub Actions — her PR'da test çalıştır
+
+### 1. Birim Testler (Backend)
+**`utils/validators.test.js`**
+- ✅ Geçerli daire no: `A1`, `B34`, `D17` → kabul
+- ✅ Geçersiz daire no: `E1`, `A0`, `A35`, `a1`, `A 1` → red
+- ✅ Geçerli plaka: `34ABC123`, `06AB1234` → kabul
+- ✅ Geçersiz plaka: `34abc123`, `ABC1234`, `34-ABC-123` → red
+- ✅ Plaka normalizasyonu: `"34 ABC 123 "` → `"34ABC123"` (boşluk strip + uppercase)
+- ✅ Telefon: `05551234567` → kabul; `5551234567`, `90555...` → red
+
+**`utils/auth.test.js`**
+- Şifre hash + verify (bcrypt round-trip)
+- JWT sign + verify
+- Süresi geçmiş JWT reddedilir
+- Geçersiz imzalı JWT reddedilir
+
+**`utils/violations.test.js`** (kritik iş mantığı)
+- 1 daireye 1 plaka → ihlal yok
+- 1 daireye 2 plaka → ihlal var, plaka_listesi doğru
+- Aynı plaka 2 kez foto'da → tek say (deduplication)
+- Kayıtsız plaka → "kayitsiz" tipinde ihlal
+- Boş plaka listesi → ihlal yok, hata yok
+
+**`services/whatsapp.test.js`**
+- Mesaj şablonu daire_no ile doğru oluşur
+- Telefon formatı +90 prefix ile gönderilir
+- API hata response → bildirimler tablosuna `gonderim_durumu='basarisiz'` yazılır
+
+### 2. API Entegrasyon Testleri (Supertest)
+**`routes/auth.test.js`**
+- ✅ Doğru creds → 200 + JWT
+- ✅ Yanlış şifre → 401
+- ✅ Olmayan kullanıcı → 401 (timing attack önle: aynı süre)
+- ✅ 6 başarısız deneme → 429 (rate limit)
+- ✅ `GET /me` token'sız → 401, token ile → 200
+
+**`routes/daireler.test.js`**
+- ✅ Yönetici daire ekler → 201
+- ✅ Güvenlik daire eklemeye çalışır → 403
+- ✅ Geçersiz daire_no → 400
+- ✅ Aynı daire_no 2 kez → 409
+- ✅ Olmayan daire güncelle → 404
+
+**`routes/araclar.test.js`**
+- ✅ Daireye plaka ekle → 201
+- ✅ **Aynı plaka 2 farklı daireye → 409** (kritik kural)
+- ✅ Daireye N plaka ekle → hepsi kayıtlı (sınır yok)
+- ✅ Daire silinince araçları cascade → silinir
+
+**`routes/kontroller.test.js`**
+- ✅ Foto upload (multipart) → 200 + foto_url
+- ✅ Geçersiz dosya tipi (.exe) → 400
+- ✅ 10MB üstü dosya → 413
+- ✅ `analiz-et` → ihlal listesi döner, ihlaller tablosuna yazar
+- ✅ Aynı gün 2. kez `analiz-et` → idempotent (var olanı update veya 409)
+
+**`routes/bildirimler.test.js`**
+- ✅ İhlal id verilince mesaj gönder + log kaydet
+- ✅ WhatsApp API down → bildirimler.gonderim_durumu='basarisiz', hata_mesaji dolu
+- ✅ Bildirim geçmişi listesi (tarih aralığı filtresi)
+- ✅ **Opt-in olmayan daireye gönderme** → atılmaz, 422 + uyarı
+- ✅ Retry: 1. deneme fail → 5dk sonra 2. deneme + deneme_sayisi=2
+
+**`routes/misafir-araclar.test.js`** (yeni)
+- ✅ Misafir araç ekle → 201
+- ✅ Bugünkü ihlal analizi misafir plakayı sayım dışı tutar
+- ✅ Süresi geçmiş misafir kaydı → ihlal sayılır
+
+**`routes/sahip-degistir.test.js`** (yeni)
+- ✅ Sahip değişimi → eski sahip `daire_sahip_tarihce`'ye gider, daire güncellenir
+- ✅ Geçmiş ihlal raporları eski sahibe atfedilmiş kalır
+
+**`routes/bulk-import.test.js`** (yeni)
+- ✅ Geçerli CSV → tüm satırlar kayıt edilir
+- ✅ 1 satır geçersiz → o satır skip + hata raporu, diğerleri kayıt
+- ✅ Aynı plaka 2 satırda → ikincisi reddedilir
+- ✅ Güvenlik rolü → 403
+
+**`routes/audit-log.test.js`** (yeni)
+- ✅ Daire güncellemesi audit_log'a yazılır (user_id, eski/yeni değer)
+- ✅ Sadece yönetici listeleyebilir
+
+**`routes/auth-sifre.test.js`** (yeni)
+- ✅ Yönetici başka kullanıcının şifresini sıfırlar → kullanıcı yeni şifreyle login
+- ✅ Güvenlik başkasının şifresini sıfırlamaya çalışır → 403
+
+### 3. Frontend Komponent Testleri (Vitest + RTL)
+**`DaireForm.test.jsx`**
+- Boş submit → tüm hata mesajları görünür
+- Geçersiz plaka → "Plaka formatı yanlış" mesajı
+- Çoklu plaka ekleme/silme UI
+- Submit success → form sıfırlanır, toast görünür
+
+**`AracListesi.test.jsx`**
+- Arama: "B3" yazınca sadece B3 daire araçları kalır
+- Blok filtresi: A → sadece A bloku araçları
+- CSV export butonu doğru CSV üretir (Türkçe karakter UTF-8 BOM)
+
+**`ProtectedRoute.test.jsx`**
+- Token yok → `/login`'e redirect
+- Yanlış rol → `/yetkisiz` sayfasına redirect
+- Doğru rol → child render
+
+**`PlakaInput.test.jsx`** (OCR sonucu manuel düzeltme)
+- OCR sonucu input'a basılır
+- Kullanıcı düzeltir, onaylar → state update
+
+### 4. E2E Testler (Playwright, mobil viewport)
+**`e2e/full-flow.spec.ts`**
+1. Yönetici login
+2. Daire ekle (B5, sahip + telefon + 2 plaka)
+3. Logout, güvenlik login
+4. Foto yükleme sayfasına git, 3 foto yükle (mock OCR)
+5. Akşam Kontrolü tamamla
+6. İhlal listesinde B5 görünür (2 araç tespiti)
+7. WhatsApp gönder butonuna bas → mock servis çağrılır
+8. Raporlar → bildirim log'da B5 görünür
+
+**`e2e/auth.spec.ts`**
+- Güvenlik kullanıcısı `/daireler` POST yapamaz (UI'da buton görünmez + API 403)
+
+### 5. Manuel Test Listesi (Sahada)
+- [ ] Gerçek mobil cihazda (Android/iOS Safari) kamera açılır
+- [ ] OCR Türk plakasını okur (5 farklı plaka deneme, doğruluk %)
+- [ ] WhatsApp mesajı gerçekten alıcıya ulaşır
+- [ ] Yavaş 3G bağlantıda foto upload bozulmaz
+- [ ] Offline yüklemeye çalışırken anlamlı hata mesajı
+- [ ] PWA "ana ekrana ekle" çalışır
+- [ ] 20:00 saati lokal Türkiye saati olarak doğru görünür
+- [ ] CSV Excel'de Türkçe karakter bozulmadan açılır
+
+### 6. Yük & Güvenlik Testleri
+- [ ] 136 daire + ortalama 2 plaka = 272 araç ile DB performansı (<100ms query)
+- [ ] 500 fotoğraf yükleme: backend hafıza/disk dayanıklılığı
+- [ ] SQL injection denemesi (plaka alanına `'; DROP TABLE`)
+- [ ] XSS denemesi (sahip_ad alanına `<script>`)
+- [ ] JWT token tampering → 401
+- [ ] Rate limit aşıldığında 429
+- [ ] Yetkisiz role escalation: güvenlik token'ı ile `POST /daireler` → 403
