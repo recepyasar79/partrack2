@@ -6,8 +6,9 @@ import DaireForm from '../components/DaireForm';
 import PlakaListesi from '../components/PlakaListesi';
 import SahipDegistirModal from '../components/SahipDegistirModal';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
+import { Input, Select } from '../components/ui/Input';
 import { BLOKLAR } from '../utils/constants';
+import { MagnifyingGlassIcon, PlusIcon, DocumentArrowUpIcon, XMarkIcon, ChevronDownIcon } from '../components/ui/Icons';
 
 export default function Daireler() {
   const toast = useToast();
@@ -82,87 +83,174 @@ export default function Daireler() {
 
   return (
     <div className="p-4 max-w-5xl mx-auto flex flex-col gap-4">
+      {/* Header */}
       <div className="flex flex-wrap items-center gap-2 justify-between">
-        <h1 className="text-2xl font-bold">Daire Yönetimi</h1>
+        <div>
+          <h1 className="text-2xl font-bold text-slate-900">Daire Yönetimi</h1>
+          <p className="text-sm text-slate-500 mt-0.5">{daireler.length} daire kayıtlı</p>
+        </div>
         {isYonetici && (
           <div className="flex gap-2">
-            <Button onClick={() => setShowImport(true)} variant="secondary">Toplu İçe Aktar</Button>
-            <Button onClick={() => setShowForm((s) => !s)}>{showForm ? 'Kapat' : '+ Yeni Daire'}</Button>
+            <Button onClick={() => setShowImport(true)} variant="secondary" size="md">
+              <DocumentArrowUpIcon className="w-5 h-5 mr-1.5" />
+              Toplu İçe Aktar
+            </Button>
+            <Button onClick={() => setShowForm((s) => !s)} size="md">
+              {showForm ? (
+                <><XMarkIcon className="w-5 h-5 mr-1.5" /> Kapat</>
+              ) : (
+                <><PlusIcon className="w-5 h-5 mr-1.5" /> Yeni Daire</>
+              )}
+            </Button>
           </div>
         )}
       </div>
 
+      {/* Form Panel */}
       {showForm && isYonetici && (
-        <DaireForm onSubmit={onCreate} busy={busy} />
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 animate-scale-in">
+          <DaireForm onSubmit={onCreate} busy={busy} onCancel={() => setShowForm(false)} />
+        </div>
       )}
+      
+      {/* Import Panel */}
       {showImport && isYonetici && (
-        <BulkImport onClose={() => { setShowImport(false); load(); }} />
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 p-6 animate-scale-in">
+          <BulkImport onClose={() => { setShowImport(false); load(); }} />
+        </div>
       )}
 
-      <div className="flex flex-wrap gap-2">
-        <Input
-          placeholder="Ara: daire no / ad / telefon"
-          value={q}
-          onChange={(e) => setQ(e.target.value)}
-          containerClassName="flex-1 min-w-[200px]"
-        />
-        <select
+      {/* Filters */}
+      <div className="flex flex-col sm:flex-row gap-3 bg-white rounded-2xl shadow-sm border border-slate-100 p-4">
+        <div className="flex-1">
+          <Input
+            placeholder="Ara: daire no / ad / telefon"
+            value={q}
+            onChange={(e) => setQ(e.target.value)}
+            icon={MagnifyingGlassIcon}
+          />
+        </div>
+        <Select
           value={blok}
           onChange={(e) => setBlok(e.target.value)}
-          className="min-h-[44px] rounded-lg border border-slate-300 px-3"
+          containerClassName="sm:w-40"
         >
           <option value="">Tüm bloklar</option>
-          {BLOKLAR.map((b) => <option key={b} value={b}>{b}</option>)}
-        </select>
+          {BLOKLAR.map((b) => <option key={b} value={b}>{b} Blok</option>)}
+        </Select>
       </div>
 
-      <div className="bg-white rounded-2xl shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead className="bg-slate-100 text-left">
-            <tr>
-              <th className="p-3">Daire</th>
-              <th className="p-3">Sahip</th>
-              <th className="p-3 hidden sm:table-cell">Telefon</th>
-              <th className="p-3 hidden md:table-cell">Opt-in</th>
-              <th className="p-3"></th>
-            </tr>
-          </thead>
-          <tbody>
-            {paged.map((d) => (
-              <tr key={d.id} className="border-t border-slate-100">
-                <td className="p-3 font-mono font-semibold">{d.daire_no}</td>
-                <td className="p-3">{d.sahip_ad}</td>
-                <td className="p-3 hidden sm:table-cell">{d.sahip_tel}</td>
-                <td className="p-3 hidden md:table-cell">{d.bildirim_opt_in ? '✓' : '—'}</td>
-                <td className="p-3 text-right">
-                  <Button size="sm" variant="ghost" onClick={() => loadDetail(d.id)}>Detay</Button>
-                </td>
+      {/* Table */}
+      <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="overflow-x-auto">
+          <table className="w-full text-sm">
+            <thead>
+              <tr className="bg-gradient-to-r from-slate-50 to-slate-100 text-left">
+                <th className="p-4 font-semibold text-slate-700">Daire</th>
+                <th className="p-4 font-semibold text-slate-700">Sahip</th>
+                <th className="p-4 font-semibold text-slate-700 hidden sm:table-cell">Telefon</th>
+                <th className="p-4 font-semibold text-slate-700 hidden md:table-cell text-center">Opt-in</th>
+                <th className="p-4"></th>
               </tr>
-            ))}
-            {paged.length === 0 && (
-              <tr><td colSpan={5} className="p-6 text-center text-slate-500">Daire bulunamadı.</td></tr>
-            )}
-          </tbody>
-        </table>
+            </thead>
+            <tbody className="divide-y divide-slate-100">
+              {paged.map((d, index) => (
+                <tr 
+                  key={d.id} 
+                  className={`
+                    hover:bg-brand-50/50 transition-colors cursor-pointer
+                    ${selected?.id === d.id ? 'bg-brand-50' : ''}
+                    ${index % 2 === 1 ? 'bg-slate-50/30' : ''}
+                  `}
+                  onClick={() => loadDetail(d.id)}
+                >
+                  <td className="p-4">
+                    <div className="font-mono font-bold text-brand-700">{d.daire_no}</div>
+                  </td>
+                  <td className="p-4">
+                    <div className="font-medium text-slate-900">{d.sahip_ad}</div>
+                  </td>
+                  <td className="p-4 hidden sm:table-cell text-slate-600">{d.sahip_tel}</td>
+                  <td className="p-4 hidden md:table-cell text-center">
+                    {d.bildirim_opt_in ? (
+                      <span className="inline-flex items-center justify-center w-6 h-6 bg-green-100 text-green-600 rounded-full text-xs font-semibold">✓</span>
+                    ) : (
+                      <span className="inline-flex items-center justify-center w-6 h-6 bg-slate-100 text-slate-400 rounded-full text-xs">—</span>
+                    )}
+                  </td>
+                  <td className="p-4 text-right">
+                    <Button size="sm" variant="ghost" onClick={(e) => { e.stopPropagation(); loadDetail(d.id); }}>
+                      Detay
+                    </Button>
+                  </td>
+                </tr>
+              ))}
+              {paged.length === 0 && (
+                <tr>
+                  <td colSpan={5} className="p-8 text-center">
+                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                      <MagnifyingGlassIcon className="w-8 h-8" />
+                      <p>Daire bulunamadı.</p>
+                    </div>
+                  </td>
+                </tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+        
+        {/* Pagination */}
         {totalPages > 1 && (
-          <div className="flex justify-center gap-2 p-3 border-t border-slate-100">
-            <Button size="sm" variant="ghost" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>‹ Önceki</Button>
-            <span className="text-sm py-2">{page} / {totalPages}</span>
-            <Button size="sm" variant="ghost" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Sonraki ›</Button>
+          <div className="flex items-center justify-between px-4 py-3 border-t border-slate-100 bg-slate-50">
+            <span className="text-sm text-slate-500">
+              Sayfa {page} / {totalPages} ({daireler.length} kayıt)
+            </span>
+            <div className="flex gap-2">
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                disabled={page === 1} 
+                onClick={() => setPage((p) => p - 1)}
+              >
+                ‹ Önceki
+              </Button>
+              <Button 
+                size="sm" 
+                variant="ghost" 
+                disabled={page === totalPages} 
+                onClick={() => setPage((p) => p + 1)}
+              >
+                Sonraki ›
+              </Button>
+            </div>
           </div>
         )}
       </div>
 
+      {/* Detail Panel */}
       {selected && (
-        <div className="bg-white rounded-2xl shadow p-4 flex flex-col gap-3">
-          <div className="flex justify-between items-center">
-            <h2 className="text-lg font-bold">
-              {selected.daire_no} — {selected.sahip_ad}
-            </h2>
-            <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>Kapat</Button>
-          </div>
-          <div className="text-sm text-slate-600">
-            Telefon: {selected.sahip_tel} • KVKK: {selected.kvkk_riza ? '✓' : '—'} • WhatsApp: {selected.bildirim_opt_in ? '✓' : '—'}
+        <div className="bg-white rounded-2xl shadow-lg border border-brand-200 p-6 flex flex-col gap-4 animate-slide-up">
+          <div className="flex justify-between items-start">
+            <div>
+              <h2 className="text-xl font-bold text-slate-900 flex items-center gap-2">
+                <span className="w-10 h-10 bg-brand-100 text-brand-700 rounded-xl flex items-center justify-center font-mono text-lg">
+                  {selected.daire_no}
+                </span>
+                {selected.sahip_ad}
+              </h2>
+              <div className="flex gap-4 mt-2 text-sm text-slate-500">
+                <span>📞 {selected.sahip_tel}</span>
+                <span className={selected.kvkk_riza ? 'text-green-600' : ''}>
+                  KVKK: {selected.kvkk_riza ? '✓ Onaylı' : '—'}
+                </span>
+                <span className={selected.bildirim_opt_in ? 'text-green-600' : ''}>
+                  WhatsApp: {selected.bildirim_opt_in ? '✓ Aktif' : '—'}
+                </span>
+              </div>
+            </div>
+            <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>
+              <XMarkIcon className="w-5 h-5" />
+            </Button>
           </div>
           <PlakaListesi
             daireId={selected.id}
@@ -171,9 +259,13 @@ export default function Daireler() {
             canEdit={isYonetici}
           />
           {isYonetici && (
-            <div className="flex flex-wrap gap-2">
-              <Button variant="secondary" onClick={() => setSahipDegistir(selected)}>Sahip Değiştir</Button>
-              <Button variant="danger" onClick={() => onDelete(selected.id)}>Daireyi Sil</Button>
+            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100">
+              <Button variant="secondary" onClick={() => setSahipDegistir(selected)}>
+                Sahip Değiştir
+              </Button>
+              <Button variant="danger" onClick={() => onDelete(selected.id)}>
+                Daireyi Sil
+              </Button>
             </div>
           )}
         </div>
@@ -222,27 +314,38 @@ function BulkImport({ onClose }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow p-4 flex flex-col gap-3">
+    <div className="flex flex-col gap-4">
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-bold">Toplu İçe Aktar (CSV ; ayraçlı)</h2>
+        <div>
+          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <DocumentArrowUpIcon className="w-5 h-5 text-brand-600" />
+            Toplu İçe Aktar (CSV ; ayraçlı)
+          </h2>
+          <p className="text-sm text-slate-500 mt-1">Her satıra bir daire gelecek şekilde doldurun</p>
+        </div>
         <Button variant="ghost" size="sm" onClick={onClose}>Kapat</Button>
       </div>
       <textarea
         value={text}
         onChange={(e) => setText(e.target.value)}
         rows={10}
-        className="font-mono text-sm border border-slate-300 rounded-lg p-3"
+        className="font-mono text-sm border border-slate-200 rounded-xl p-4 focus:ring-2 focus:ring-brand-200 focus:border-brand-300"
       />
-      <Button onClick={gonder} disabled={busy}>{busy ? 'Yükleniyor…' : 'Gönder'}</Button>
+      <Button onClick={gonder} disabled={busy} loading={busy}>
+        {busy ? 'Yükleniyor…' : 'Gönder'}
+      </Button>
       {sonuc && (
-        <div className="text-sm">
-          <p className="text-green-700">Eklenen: {sonuc.eklenenler.length}</p>
+        <div className="bg-slate-50 rounded-xl p-4">
+          <p className="text-green-700 font-medium">✓ Eklenen: {sonuc.eklenenler.length}</p>
           {sonuc.hatalar.length > 0 && (
-            <details className="mt-2">
-              <summary className="text-red-700 cursor-pointer">Hatalar ({sonuc.hatalar.length})</summary>
-              <ul className="mt-1 ml-4 list-disc">
+            <details className="mt-3">
+              <summary className="text-red-700 font-medium cursor-pointer flex items-center gap-1">
+                <span className="w-5 h-5 bg-red-100 rounded-full flex items-center justify-center text-xs">{sonuc.hatalar.length}</span>
+                Hatalar
+              </summary>
+              <ul className="mt-2 ml-7 space-y-1">
                 {sonuc.hatalar.map((h, i) => (
-                  <li key={i}>Satır {h.satir} ({h.daire_no}): {h.hata}</li>
+                  <li key={i} className="text-sm text-red-600">Satır {h.satir} ({h.daire_no}): {h.hata}</li>
                 ))}
               </ul>
             </details>

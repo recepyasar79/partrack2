@@ -17,7 +17,104 @@
 8. Aktif misafir plaka kayitsiz plaka olarak raporlanmaz; misafir kaydi yoksa kayitsiz plaka listesine duser
 
 ## Guncel Degisiklik Notlari (2026-05-03)
-- OCR iyilestirmesi: `frontend/src/services/plateOCR.js` Tesseract.js oncesi fotografi buyutur, gri tona cevirir ve yuksek kontrast varyantini dener; sonra orijinal fotograf fallback olarak denenir. OCR sonucu yine kullanici tarafindan manuel onaylanir/duzeltilir.
+
+### UI/UX Yeniden Tasarım (2026-05-03)
+Frontend görsel iyileştirmeleri tamamlandı:
+
+**1. Tailwind Config (`tailwind.config.js`)**
+- Marka renkleri eklendi: `brand` (mavi), `accent` (yeşil)
+- Özel animasyonlar: fadeIn, slideUp, slideDown, scaleIn, pulseSoft
+- Keyframes tanımları
+
+**2. Global Stiller (`index.css`)**
+- Custom scrollbar styling
+- Selection renkleri
+- Focus visible stilleri
+- Utility class'lar: card-hover, gradient-text, glass, skeleton
+- Shimmer loading animasyonu
+
+**3. SVG İkonlar (`components/ui/Icons.jsx`) - YENİ**
+- Heroicons stilinde 20+ SVG ikon oluşturuldu:
+  - BuildingIcon, CarIcon, BadgeIcon, CameraIcon, ChartIcon
+  - UsersIcon, ShieldIcon, CheckIcon, XMarkIcon, LockClosedIcon
+  - ArrowRightIcon, PlusIcon, TrashIcon, MagnifyingGlassIcon
+  - ChevronDownIcon, ArrowPathIcon, ClipboardDocumentIcon
+  - DocumentArrowUpIcon, ExclamationTriangleIcon, InformationCircleIcon
+  - ParkingIcon, LoadingSpinner
+
+**4. Layout (`components/Layout.jsx`)**
+- Gradient header (brand-900 → brand-800)
+- Shadow efekti
+- Kullanıcı avatarı (ilk harf)
+- Admin menüsü ikonlarla güncellendi
+- Alt navigation: SVG ikonlar + aktif durum göstergesi
+- Smooth transition efektleri
+
+**5. Ana Sayfa (`pages/Home.jsx`)**
+- Her kart için özel renk gradyanları
+- SVG ikonlar (her kart farklı renk)
+- Hover animasyonları (shadow, translate, scale)
+- Accordion efekti (sağ ok animasyonu)
+- Alt accent çizgisi (hover'da görünür)
+- İstatistik kartları (toplam daire, blok sayısı)
+- Staggered animation delay
+
+**6. Login Sayfası (`pages/Login.jsx`)**
+- Gradient arka plan (brand-50 → brand-100)
+- Dekoratif blur daireler
+- Büyük logo (20x20, gradient + shadow)
+- Gradient text başlık
+- Error state için ikonlu kutu
+- Loading spinner'lı buton
+- Animasyonlar: slideDown, scaleIn
+
+**7. Button Component (`components/ui/Button.jsx`)**
+- Yeni varyantlar: primary, secondary, secondaryDark, danger, success, outline, ghost, soft
+- Yeni boyutlar: sm, md, lg, xl
+- Loading state desteği (LoadingSpinner)
+- Gradient butonlar
+- Active scale efekti
+- Shadow efektleri
+
+**8. Input Component (`components/ui/Input.jsx`)**
+- İkon desteği (sol)
+- Error ikonu (sağ, ExclamationTriangleIcon)
+- Helper text desteği
+- Required field göstergesi
+- Select ve Textarea component'ları eklendi
+- Hover state
+- Focus ring efekti
+
+**9. Daireler Sayfası (`pages/Daireler.jsx`)**
+- Tablo: Alternating row colors
+- Hover efekti (bg-brand-50)
+- Seçili satır vurgusu
+- Gradient header
+- İkonlu filtreler (MagnifyingGlassIcon)
+- Detay paneli: Daire badge, styled bilgiler
+- Pagination: Bilgi gösterimi + stil
+- Empty state: İkon + mesaj
+- Bulk import: Styling + icon
+
+**10. Kontrol Sayfası (`pages/Kontrol.jsx`)**
+- Status badge'ler (renk kodlu)
+- OCR confidence gösterimi
+- Durum ikonları (spinner, check, x)
+- Büyük görsel preview
+- İyileştirilmiş form layout
+- Empty state ikonu
+- Loading overlay: Backdrop blur, gradient
+
+**11. Toast Bildirimleri (`components/ui/Toast.jsx`)**
+- Gradient arka planlar
+- İkonlar (success, error, warning, info)
+- Kapatma butonu
+- Animasyon: slideUp
+- Yeni warning tipi
+
+### Backend/API Değişiklikleri
+
+### OCR iyilestirmesi: `frontend/src/services/plateOCR.js` Tesseract.js oncesi fotografi buyutur, gri tona cevirir ve yuksek kontrast varyantini dener; sonra orijinal fotograf fallback olarak denenir. OCR sonucu yine kullanici tarafindan manuel onaylanir/duzeltilir.
 - Aksam kontrolu misafir arac kurali: Aktif `misafir_araclar` kayitlari sayimdan dusulmez. Misafir plaka ilgili dairenin sayimina dahil edilir ve sonuc ekraninda plaka yaninda `misafir` etiketiyle gosterilir.
 - Kayitsiz plaka kurali: Aktif misafir plaka kayitsiz plaka listesine dusmez. Daha once olusan kayitsiz ihlal kaydi sonraki analizde bosalirsa temizlenir.
 - Yeni test kapsami: `backend/tests/violations_guest.test.js` aktif misafir plakanin sayima dahil edildigini ve tek aktif misafir plakanin kayitsiz raporlanmadigini dogrular.

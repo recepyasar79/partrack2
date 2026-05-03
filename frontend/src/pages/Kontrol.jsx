@@ -6,6 +6,16 @@ import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { isValidPlaka, normalizePlaka } from '../utils/validation';
+import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner } from '../components/ui/Icons';
+
+const DURUM_MAP = {
+  'sıkıştırılıyor': { label: 'Sıkıştırılıyor', color: 'text-slate-600', bg: 'bg-slate-100' },
+  'OCR yapılıyor': { label: 'OCR yapılıyor', color: 'text-amber-600', bg: 'bg-amber-100' },
+  'yükleniyor': { label: 'Yükleniyor', color: 'text-blue-600', bg: 'bg-blue-100' },
+  'kontrol bekliyor': { label: 'Onay Bekliyor', color: 'text-purple-600', bg: 'bg-purple-100' },
+  'onaylandı': { label: 'Onaylandı', color: 'text-green-600', bg: 'bg-green-100' },
+  'hata': { label: 'Hata', color: 'text-red-600', bg: 'bg-red-100' },
+};
 
 export default function Kontrol() {
   const toast = useToast();
@@ -119,14 +129,16 @@ export default function Kontrol() {
 
   return (
     <div className="p-4 max-w-3xl mx-auto flex flex-col gap-4">
+      {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold">Akşam Kontrolü — Foto Yükleme</h1>
-        <p className="text-sm text-slate-600">
+        <h1 className="text-2xl font-bold text-slate-900">Akşam Kontrolü</h1>
+        <p className="text-sm text-slate-600 mt-1">
           Plakaya odaklanan net foto çek. OCR sonucunu kontrol et, yanlışsa düzelt ve onayla.
         </p>
       </div>
 
-      <div className="flex flex-col gap-2">
+      {/* Action Buttons */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
         <input
           ref={fileRef}
           type="file"
@@ -140,96 +152,153 @@ export default function Kontrol() {
         <Button
           as="label"
           htmlFor="foto-input"
-          size="lg"
+          size="xl"
           className="cursor-pointer"
         >
-          📷 Foto Çek / Yükle
+          <CameraIcon className="w-6 h-6 mr-2" />
+          Foto Çek / Yükle
         </Button>
-        <Link to="/kontrol/aksam">
-          <Button as="span" variant="secondary" size="lg" className="w-full cursor-pointer">
-            ✓ Akşam Kontrolünü Tamamla →
+        <Link to="/kontrol/aksam" className="contents">
+          <Button as="span" variant="success" size="xl" className="w-full cursor-pointer">
+            <CheckIcon className="w-6 h-6 mr-2" />
+            Akşam Kontrolünü Tamamla
           </Button>
         </Link>
       </div>
 
+      {/* Session Uploads */}
       {items.length > 0 && (
         <div className="flex flex-col gap-3">
-          <h2 className="text-lg font-semibold">Bu oturumda yüklenenler ({items.length})</h2>
-          {items.map((it) => (
-            <div key={it.id} className="bg-white rounded-2xl shadow p-3 flex gap-3">
-              <img src={it.previewUrl} alt="" className="w-24 h-24 object-cover rounded-lg" />
-              <div className="flex-1 flex flex-col gap-2">
-                <div className="text-xs text-slate-500">
-                  {it.durum}
-                  {it.ocrConfidence != null && ` · OCR güven: %${Math.round(it.ocrConfidence)}`}
+          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+            <span className="w-2 h-2 bg-brand-500 rounded-full animate-pulse" />
+            Bu oturumda yüklenenler ({items.length})
+          </h2>
+          <div className="grid gap-3">
+            {items.map((it) => {
+              const durumInfo = DURUM_MAP[it.durum] || DURUM_MAP['kontrol bekliyor'];
+              return (
+                <div key={it.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex gap-4 hover:shadow-md transition-shadow">
+                  <img src={it.previewUrl} alt="" className="w-28 h-28 object-cover rounded-xl" />
+                  <div className="flex-1 flex flex-col gap-3">
+                    {/* Status Badge */}
+                    <div className="flex items-center gap-2">
+                      <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${durumInfo.bg} ${durumInfo.color}`}>
+                        {it.durum === 'yükleniyor' && <LoadingSpinner className="w-3 h-3" />}
+                        {it.durum === 'OCR yapılıyor' && <ArrowPathIcon className="w-3 h-3 animate-spin" />}
+                        {it.durum === 'onaylandı' && <CheckIcon className="w-3 h-3" />}
+                        {it.durum === 'hata' && <XMarkIcon className="w-3 h-3" />}
+                        {durumInfo.label}
+                      </span>
+                      {it.ocrConfidence != null && (
+                        <span className="text-xs text-slate-400">
+                          OCR: %{Math.round(it.ocrConfidence)}
+                        </span>
+                      )}
+                    </div>
+                    
+                    {/* OCR Debug */}
+                    {it.ocrRaw && it.ocrConfidence < 50 && (
+                      <details className="text-xs bg-slate-50 rounded-lg p-2">
+                        <summary className="cursor-pointer text-slate-500 font-medium">OCR ham çıktı</summary>
+                        <pre className="whitespace-pre-wrap break-all mt-1 text-slate-400">{it.ocrRaw}</pre>
+                      </details>
+                    )}
+                    
+                    {it.ocrError && (
+                      <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1">
+                        ⚠️ OCR hata: {it.ocrError}
+                      </div>
+                    )}
+                    
+                    {it.hata && (
+                      <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+                        {it.hata}
+                      </div>
+                    )}
+                    
+                    {/* Actions */}
+                    <div className="flex gap-2 items-end mt-auto">
+                      <Input
+                        value={it.plaka}
+                        onChange={(e) => updateItem(it.id, { plaka: e.target.value.toUpperCase() })}
+                        placeholder="Plaka"
+                        containerClassName="flex-1"
+                        className="font-mono"
+                      />
+                      <Button
+                        size="md"
+                        variant={it.durum === 'onaylandı' ? 'success' : 'primary'}
+                        onClick={() => onaylaPlaka(it)}
+                        disabled={!it.kontrolId || it.durum === 'onaylandı'}
+                      >
+                        <CheckIcon className="w-4 h-4 mr-1" />
+                        Onayla
+                      </Button>
+                      {it.kontrolId && (
+                        <Button size="md" variant="ghost" onClick={() => silKontrol(it.kontrolId, it.id)}>
+                          <XMarkIcon className="w-4 h-4" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
                 </div>
-                {it.ocrRaw && it.ocrConfidence < 50 && (
-                  <details className="text-xs text-slate-400">
-                    <summary className="cursor-pointer">OCR ham çıktı</summary>
-                    <pre className="whitespace-pre-wrap break-all mt-1">{it.ocrRaw}</pre>
-                  </details>
-                )}
-                {it.ocrError && <div className="text-xs text-amber-600">OCR hata: {it.ocrError}</div>}
-                {it.hata && <div className="text-sm text-red-600">{it.hata}</div>}
-                <div className="flex gap-2 items-end">
-                  <Input
-                    value={it.plaka}
-                    onChange={(e) => updateItem(it.id, { plaka: e.target.value.toUpperCase() })}
-                    placeholder="Plaka"
-                    containerClassName="flex-1"
-                  />
-                  <Button
-                    size="sm"
-                    onClick={() => onaylaPlaka(it)}
-                    disabled={!it.kontrolId || it.durum === 'onaylandı'}
-                  >
-                    Onayla
-                  </Button>
-                  {it.kontrolId && (
-                    <Button size="sm" variant="danger" onClick={() => silKontrol(it.kontrolId, it.id)}>
-                      Sil
-                    </Button>
-                  )}
-                </div>
-              </div>
-            </div>
-          ))}
+              );
+            })}
+          </div>
         </div>
       )}
 
-      <div className="flex flex-col gap-2 mt-4">
-        <h2 className="text-lg font-semibold">Bugünün tüm yüklemeleri ({bugun.length})</h2>
-        <div className="bg-white rounded-2xl shadow overflow-hidden">
+      {/* Today's Uploads */}
+      <div className="flex flex-col gap-3 mt-2">
+        <h2 className="text-lg font-bold text-slate-900">
+          Bugünün tüm yüklemeleri ({bugun.length})
+        </h2>
+        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
           <table className="w-full text-sm">
-            <thead className="bg-slate-100 text-left">
-              <tr>
-                <th className="p-3">Plaka</th>
-                <th className="p-3 hidden sm:table-cell">Zaman</th>
-                <th className="p-3"></th>
+            <thead>
+              <tr className="bg-gradient-to-r from-slate-50 to-slate-100 text-left">
+                <th className="p-4 font-semibold text-slate-700">Plaka</th>
+                <th className="p-4 font-semibold text-slate-700 hidden sm:table-cell">Zaman</th>
+                <th className="p-4"></th>
               </tr>
             </thead>
-            <tbody>
+            <tbody className="divide-y divide-slate-100">
               {bugun.map((k) => (
-                <tr key={k.id} className="border-t border-slate-100">
-                  <td className="p-3 font-mono">{k.plaka || '—'}</td>
-                  <td className="p-3 hidden sm:table-cell text-xs text-slate-500">
+                <tr key={k.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-4">
+                    <span className={`font-mono font-semibold ${k.plaka ? 'text-brand-700' : 'text-slate-400'}`}>
+                      {k.plaka || '—'}
+                    </span>
+                  </td>
+                  <td className="p-4 hidden sm:table-cell text-xs text-slate-500">
                     {new Date(k.yukleme_zamani).toLocaleTimeString('tr-TR')}
                   </td>
-                  <td className="p-3 text-right">
-                    <Button size="sm" variant="ghost" onClick={() => silKontrol(k.id)}>Sil</Button>
+                  <td className="p-4 text-right">
+                    <Button size="sm" variant="ghost" onClick={() => silKontrol(k.id)}>
+                      <XMarkIcon className="w-4 h-4" />
+                    </Button>
                   </td>
                 </tr>
               ))}
               {bugun.length === 0 && (
-                <tr><td colSpan={3} className="p-6 text-center text-slate-500">Henüz yükleme yok.</td></tr>
+                <tr>
+                  <td colSpan={3} className="p-8 text-center">
+                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                      <CameraIcon className="w-8 h-8" />
+                      <p>Henüz yükleme yok.</p>
+                    </div>
+                  </td>
+                </tr>
               )}
             </tbody>
           </table>
         </div>
       </div>
 
+      {/* Loading Overlay */}
       {busy && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-slate-900 text-white text-sm px-4 py-2 rounded-full shadow-lg">
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-900/90 backdrop-blur-sm text-white text-sm px-5 py-3 rounded-full shadow-xl flex items-center gap-2 animate-fade-in">
+          <LoadingSpinner className="w-5 h-5" />
           Yükleniyor…
         </div>
       )}
