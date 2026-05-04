@@ -6,7 +6,7 @@ databases:
 
 services:
   - type: web
-    name: parktrack-api
+    name: parktrack-backend
     runtime: node
     plan: starter
     region: frankfurt
@@ -32,7 +32,7 @@ services:
       - key: BOOTSTRAP_ADMIN_PASS
         sync: false
       - key: FRONTEND_URL
-        sync: false
+        value: https://frontend-smoky-pi-37.vercel.app
       - key: R2_ACCOUNT_ID
         sync: false
       - key: R2_ACCESS_KEY_ID
