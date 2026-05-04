@@ -1,4 +1,8 @@
-const { app, request, db, makeToken, createTestUser } = require('./helpers');
+const { app, request, db, makeToken, createTestUser, cleanupTables } = require('../helpers');
+
+beforeEach(async () => {
+  await cleanupTables();
+});
 
 describe('POST /api/auth/login', () => {
   test('dogru credentials ile giris yapilir', async () => {

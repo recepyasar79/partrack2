@@ -1,13 +1,18 @@
-const { app, request, makeToken, createTestUser, createTestDaire } = require('../helpers');
+const { app, request, makeToken, createTestUser, createTestDaire, cleanupTables } = require('../helpers');
 
 let adminToken;
 let guardToken;
+let admin, guard;
 
 beforeAll(async () => {
-  const admin = await createTestUser({ kullanici_adi: 'auadmin', rol: 'yonetici' });
-  const guard = await createTestUser({ kullanici_adi: 'auguard', rol: 'guvenlik' });
+  admin = await createTestUser({ kullanici_adi: 'auadmin', rol: 'yonetici' });
+  guard = await createTestUser({ kullanici_adi: 'auguard', rol: 'guvenlik' });
   adminToken = makeToken({ id: admin.id, kullanici_adi: 'auadmin', rol: 'yonetici' });
   guardToken = makeToken({ id: guard.id, kullanici_adi: 'auguard', rol: 'guvenlik' });
+});
+
+beforeEach(async () => {
+  await cleanupTables([admin, guard]);
 });
 
 describe('GET /api/audit-log', () => {

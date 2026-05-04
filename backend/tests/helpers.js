@@ -51,6 +51,25 @@ async function createTestArac(overrides = {}) {
   return arac;
 }
 
+async function cleanupTables(preserveUsers = []) {
+  // Child tables first (FK constraints)
+  await db('bildirimler').del();
+  await db('ihlaller').del();
+  await db('misafir_araclar').del();
+  await db('gunluk_kontroller').del();
+  await db('daire_sahip_tarihce').del();
+  await db('audit_log').del();
+  await db('araclar').del();
+  await db('daireler').del();
+  // Only delete users not in preserve list
+  if (preserveUsers.length > 0) {
+    const ids = preserveUsers.map(u => u.id);
+    await db('users').whereNotIn('id', ids).del();
+  } else {
+    await db('users').del();
+  }
+}
+
 module.exports = {
   app,
   request,
@@ -59,4 +78,5 @@ module.exports = {
   createTestUser,
   createTestDaire,
   createTestArac,
+  cleanupTables,
 };

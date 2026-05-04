@@ -1,10 +1,15 @@
-const { app, request, makeToken, createTestUser, createTestDaire, createTestArac, db } = require('../helpers');
+const { app, request, makeToken, createTestUser, createTestDaire, createTestArac, db, cleanupTables } = require('../helpers');
 
 let adminToken;
+let admin;
 
 beforeAll(async () => {
-  const admin = await createTestUser({ kullanici_adi: 'kadmin', rol: 'yonetici' });
+  admin = await createTestUser({ kullanici_adi: 'kadmin', rol: 'yonetici' });
   adminToken = makeToken({ id: admin.id, kullanici_adi: 'kadmin', rol: 'yonetici' });
+});
+
+beforeEach(async () => {
+  await cleanupTables([admin]);
 });
 
 describe('POST /api/kontroller/foto-upload', () => {

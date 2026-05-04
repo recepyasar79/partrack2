@@ -1,15 +1,20 @@
-const { app, request, makeToken, createTestUser, createTestDaire } = require('../helpers');
+const { app, request, db, makeToken, createTestUser, createTestDaire, cleanupTables } = require('../helpers');
 
 let adminToken;
 let guardToken;
 let adminId;
+let admin, guard;
 
 beforeAll(async () => {
-  const admin = await createTestUser({ kullanici_adi: 'dadmin', rol: 'yonetici' });
-  const guard = await createTestUser({ kullanici_adi: 'dguard', rol: 'guvenlik' });
+  admin = await createTestUser({ kullanici_adi: 'dadmin', rol: 'yonetici' });
+  guard = await createTestUser({ kullanici_adi: 'dguard', rol: 'guvenlik' });
   adminId = admin.id;
   adminToken = makeToken({ id: admin.id, kullanici_adi: 'dadmin', rol: 'yonetici' });
   guardToken = makeToken({ id: guard.id, kullanici_adi: 'dguard', rol: 'guvenlik' });
+});
+
+beforeEach(async () => {
+  await cleanupTables([admin, guard]);
 });
 
 describe('GET /api/daireler', () => {
@@ -172,11 +177,10 @@ describe('DELETE /api/daireler/:id', () => {
   });
 
   test('silinen daire listede gorunmez', async () => {
-    await createTestDaire({ daire_no: 'A4' });
+    const daire = await createTestDaire({ daire_no: 'A4' });
     const delRes = await request(app)
-      .delete('/api/daireler/1')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({});
+      .delete(`/api/daireler/${daire.id}`)
+      .set('Authorization', `Bearer ${adminToken}`);
     expect(delRes.status).toBe(200);
     const listRes = await request(app)
       .get('/api/daireler')

@@ -1,10 +1,15 @@
-const { app, request, makeToken, createTestUser, createTestDaire, db } = require('../helpers');
+const { app, request, makeToken, createTestUser, createTestDaire, db, cleanupTables } = require('../helpers');
 
 let adminToken;
+let admin;
 
 beforeAll(async () => {
-  const admin = await createTestUser({ kullanici_adi: 'sdadmin', rol: 'yonetici' });
+  admin = await createTestUser({ kullanici_adi: 'sdadmin', rol: 'yonetici' });
   adminToken = makeToken({ id: admin.id, kullanici_adi: 'sdadmin', rol: 'yonetici' });
+});
+
+beforeEach(async () => {
+  await cleanupTables([admin]);
 });
 
 describe('POST /api/daireler/:id/sahip-degistir', () => {
