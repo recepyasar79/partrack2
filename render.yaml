@@ -32,7 +32,7 @@ services:
       - key: BOOTSTRAP_ADMIN_PASS
         sync: false
       - key: FRONTEND_URL
-        value: https://frontend-smoky-pi-37.vercel.app
+        value: https://akasyaparktrack.vercel.app
       - key: R2_ACCOUNT_ID
         sync: false
       - key: R2_ACCESS_KEY_ID
