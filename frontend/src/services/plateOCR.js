@@ -146,222 +146,201 @@ function fixPlateChars(s) {
   return out;
 }
 
-export function extractPlate(rawText) {
-  if (!rawText) return { guess: '', matched: false };
+function collectFromCleaned(cleaned, numLines, candidates, source) {
+  if (!cleaned || cleaned.length < 5) return;
 
-  const lines = rawText.split(/[\n\r]+/).map((l) => l.trim()).filter(Boolean);
+  const standardRe = /\d{2}[A-Z]{1,3}\d{2,4}/g;
+  let m;
+  while ((m = standardRe.exec(cleaned)) !== null) {
+    const plate = m[0];
+    if (TR_CITY_CODES.has(plate.slice(0, 2))) {
+      candidates.push({
+        plate,
+        length: plate.length,
+        kind: 'standard',
+        extraChars: cleaned.length - plate.length,
+        numLines,
+        source,
+      });
+    }
+    if (m.index === standardRe.lastIndex) standardRe.lastIndex++;
+  }
+
+  const diplRe = /(CC|CD)\d{4,5}/g;
+  while ((m = diplRe.exec(cleaned)) !== null) {
+    candidates.push({
+      plate: m[0],
+      length: m[0].length,
+      kind: 'diplomatic',
+      extraChars: cleaned.length - m[0].length,
+      numLines,
+      source,
+    });
+  }
+
+  if (!/^\d{2}/.test(cleaned)) {
+    for (let len = Math.min(10, cleaned.length); len >= 5; len--) {
+      for (let i = 0; i + len <= cleaned.length; i++) {
+        const sub = cleaned.slice(i, i + len);
+        if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
+        const fixed = fixPlateChars(sub);
+        if (/^\d{2}[A-Z]{1,3}\d{2,4}$/.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
+          candidates.push({
+            plate: fixed,
+            length: fixed.length,
+            kind: 'fixed',
+            extraChars: cleaned.length - fixed.length,
+            numLines,
+            source,
+          });
+        }
+      }
+    }
+  }
+}
+
+function rowsFromWords(words) {
+  if (!Array.isArray(words) || words.length === 0) return [];
+  const items = words
+    .filter((w) => w && w.bbox && typeof w.text === 'string')
+    .map((w) => ({
+      text: w.text,
+      cy: (w.bbox.y0 + w.bbox.y1) / 2,
+      h: Math.max(1, w.bbox.y1 - w.bbox.y0),
+      x0: w.bbox.x0,
+    }))
+    .sort((a, b) => a.cy - b.cy);
+  if (items.length === 0) return [];
+
+  const rows = [];
+  let current = [items[0]];
+  let rowCy = items[0].cy;
+  let rowH = items[0].h;
+  for (let i = 1; i < items.length; i++) {
+    const w = items[i];
+    const threshold = Math.max(rowH, w.h) * 0.6;
+    if (Math.abs(w.cy - rowCy) <= threshold) {
+      current.push(w);
+      rowCy = (rowCy * (current.length - 1) + w.cy) / current.length;
+      rowH = Math.max(rowH, w.h);
+    } else {
+      rows.push(current);
+      current = [w];
+      rowCy = w.cy;
+      rowH = w.h;
+    }
+  }
+  rows.push(current);
+
+  return rows
+    .map((row) =>
+      row
+        .sort((a, b) => a.x0 - b.x0)
+        .map((w) => w.text.toUpperCase().replace(/[^0-9A-Z]/g, ''))
+        .filter(Boolean)
+        .join(''),
+    )
+    .filter(Boolean);
+}
+
+export function extractPlate(rawText, words = null) {
   const candidates = [];
 
-  for (const rawLine of lines) {
-    const cleaned = rawLine.toUpperCase().replace(/[^0-9A-Z]/g, '');
-    if (!cleaned || cleaned.length < 5) continue;
+  const visualRows = rowsFromWords(words);
+  for (const row of visualRows) {
+    collectFromCleaned(row, 1, candidates, 'visual');
+  }
 
-    const standardRe = /\d{2}[A-Z]{1,3}\d{2,4}/g;
-    let m;
-    while ((m = standardRe.exec(cleaned)) !== null) {
-      const plate = m[0];
-      const extraChars = cleaned.length - plate.length;
-      if (TR_CITY_CODES.has(plate.slice(0, 2))) {
-        candidates.push({ plate, length: plate.length, kind: 'standard', extraChars });
+  const lines = (rawText || '').split(/[\n\r]+/).map((l) => l.trim()).filter(Boolean);
+  const cleanedLines = lines
+    .map((l) => l.toUpperCase().replace(/[^0-9A-Z]/g, ''))
+    .filter(Boolean);
+
+  for (const cleaned of cleanedLines) {
+    collectFromCleaned(cleaned, 1, candidates, 'text');
+  }
+
+  // Last resort: join adjacent text lines (some PSM modes split a single
+  // visual row across multiple text lines). Prefer the FEWEST joined
+  // lines that produce an exact plate match — adding rows below shouldn't
+  // extend the plate.
+  for (let start = 0; start < cleanedLines.length; start++) {
+    let joined = cleanedLines[start];
+    for (let end = start + 1; end < cleanedLines.length; end++) {
+      joined += cleanedLines[end];
+      if (joined.length > 12) break;
+      const numLines = end - start + 1;
+      const std = joined.match(/^(\d{2}[A-Z]{1,3}\d{2,4})$/);
+      if (std && TR_CITY_CODES.has(std[1].slice(0, 2))) {
+        candidates.push({
+          plate: std[1],
+          length: std[1].length,
+          kind: 'joined',
+          extraChars: 0,
+          numLines,
+          source: 'joined',
+        });
       }
-      if (m.index === standardRe.lastIndex) standardRe.lastIndex++;
-    }
-
-    const diplRe = /(CC|CD)\d{4,5}/g;
-    while ((m = diplRe.exec(cleaned)) !== null) {
-      const extraChars = cleaned.length - m[0].length;
-      candidates.push({ plate: m[0], length: m[0].length, kind: 'diplomatic', extraChars });
-    }
-
-    if (!/^\d{2}/.test(cleaned)) {
-      for (let len = Math.min(10, cleaned.length); len >= 5; len--) {
-        for (let i = 0; i + len <= cleaned.length; i++) {
-          const sub = cleaned.slice(i, i + len);
-          if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
-          const fixed = fixPlateChars(sub);
-          if (/^\d{2}[A-Z]{1,3}\d{2,4}$/.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
-            const extraChars = cleaned.length - fixed.length;
-            candidates.push({ plate: fixed, length: fixed.length, kind: 'fixed', extraChars });
-          }
-        }
+      const dipl = joined.match(/^((?:CC|CD)\d{4,5})$/);
+      if (dipl) {
+        candidates.push({
+          plate: dipl[1],
+          length: dipl[1].length,
+          kind: 'joined-diplomatic',
+          extraChars: 0,
+          numLines,
+          source: 'joined',
+        });
       }
     }
   }
 
   if (candidates.length > 0) {
+    const sourceRank = { visual: 0, text: 1, joined: 2 };
     candidates.sort((a, b) => {
+      // Exact match (no extra chars on its row) wins.
       if (a.extraChars === 0 && b.extraChars > 0) return -1;
       if (a.extraChars > 0 && b.extraChars === 0) return 1;
+      // Bbox-derived visual rows are authoritative — prefer them over
+      // text-line analysis, which can't tell when a "5" is one row below.
+      const sa = sourceRank[a.source] ?? 9;
+      const sb = sourceRank[b.source] ?? 9;
+      if (sa !== sb) return sa - sb;
+      // Prefer fewer joined lines — don't pull characters from other rows.
+      const an = a.numLines || 1;
+      const bn = b.numLines || 1;
+      if (an !== bn) return an - bn;
       if (b.length !== a.length) return b.length - a.length;
-      const order = { standard: 0, fixed: 1, diplomatic: 2 };
-      return (order[a.kind] || 9) - (order[b.kind] || 9);
+      const order = { standard: 0, joined: 1, fixed: 2, diplomatic: 3, 'joined-diplomatic': 4 };
+      return (order[a.kind] ?? 9) - (order[b.kind] ?? 9);
     });
     return { guess: candidates[0].plate, matched: true };
   }
 
-  const fallback = lines
-    .map((l) => l.toUpperCase().replace(/[^0-9A-Z]/g, ''))
-    .filter(Boolean)
-    .join('')
-    .slice(0, 16);
+  const fallback = cleanedLines.join('').slice(0, 16);
   return { guess: fallback, matched: false };
 }
-      if (m.index === standardRe.lastIndex) standardRe.lastIndex++;
-    }
 
-    const diplRe = /(CC|CD)\d{4,5}/g;
-    while ((m = diplRe.exec(cleaned)) !== null) {
-      const isExact = cleaned.length === m[0].length;
-      candidates.push({ plate: m[0], length: m[0].length, kind: 'diplomatic', isExact });
-    }
-
-    if (!/^\d{2}/.test(cleaned)) {
-      for (let len = Math.min(10, cleaned.length); len >= 5; len--) {
-        for (let i = 0; i + len <= cleaned.length; i++) {
-          const sub = cleaned.slice(i, i + len);
-          if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
-          const fixed = fixPlateChars(sub);
-          if (/^\d{2}[A-Z]{1,3}\d{2,4}$/.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
-            const isExact = cleaned.length === fixed.length;
-            candidates.push({ plate: fixed, length: fixed.length, kind: 'fixed', isExact });
-          }
-        }
+function flattenWords(data) {
+  const out = [];
+  if (Array.isArray(data?.words)) out.push(...data.words);
+  for (const block of data?.blocks || []) {
+    for (const para of block?.paragraphs || []) {
+      for (const line of para?.lines || []) {
+        for (const w of line?.words || []) out.push(w);
       }
     }
   }
-
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => {
-      if (a.isExact !== b.isExact) return (b.isExact ? 1 : 0) - (a.isExact ? 1 : 0);
-      if (b.length !== a.length) return b.length - a.length;
-      const order = { standard: 0, fixed: 1, diplomatic: 2 };
-      return (order[a.kind] || 9) - (order[b.kind] || 9);
-    });
-    return { guess: candidates[0].plate, matched: true };
-  }
-
-  const fallback = lines
-    .map((l) => l.toUpperCase().replace(/[^0-9A-Z]/g, ''))
-    .filter(Boolean)
-    .join('')
-    .slice(0, 16);
-  return { guess: fallback, matched: false };
-}
-      if (m.index === standardRe.lastIndex) standardRe.lastIndex++;
-    }
-
-    const diplRe = /(CC|CD)\d{4,5}/g;
-    while ((m = diplRe.exec(cleaned)) !== null) {
-      const hasExtraChars = m.index > 0 || m.index + m[0].length < cleaned.length;
-      candidates.push({ plate: m[0], length: m[0].length, kind: 'diplomatic', hasExtraChars });
-    }
-
-    if (!/^\d{2}/.test(cleaned)) {
-      for (let len = Math.min(10, cleaned.length); len >= 5; len--) {
-        for (let i = 0; i + len <= cleaned.length; i++) {
-          const sub = cleaned.slice(i, i + len);
-          if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
-          const fixed = fixPlateChars(sub);
-          if (/^\d{2}[A-Z]{1,3}\d{2,4}$/.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
-            const hasExtraChars = i > 0 || i + len < cleaned.length;
-            candidates.push({ plate: fixed, length: fixed.length, kind: 'fixed', hasExtraChars });
-          }
-        }
-      }
-    }
-  }
-
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => {
-      if (a.hasExtraChars !== b.hasExtraChars) return (a.hasExtraChars ? 1 : 0) - (b.hasExtraChars ? 1 : 0);
-      if (b.length !== a.length) return b.length - a.length;
-      const order = { standard: 0, fixed: 1, diplomatic: 2 };
-      return (order[a.kind] || 9) - (order[b.kind] || 9);
-    });
-    return { guess: candidates[0].plate, matched: true };
-  }
-
-  const fallback = lines
-    .map((l) => l.toUpperCase().replace(/[^0-9A-Z]/g, ''))
-    .filter(Boolean)
-    .join('')
-    .slice(0, 16);
-  return { guess: fallback, matched: false };
-}
-      if (m.index === standardRe.lastIndex) standardRe.lastIndex++;
-    }
-
-    const diplRe = /(CC|CD)\d{4,5}/g;
-    while ((m = diplRe.exec(cleaned)) !== null) {
-      candidates.push({ plate: m[0], length: m[0].length, kind: 'diplomatic', line });
-    }
-
-    if (!/^\d{2}/.test(cleaned)) {
-      for (let len = Math.min(10, cleaned.length); len >= 5; len--) {
-        for (let i = 0; i + len <= cleaned.length; i++) {
-          const sub = cleaned.slice(i, i + len);
-          if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
-          const fixed = fixPlateChars(sub);
-          if (/^\d{2}[A-Z]{1,3}\d{2,4}$/.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
-            candidates.push({ plate: fixed, length: fixed.length, kind: 'fixed', line });
-          }
-        }
-      }
-    }
-  }
-
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => {
-      if (b.length !== a.length) return b.length - a.length;
-      const order = { standard: 0, fixed: 1, diplomatic: 2 };
-      return (order[a.kind] || 9) - (order[b.kind] || 9);
-    });
-    return { guess: candidates[0].plate, matched: true };
-  }
-
-  return { guess: '', matched: false };
-}
-      if (m.index === standardRe.lastIndex) standardRe.lastIndex++;
-    }
-
-    const diplRe = /(CC|CD)\d{4,5}/g;
-    while ((m = diplRe.exec(cleaned)) !== null) {
-      candidates.push({ plate: m[0], length: m[0].length, kind: 'diplomatic' });
-    }
-
-    if (cleaned.length <= 12 && !/^\d{2}/.test(cleaned)) {
-      for (let len = Math.min(10, cleaned.length); len >= 5; len--) {
-        for (let i = 0; i + len <= cleaned.length; i++) {
-          const sub = cleaned.slice(i, i + len);
-          if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
-          const fixed = fixPlateChars(sub);
-          if (/^\d{2}[A-Z]{1,3}\d{2,4}$/.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
-            candidates.push({ plate: fixed, length: fixed.length, kind: 'fixed' });
-          }
-        }
-      }
-    }
-  }
-
-  if (candidates.length > 0) {
-    candidates.sort((a, b) => {
-      if (b.length !== a.length) return b.length - a.length;
-      const order = { standard: 0, fixed: 1, diplomatic: 2 };
-      return (order[a.kind] || 9) - (order[b.kind] || 9);
-    });
-    return { guess: candidates[0].plate, matched: true };
-  }
-
-  const allCleaned = rawText.replace(/[^0-9A-Z]/g, '').slice(0, 16);
-  return { guess: allCleaned, matched: false };
+  return out;
 }
 
 async function ocrImage(image, psm) {
   const worker = await getWorker();
   await worker.setParameters({ tessedit_pageseg_mode: psm });
-  const { data } = await worker.recognize(image);
+  const { data } = await worker.recognize(image, {}, { text: true, blocks: true });
   const raw = (data?.text || '').trim();
-  const extracted = extractPlate(raw);
+  const words = flattenWords(data);
+  const extracted = extractPlate(raw, words);
   return { raw, ...extracted, confidence: data?.confidence || 0, psm };
 }
 
