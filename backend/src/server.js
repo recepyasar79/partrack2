@@ -6,8 +6,11 @@ const helmet = require('helmet');
 const rateLimit = require('express-rate-limit');
 
 const db = require('./db');
+const { initSentry, sentryErrorMiddleware, sentryTracingMiddleware, sentryErrorHandler } = require('./sentry');
 
 const path = require('path');
+
+const sentry = initSentry();
 
 const authRoutes = require('./routes/auth');
 const daireRoutes = require('./routes/daireler');
@@ -32,6 +35,7 @@ app.use(
   })
 );
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
+app.use(sentryTracingMiddleware());
 app.use(express.json({ limit: '1mb' }));
 
 const generalLimiter = rateLimit({
@@ -76,6 +80,7 @@ if (!isR2Configured()) {
 }
 
 app.use(notFound);
+app.use(sentryErrorHandler());
 app.use(errorHandler);
 
 if (require.main === module) {

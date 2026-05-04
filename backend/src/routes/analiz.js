@@ -44,6 +44,10 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
       .andWhere('daireler.aktif', true)
       .select(
         'misafir_araclar.plaka',
+        'misafir_araclar.aciklama',
+        'misafir_araclar.baslangic_tarihi',
+        'misafir_araclar.bitis_tarihi',
+        'misafir_araclar.olusturma_zamani',
         'daireler.id as daire_id',
         'daireler.daire_no',
         'daireler.sahip_ad',
@@ -52,6 +56,27 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
       );
     const misafirPlakaToDaire = new Map();
     for (const m of misafirler) misafirPlakaToDaire.set(normalizePlaka(m.plaka), m);
+
+    const seenPlateSet = new Set();
+    for (const raw of plakalar) {
+      const np = normalizePlaka(raw);
+      if (np) seenPlateSet.add(np);
+    }
+    const misafirGorulen = [];
+    for (const m of misafirler) {
+      const np = normalizePlaka(m.plaka);
+      if (!seenPlateSet.has(np)) continue;
+      misafirGorulen.push({
+        plaka: np,
+        daire_id: m.daire_id,
+        daire_no: m.daire_no,
+        sahip_ad: m.sahip_ad,
+        aciklama: m.aciklama || '',
+        baslangic_tarihi: m.baslangic_tarihi,
+        bitis_tarihi: m.bitis_tarihi,
+        olusturma_zamani: m.olusturma_zamani,
+      });
+    }
 
     const { ihlalYapanDaireler, kayitsizPlakalar } = detectViolations({
       plakalar,
@@ -144,6 +169,7 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
         };
       }),
       kayitsiz_plakalar: kayitsizPlakalar,
+      misafir_gorulen: misafirGorulen,
       yeni_ihlaller: yeniIhlaller,
       guncellenen_ihlaller: guncellenenler,
     });

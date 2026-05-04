@@ -1,20 +1,84 @@
 const express = require('express');
+const path = require('path');
+const fs = require('fs');
 const db = require('../db');
 const { authRequired } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
-const { buildUpload } = require('../services/storage');
+const { buildUpload, isR2Configured } = require('../services/storage');
 const { todayTR } = require('../utils/timezone');
 const { normalizePlaka } = require('../utils/validators');
 
 const router = express.Router();
 const storage = buildUpload();
 
+let s3ClientPromise = null;
+async function getS3() {
+  if (!s3ClientPromise) {
+    s3ClientPromise = (async () => {
+      const { S3Client } = require('@aws-sdk/client-s3');
+      return new S3Client({
+        region: 'auto',
+        endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+        credentials: {
+          accessKeyId: process.env.R2_ACCESS_KEY_ID,
+          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+        },
+      });
+    })();
+  }
+  return s3ClientPromise;
+}
+
+function extractR2Key(fotoUrl) {
+  try {
+    const u = new URL(fotoUrl);
+    return u.pathname.replace(/^\//, '');
+  } catch {
+    return null;
+  }
+}
+
 router.get('/', authRequired, async (req, res) => {
   const tarih = req.query.tarih || todayTR();
   const list = await db('gunluk_kontroller')
     .where({ kontrol_tarihi: tarih })
     .orderBy('yukleme_zamani', 'desc');
-  res.json({ tarih, kontroller: list });
+  const kontroller = list.map((k) => ({
+    ...k,
+    foto_url_orig: k.foto_url,
+    foto_url: k.foto_url ? `/kontroller/${k.id}/foto` : null,
+  }));
+  res.json({ tarih, kontroller });
+});
+
+router.get('/:id/foto', authRequired, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const k = await db('gunluk_kontroller').where({ id }).first();
+    if (!k || !k.foto_url) return res.status(404).json({ error: 'Foto bulunamadı.' });
+
+    if (k.foto_url.startsWith('/uploads/') || !isR2Configured()) {
+      const filename = k.foto_url.split('/').pop();
+      const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '../../../uploads'));
+      const filepath = path.join(uploadDir, filename);
+      if (!fs.existsSync(filepath)) return res.status(404).json({ error: 'Dosya yok.' });
+      return res.sendFile(filepath);
+    }
+
+    const key = extractR2Key(k.foto_url);
+    if (!key) return res.status(500).json({ error: 'Foto URL ayrıştırılamadı.' });
+
+    const { GetObjectCommand } = require('@aws-sdk/client-s3');
+    const s3 = await getS3();
+    const obj = await s3.send(new GetObjectCommand({ Bucket: process.env.R2_BUCKET, Key: key }));
+
+    res.setHeader('Content-Type', obj.ContentType || 'image/jpeg');
+    res.setHeader('Cache-Control', 'private, max-age=3600');
+    if (obj.ContentLength) res.setHeader('Content-Length', String(obj.ContentLength));
+    obj.Body.pipe(res);
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.post('/foto-upload', authRequired, (req, res, next) => {

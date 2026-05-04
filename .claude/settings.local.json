@@ -12,7 +12,15 @@
       "Bash(node *)",
       "PowerShell(Add-Type -AssemblyName System.Drawing; $bmp = New-Object System.Drawing.Bitmap 800, 400; $g = [System.Drawing.Graphics]::FromImage\\($bmp\\); $g.Clear\\([System.Drawing.Color]::DarkSlateBlue\\); $font = New-Object System.Drawing.Font 'Arial', 60, \\([System.Drawing.FontStyle]::Bold\\); $brush = [System.Drawing.Brushes]::White; $g.DrawString\\('34 ABC 123', $font, $brush, 130, 140\\); $g.Dispose\\(\\); $bmp.Save\\('C:\\\\Users\\\\recep.yasar\\\\Claude\\\\parkTrack2\\\\test2.jpg', [System.Drawing.Imaging.ImageFormat]::Jpeg\\); $bmp.Dispose\\(\\); \\(Get-Item 'C:\\\\Users\\\\recep.yasar\\\\Claude\\\\parkTrack2\\\\test2.jpg'\\).Length)",
       "PowerShell(Resolve-DnsName *)",
-      "PowerShell(Test-NetConnection *)"
+      "PowerShell(Test-NetConnection *)",
+      "PowerShell(Get-NetTCPConnection *)",
+      "Bash(printenv PORT)",
+      "Bash(rm -f 'C:\\\\Users\\\\recep.yasar\\\\Claude\\\\parkTrack2\\\\frontend\\\\public\\\\opencv.js')",
+      "Bash(npm uninstall *)",
+      "Bash(gh repo *)",
+      "Bash(gh api *)",
+      "Read(//tmp/**)",
+      "Bash(rm /tmp/p.txt)"
     ]
   }
 }

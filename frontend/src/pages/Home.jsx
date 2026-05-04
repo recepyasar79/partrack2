@@ -7,7 +7,7 @@ import {
   CameraIcon, 
   ChartIcon,
   ArrowRightIcon 
-} from './ui/Icons';
+} from '../components/ui/Icons';
 
 const cards = [
   { 

@@ -138,6 +138,51 @@ export default function AksamKontrolu() {
             )}
           </div>
 
+          {sonuc.misafir_gorulen?.length > 0 && (
+            <div className="bg-white rounded-2xl shadow p-4">
+              <h3 className="font-semibold mb-2 flex items-center gap-2">
+                <span>Misafir Araçlar (Bugün Görülen)</span>
+                <span className="text-xs font-normal bg-blue-50 text-blue-700 border border-blue-200 rounded px-2 py-0.5">
+                  {sonuc.misafir_gorulen.length}
+                </span>
+              </h3>
+              <p className="text-xs text-slate-500 mb-3">
+                Bu araçlar misafir muafiyeti kapsamındadır, ihlal sayılmaz.
+              </p>
+              <ul className="divide-y divide-slate-100">
+                {sonuc.misafir_gorulen.map((m) => (
+                  <li key={`${m.daire_id}-${m.plaka}`} className="py-2 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                    <div className="flex flex-col gap-0.5">
+                      <div className="flex items-center gap-2">
+                        <span className="font-mono font-semibold text-sm">{m.plaka}</span>
+                        <span className="text-[11px] bg-blue-50 text-blue-700 border border-blue-200 rounded px-1.5 py-0.5">
+                          misafir
+                        </span>
+                        <span className="text-xs text-slate-600">→ {m.daire_no} ({m.sahip_ad})</span>
+                      </div>
+                      {(m.aciklama || m.olusturma_zamani) && (
+                        <div className="text-xs text-slate-500 flex flex-wrap items-center gap-x-2 gap-y-0.5">
+                          {m.aciklama && <span className="italic">"{m.aciklama}"</span>}
+                          {m.olusturma_zamani && (
+                            <span className="text-slate-400">
+                              · kaydedildi: {new Date(m.olusturma_zamani).toLocaleString('tr-TR', {
+                                day: '2-digit', month: '2-digit', year: 'numeric',
+                                hour: '2-digit', minute: '2-digit',
+                              })}
+                            </span>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                    <div className="text-xs text-slate-400 whitespace-nowrap">
+                      {String(m.baslangic_tarihi).slice(0, 10)} → {String(m.bitis_tarihi).slice(0, 10)}
+                    </div>
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
           {sonuc.kayitsiz_plakalar?.length > 0 && (
             <div className="bg-white rounded-2xl shadow p-4">
               <h3 className="font-semibold mb-2">Kayıtsız Plakalar ({sonuc.kayitsiz_plakalar.length})</h3>

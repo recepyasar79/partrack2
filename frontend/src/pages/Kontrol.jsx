@@ -7,6 +7,7 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { isValidPlaka, normalizePlaka } from '../utils/validation';
 import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner } from '../components/ui/Icons';
+import AuthImage from '../components/AuthImage';
 
 const DURUM_MAP = {
   'sıkıştırılıyor': { label: 'Sıkıştırılıyor', color: 'text-slate-600', bg: 'bg-slate-100' },
@@ -22,7 +23,17 @@ export default function Kontrol() {
   const [bugun, setBugun] = useState([]);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [usePlateDetector, setUsePlateDetector] = useState(() => {
+    const v = localStorage.getItem('usePlateDetector');
+    return v === null ? true : v === '1';
+  });
+  const [zoomImage, setZoomImage] = useState(null);
   const fileRef = useRef();
+
+  function toggleDetector(v) {
+    setUsePlateDetector(v);
+    localStorage.setItem('usePlateDetector', v ? '1' : '0');
+  }
 
   async function loadBugun() {
     try {
@@ -31,6 +42,13 @@ export default function Kontrol() {
     } catch (e) { toast.error(apiError(e)); }
   }
   useEffect(() => { loadBugun(); }, []); // eslint-disable-line
+
+  useEffect(() => {
+    if (!zoomImage) return;
+    const onKey = (e) => { if (e.key === 'Escape') setZoomImage(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [zoomImage]);
 
   async function onFiles(e) {
     const files = Array.from(e.target.files || []);
@@ -58,12 +76,17 @@ export default function Kontrol() {
         let ocrConfidence = 0;
         let ocrRaw = '';
         let ocrError = null;
+        let ocrSource = null;
         try {
           const { recognizePlate } = await import('../services/plateOCR');
-          const r = await recognizePlate(item.file);
+          const r = await recognizePlate(item.file, {
+            usePlateDetector,
+            onProgress: (msg) => updateItem(item.id, { ocrProgress: msg }),
+          });
           ocrPlaka = r.guess;
           ocrConfidence = r.confidence;
           ocrRaw = r.raw;
+          ocrSource = r.source;
           if (r.error) ocrError = r.error;
         } catch (ocrErr) {
           console.warn('OCR hata:', ocrErr);
@@ -76,6 +99,7 @@ export default function Kontrol() {
           ocrConfidence,
           ocrRaw,
           ocrError,
+          ocrSource,
         });
 
         const compressed = await imageCompression(item.file, {
@@ -166,6 +190,19 @@ export default function Kontrol() {
         </Link>
       </div>
 
+      <label className="flex items-center gap-2 text-sm bg-white rounded-xl p-3 border border-slate-200">
+        <input
+          type="checkbox"
+          checked={usePlateDetector}
+          onChange={(e) => toggleDetector(e.target.checked)}
+          className="w-5 h-5"
+        />
+        <span>
+          <strong>Plaka tespit modu</strong> — açıkken foto'da önce plaka bandı bulunur ve sadece
+          o bölge OCR'a verilir (saf JS, ek download yok). Kapalıyken OCR tüm fotoğrafa uygulanır.
+        </span>
+      </label>
+
       {/* Session Uploads */}
       {items.length > 0 && (
         <div className="flex flex-col gap-3">
@@ -178,7 +215,18 @@ export default function Kontrol() {
               const durumInfo = DURUM_MAP[it.durum] || DURUM_MAP['kontrol bekliyor'];
               return (
                 <div key={it.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex gap-4 hover:shadow-md transition-shadow">
-                  <img src={it.previewUrl} alt="" className="w-28 h-28 object-cover rounded-xl" />
+                  <button
+                    type="button"
+                    onClick={() => setZoomImage({ url: it.previewUrl, plaka: it.plaka })}
+                    className="w-28 h-28 shrink-0 overflow-hidden rounded-xl group cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-brand-500"
+                    title="Büyüt"
+                  >
+                    <img
+                      src={it.previewUrl}
+                      alt=""
+                      className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
+                    />
+                  </button>
                   <div className="flex-1 flex flex-col gap-3">
                     {/* Status Badge */}
                     <div className="flex items-center gap-2">
@@ -194,7 +242,21 @@ export default function Kontrol() {
                           OCR: %{Math.round(it.ocrConfidence)}
                         </span>
                       )}
+                      {it.ocrSource && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          it.ocrSource === 'detector' ? 'bg-emerald-50 text-emerald-700' :
+                          it.ocrSource === 'fallback' ? 'bg-slate-100 text-slate-500' :
+                          'bg-amber-50 text-amber-700'
+                        }`}>
+                          {it.ocrSource === 'detector' ? '🎯 Plaka tespit' :
+                           it.ocrSource === 'fallback' ? 'tüm foto' : 'detector hata'}
+                        </span>
+                      )}
                     </div>
+
+                    {it.durum === 'OCR yapılıyor' && it.ocrProgress && (
+                      <div className="text-xs text-slate-500 italic">→ {it.ocrProgress}</div>
+                    )}
                     
                     {/* OCR Debug */}
                     {it.ocrRaw && it.ocrConfidence < 50 && (
@@ -257,6 +319,7 @@ export default function Kontrol() {
           <table className="w-full text-sm">
             <thead>
               <tr className="bg-gradient-to-r from-slate-50 to-slate-100 text-left">
+                <th className="p-4 font-semibold text-slate-700 w-20">Foto</th>
                 <th className="p-4 font-semibold text-slate-700">Plaka</th>
                 <th className="p-4 font-semibold text-slate-700 hidden sm:table-cell">Zaman</th>
                 <th className="p-4"></th>
@@ -265,6 +328,26 @@ export default function Kontrol() {
             <tbody className="divide-y divide-slate-100">
               {bugun.map((k) => (
                 <tr key={k.id} className="hover:bg-slate-50 transition-colors">
+                  <td className="p-2">
+                    {k.foto_url ? (
+                      <button
+                        type="button"
+                        onClick={() => setZoomImage({ url: k.foto_url, plaka: k.plaka, authed: true })}
+                        className="w-16 h-16 overflow-hidden rounded-lg group cursor-zoom-in focus:outline-none focus:ring-2 focus:ring-brand-500"
+                        title="Büyüt"
+                      >
+                        <AuthImage
+                          src={k.foto_url}
+                          alt=""
+                          className="w-full h-full object-cover transition-transform duration-200 group-hover:scale-110"
+                        />
+                      </button>
+                    ) : (
+                      <div className="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300">
+                        <CameraIcon className="w-5 h-5" />
+                      </div>
+                    )}
+                  </td>
                   <td className="p-4">
                     <span className={`font-mono font-semibold ${k.plaka ? 'text-brand-700' : 'text-slate-400'}`}>
                       {k.plaka || '—'}
@@ -282,7 +365,7 @@ export default function Kontrol() {
               ))}
               {bugun.length === 0 && (
                 <tr>
-                  <td colSpan={3} className="p-8 text-center">
+                  <td colSpan={4} className="p-8 text-center">
                     <div className="flex flex-col items-center gap-2 text-slate-400">
                       <CameraIcon className="w-8 h-8" />
                       <p>Henüz yükleme yok.</p>
@@ -300,6 +383,43 @@ export default function Kontrol() {
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-900/90 backdrop-blur-sm text-white text-sm px-5 py-3 rounded-full shadow-xl flex items-center gap-2 animate-fade-in">
           <LoadingSpinner className="w-5 h-5" />
           Yükleniyor…
+        </div>
+      )}
+
+      {zoomImage && (
+        <div
+          className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 animate-fade-in"
+          onClick={() => setZoomImage(null)}
+          role="dialog"
+        >
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); setZoomImage(null); }}
+            className="absolute top-4 right-4 w-12 h-12 rounded-full bg-white/10 hover:bg-white/25 text-white flex items-center justify-center backdrop-blur-sm"
+            aria-label="Kapat"
+          >
+            <XMarkIcon className="w-6 h-6" />
+          </button>
+          {zoomImage.plaka && (
+            <div className="absolute top-4 left-4 bg-white/15 backdrop-blur-sm text-white font-mono text-sm px-3 py-1.5 rounded-lg">
+              {zoomImage.plaka}
+            </div>
+          )}
+          {zoomImage.authed ? (
+            <AuthImage
+              src={zoomImage.url}
+              alt=""
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+            />
+          ) : (
+            <img
+              src={zoomImage.url}
+              alt=""
+              onClick={(e) => e.stopPropagation()}
+              className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
+            />
+          )}
         </div>
       )}
     </div>
