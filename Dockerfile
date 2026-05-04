@@ -15,4 +15,4 @@ ENV PORT=3000
 
 EXPOSE 3000
 
-CMD ["sh", "-c", "npm run migrate && node src/server.js"]
+CMD ["sh", "-c", "npm run migrate && npm run seed && node src/server.js"]
