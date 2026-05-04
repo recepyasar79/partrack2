@@ -146,8 +146,8 @@ export default function Kontrol() {
     try {
       await api.delete(`/kontroller/${kontrolId}`);
       if (itemId) setItems((prev) => prev.filter((i) => i.id !== itemId));
+      setBugun((prev) => prev.filter((k) => k.id !== kontrolId));
       toast.success('Silindi.');
-      loadBugun();
     } catch (e) { toast.error(apiError(e)); }
   }
 
