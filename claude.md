@@ -504,18 +504,18 @@ parktrack/
 - **Bakım cron'ları** (Render Cron Jobs):
   - Günlük 03:00: 90 günden eski fotoğrafları R2'den ve `gunluk_kontroller`'dan sil (KVKK + maliyet)
   - 5dk'da bir: `bildirimler` tablosunda `gonderim_durumu='beklemede'` olanları retry
-  - Haftalık: DB backup export (Render otomatik yapsa da ek güvenlik)
+  - Haftalık: DB backup export (Neon otomatik yapsa da ek güvenlik)
 - **KVKK aydınlatma metni** sayfası (`/kvkk`) — public, login gerektirmez
 
-### Faz 7 — Cloud Deploy, Monitoring & Güvenlik (Render)
-- **Backend:** **Render Web Service** (Starter plan önerilir, free tier'da 15dk uyku var) + **Render PostgreSQL** (managed, günlük otomatik backup)
+### Faz 7 — Cloud Deploy, Monitoring & Güvenlik (Fly.io + Neon)
+- **Backend:** **Fly.io** (Docker container) + **Neon PostgreSQL** (managed, günlük otomatik backup)
 - **Frontend:** Vercel'e deploy
 - **Foto storage:** **Cloudflare R2** (multer-s3 ile) — bucket public read veya signed URL stratejisi
-- `render.yaml` blueprint: web service + postgres + cron jobs + env var tanımları
-- HTTPS zorunlu (Render otomatik SSL), CORS whitelist (frontend domain)
+- `fly.toml` konfigürasyonu: web service + env var tanımları
+- HTTPS zorunlu (Fly.io otomatik SSL), CORS whitelist (frontend domain)
 - helmet middleware: güvenlik header'ları (CSP, X-Frame-Options vs)
 - Rate limiting: login 5/dk, foto upload 50/dk, genel API 100/dk
-- Secret yönetimi: Render dashboard env var (tüm sensitive değerler)
+- Secret yönetimi: `fly secrets set` (tüm sensitive değerler)
 - Login brute-force koruma (rate limit + 10 başarısız sonrası 15dk IP lockout)
 - WhatsApp API key güvenliği (sadece backend'de)
 - **Health check:** `GET /health` (DB ping + R2 ping)
@@ -523,7 +523,7 @@ parktrack/
 - **Error tracking:** Sentry (backend + frontend) — production hatalar otomatik raporlanır
 - **CI/CD pipeline:**
   - GitHub Actions: PR → test (Jest + Vitest + Playwright) + lint
-  - main merge → Render auto-deploy webhook + Vercel auto-deploy
+  - main merge → Fly.io deploy (GitHub Actions) + Vercel auto-deploy
   - DB migration'lar deploy öncesi otomatik (`knex migrate:latest`)
 - **Ortam ayrımı:** dev (lokal), staging (Render preview), production (Render main)
 - **WhatsApp Meta hazırlığı:**

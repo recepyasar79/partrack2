@@ -9,7 +9,7 @@ Site içindeki araç park düzenini otomatikleştirir: her dairenin sadece 1 ara
 - **OCR:** Tesseract.js (client-side plaka okuma)
 - **Foto storage:** Cloudflare R2 (lokal disk fallback)
 - **Bildirim:** WhatsApp Business Cloud API (Meta)
-- **Hosting:** Render (backend + DB + cron'lar), Vercel (frontend)
+- **Hosting:** Fly.io (backend), Neon (PostgreSQL), Vercel (frontend)
 
 Tüm proje kararları, fazlar ve iş kuralları için → [CLAUDE.md](./CLAUDE.md)
 
@@ -28,7 +28,7 @@ cd backend
 npm install
 npm run migrate
 npm run seed       # development seed data (admin + 1 güvenlik + örnek daireler)
-npm run dev        # http://localhost:3000
+npm run dev        # http://localhost:3001
 
 # 4. Frontend (yeni terminal)
 cd frontend
@@ -54,7 +54,7 @@ npm run dev        # http://localhost:5173
 - `npm run build` — production build
 - `npm test` — Vitest testleri
 
-## Cloud Deploy (Render + Vercel)
+## Cloud Deploy (Fly.io + Neon + Vercel)
 
 ### 1. Cloudflare R2 hesabı + bucket aç
 - API token oluştur (R2 Edit yetkisi)
@@ -66,28 +66,47 @@ npm run dev        # http://localhost:5173
 - `ihlal_bildirimi` template'ini Meta'ya submit et (Türkçe, 3 parametreli: sahip_ad, daire_no, plakalar)
 - `WHATSAPP_API_TOKEN`, `WHATSAPP_PHONE_NUMBER_ID` al
 
-### 3. Render Blueprint deploy
-```
-# Render dashboard → New → Blueprint → bu repo
-# render.yaml otomatik tespit edilir
-# Eksik env var'ları (BOOTSTRAP_ADMIN_*, R2_*, WHATSAPP_*, FRONTEND_URL) dashboard'dan girilir
+### 3. Neon PostgreSQL veritabanı oluştur
+- [Neon](https://neon.tech) hesabı aç, yeni proje oluştur
+- Connection string'i kopyala
+- Fly.io secret olarak ekle: `fly secrets set DATABASE_URL="postgresql://..."`
+
+### 4. Fly.io'ya backend deploy
+```bash
+# Fly CLI kurulum (https://fly.io/docs/hands-on/install-flyctl/)
+fly launch --name parktrack-backend --region fra
+# fly.toml zaten mevcut, gerekli env değerlerini ekle:
+fly secrets set \
+  DATABASE_URL="postgresql://..." \
+  JWT_SECRET="uzgun-rastgele-string" \
+  BOOTSTRAP_ADMIN_USER="admin" \
+  BOOTSTRAP_ADMIN_PASS="güçlü-şifre" \
+  FRONTEND_URL="https://akasyaparktrack.vercel.app" \
+  R2_ACCOUNT_ID="..." \
+  R2_ACCESS_KEY_ID="..." \
+  R2_SECRET_ACCESS_KEY="..." \
+  R2_BUCKET="parktrack-photos" \
+  R2_PUBLIC_URL="https://pub-xxx.r2.dev" \
+  WHATSAPP_API_TOKEN="..." \
+  WHATSAPP_PHONE_NUMBER_ID="..."
+
+fly deploy
 ```
 
 Servisler:
-- `parktrack-api` (web service)
-- `parktrack-db` (managed PostgreSQL)
-- `parktrack-foto-temizle` (cron, günlük 03:00)
-- `parktrack-bildirim-retry` (cron, 5dk'da bir)
+- `parktrack-backend` (Fly.io web service)
+- `parktrack-db` (Neon managed PostgreSQL)
+- Cron işleri için Fly Machines veya GitHub Actions scheduled workflows kullanılabilir
 
-### 4. Vercel'e frontend deploy
+### 5. Vercel'e frontend deploy
 ```bash
 cd frontend
 # Vercel dashboard → Import → bu repo → root: frontend
-# Env: VITE_API_URL=https://parktrack-api.onrender.com/api
+# Env: VITE_API_URL=https://parktrack-backend.fly.dev/api
 ```
 
-### 5. Frontend domain'i Render CORS whitelist'ine ekle
-- Render dashboard → parktrack-api → Environment → `FRONTEND_URL=https://parktrack.vercel.app`
+### 6. Frontend domain'i Fly.io CORS whitelist'ine ekle
+- `fly secrets set FRONTEND_URL=https://parktrack.vercel.app`
 
 ## Proje Yapısı
 
@@ -113,7 +132,8 @@ parktrack/
 ├── database/
 │   ├── migrations/         9 tablo (Knex)
 │   └── seeds/              bootstrap admin + örnek veri
-├── render.yaml             Render Blueprint
+├── fly.toml                Fly.io konfigürasyonu
+├── Dockerfile              Fly.io Docker build
 └── .github/workflows/      CI/CD
 ```
 

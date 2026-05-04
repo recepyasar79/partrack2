@@ -2,6 +2,17 @@ const { app, request, db, makeToken, createTestUser, cleanupTables } = require('
 
 beforeEach(async () => {
   await cleanupTables();
+  // Reset rate limiter store for each test
+  const loginRoute = app._router.stack.find(
+    (l) => l.route && l.route.path === '/login'
+  );
+  if (loginRoute) {
+    loginRoute.route.stack.forEach((layer) => {
+      if (layer.handle && layer.handle.reset) {
+        layer.handle.reset();
+      }
+    });
+  }
 });
 
 describe('POST /api/auth/login', () => {

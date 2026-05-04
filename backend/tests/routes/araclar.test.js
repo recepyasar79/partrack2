@@ -74,7 +74,7 @@ describe('POST /api/araclar', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ daire_id: daire2.id, plaka: '34DUP001' });
     expect(res.status).toBe(409);
-    expect(res.body.error).toContain('baska bir aktif daireye kayıtlı');
+    expect(res.body.error).toContain('başka bir aktif daireye kayıtlı');
   });
 
   test('guvenlik plaka ekleyemez (403)', async () => {

@@ -20,7 +20,20 @@
       "Bash(gh repo *)",
       "Bash(gh api *)",
       "Read(//tmp/**)",
-      "Bash(rm /tmp/p.txt)"
+      "Bash(rm /tmp/p.txt)",
+      "PowerShell(git *)",
+      "Bash(npx vitest *)",
+      "Bash(grep *)",
+      "mcp__plugin_vercel_vercel__list_teams",
+      "mcp__plugin_vercel_vercel__get_deployment",
+      "mcp__plugin_vercel_vercel__list_projects",
+      "mcp__plugin_vercel_vercel__web_fetch_vercel_url",
+      "mcp__plugin_vercel_vercel__get_project",
+      "mcp__plugin_vercel_vercel__list_deployments",
+      "Bash(npx jest *)",
+      "Bash(taskkill //F //PID 113251)",
+      "Bash(taskkill //F //PID 113216)",
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")"
     ]
   }
 }

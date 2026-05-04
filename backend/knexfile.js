@@ -37,5 +37,7 @@ module.exports = {
       ssl: { rejectUnauthorized: false },
     },
     pool: { min: 2, max: 20 },
+    // Neon: pool mode 'transaction' kullanılıyorsa max 1-2 önerilir.
+    // session mode için daha yüksek pool limitleri ayarlanabilir.
   },
 };

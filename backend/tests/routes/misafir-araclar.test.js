@@ -4,15 +4,12 @@ let adminToken;
 let guardToken;
 let admin, guard;
 
-beforeAll(async () => {
+beforeEach(async () => {
+  await cleanupTables();
   admin = await createTestUser({ kullanici_adi: 'madmin', rol: 'yonetici' });
   guard = await createTestUser({ kullanici_adi: 'mguard', rol: 'guvenlik' });
   adminToken = makeToken({ id: admin.id, kullanici_adi: 'madmin', rol: 'yonetici' });
   guardToken = makeToken({ id: guard.id, kullanici_adi: 'mguard', rol: 'guvenlik' });
-});
-
-beforeEach(async () => {
-  await cleanupTables([admin, guard]);
 });
 
 describe('GET /api/misafir-araclar', () => {
@@ -24,7 +21,7 @@ describe('GET /api/misafir-araclar', () => {
       plaka: '34MIS001',
       baslangic_tarihi: today,
       bitis_tarihi: today,
-      ekleyen_user_id: adminToken,
+      ekleyen_user_id: admin.id,
     });
     const res = await request(app)
       .get('/api/misafir-araclar')
@@ -41,7 +38,7 @@ describe('GET /api/misafir-araclar', () => {
       plaka: '34MIS002',
       baslangic_tarihi: today,
       bitis_tarihi: today,
-      ekleyen_user_id: adminToken,
+      ekleyen_user_id: admin.id,
     });
     const res = await request(app)
       .get(`/api/misafir-araclar?tarih=${today}`)
@@ -61,13 +58,13 @@ describe('POST /api/misafir-araclar', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
         daire_id: daire.id,
-        plaka: '34GUEST1',
+        plaka: '34GU001',
         baslangic_tarihi: today,
         bitis_tarihi: tomorrow,
         aciklama: 'Test misafir',
       });
     expect(res.status).toBe(201);
-    expect(res.body.misafir.plaka).toBe('34GUEST1');
+    expect(res.body.misafir.plaka).toBe('34GU001');
   });
 
   test('bitis tarihi baslangictan once ise 400 doner', async () => {
@@ -109,7 +106,7 @@ describe('POST /api/misafir-araclar', () => {
       .set('Authorization', `Bearer ${guardToken}`)
       .send({
         daire_id: daire.id,
-        plaka: '34GUARD',
+        plaka: '34GRD01',
         baslangic_tarihi: today,
         bitis_tarihi: today,
       });
@@ -127,7 +124,7 @@ describe('DELETE /api/misafir-araclar/:id', () => {
         plaka: '34DEL001',
         baslangic_tarihi: today,
         bitis_tarihi: today,
-        ekleyen_user_id: 1,
+        ekleyen_user_id: admin.id,
       })
       .returning('*');
     const res = await request(app)
@@ -147,7 +144,7 @@ describe('DELETE /api/misafir-araclar/:id', () => {
         plaka: '34DEL002',
         baslangic_tarihi: today,
         bitis_tarihi: today,
-        ekleyen_user_id: 1,
+        ekleyen_user_id: admin.id,
       })
       .returning('*');
     const res = await request(app)

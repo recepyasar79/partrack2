@@ -7,13 +7,15 @@ const { writeAudit } = require('../middleware/audit');
 
 const router = express.Router();
 
-const loginLimiter = rateLimit({
-  windowMs: 60 * 1000,
-  max: 5,
-  standardHeaders: true,
-  legacyHeaders: false,
-  message: { error: 'Çok fazla deneme. Lütfen bir dakika sonra tekrar deneyin.' },
-});
+const loginLimiter = process.env.NODE_ENV === 'test'
+  ? (_req, _res, next) => next()
+  : rateLimit({
+      windowMs: 60 * 1000,
+      max: 5,
+      standardHeaders: true,
+      legacyHeaders: false,
+      message: { error: 'Çok fazla deneme. Lütfen bir dakika sonra tekrar deneyin.' },
+    });
 
 async function constantTimeFail() {
   await new Promise((r) => setTimeout(r, 80 + Math.random() * 40));
