@@ -145,7 +145,7 @@ export default function Raporlar() {
 
       {tab === 'ihlal' && (
         <div className="bg-white rounded-2xl shadow overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-base">
             <thead className="bg-slate-100 text-left">
               <tr>
                 <th className="p-3">Tarih</th>
@@ -177,7 +177,7 @@ export default function Raporlar() {
 
       {tab === 'ozet' && (
         <div className="bg-white rounded-2xl shadow overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-base">
             <thead className="bg-slate-100 text-left">
               <tr>
                 <th className="p-3">Daire</th>
@@ -205,7 +205,7 @@ export default function Raporlar() {
 
       {tab === 'bildirim' && (
         <div className="bg-white rounded-2xl shadow overflow-x-auto">
-          <table className="w-full text-sm">
+          <table className="w-full text-base">
             <thead className="bg-slate-100 text-left">
               <tr>
                 <th className="p-3">Zaman</th>

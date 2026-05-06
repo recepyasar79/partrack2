@@ -57,7 +57,7 @@ export default function AuditLog() {
       </div>
 
       <div className="bg-white rounded-2xl shadow overflow-x-auto">
-        <table className="w-full text-sm">
+        <table className="w-full text-base">
           <thead className="bg-slate-100 text-left">
             <tr>
               <th className="p-3">Zaman</th>

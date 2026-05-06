@@ -349,7 +349,7 @@ export default function Kontrol() {
           Bugünün tüm yüklemeleri ({bugun.length})
         </h2>
         <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
-          <table className="w-full text-sm">
+          <table className="w-full text-base">
             <thead>
               <tr className="bg-gradient-to-r from-slate-50 to-slate-100 text-left">
                 <th className="p-4 font-semibold text-slate-700 w-20">Foto</th>

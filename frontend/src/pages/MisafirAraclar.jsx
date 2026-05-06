@@ -118,7 +118,7 @@ export default function MisafirAraclar() {
       )}
 
       <div className="bg-white rounded-2xl shadow overflow-hidden">
-        <table className="w-full text-sm">
+        <table className="w-full text-base">
           <thead className="bg-slate-100 text-left">
             <tr>
               <th className="p-3">Plaka</th>
