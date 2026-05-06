@@ -60,49 +60,49 @@ function fixPlateChars(s) {
   if (!s || s.length < 5) return s;
   const chars = s.split('');
 
-  // Pozisyon 0-1: Şehir kodu (rakam) - 4 ve 3 sıklıkla karışıyor
-  if (chars[0] === '4' && chars[1] === '3') {
-    chars[0] = '3';
-    chars[1] = '4';
-  }
+  // // Pozisyon 0-1: Şehir kodu (rakam) - 4 ve 3 sıklıkla karışıyor
+  // if (chars[0] === '4' && chars[1] === '3') {
+  //   chars[0] = '3';
+  //   chars[1] = '4';
+  // }
 
-  // Pozisyon 2: Harf bölgesi ilk harf - Y↔K karışıklığı çok yaygın
-  if (chars[2] === 'K') chars[2] = 'Y';
-  if (chars[2] === 'W') chars[2] = 'D'; // W genellikle D olarak okunur
+  // // Pozisyon 2: Harf bölgesi ilk harf - Y↔K karışıklığı çok yaygın
+  // if (chars[2] === 'K') chars[2] = 'Y';
+  // if (chars[2] === 'W') chars[2] = 'D'; // W genellikle D olarak okunur
 
-  // Pozisyon 3: Harf bölgesi ikinci harf
-  if (chars[3] === 'W') chars[3] = 'M'; // W genellikle M olarak okunur
-  if (chars[3] === '5') chars[3] = 'R'; // 5-R karışıklığı
-  if (chars[3] === '4') chars[3] = 'A'; // 4-A karışıklığı
-  if (chars[3] === 'N') chars[3] = 'M'; // N-M karışıklığı
-  if (chars[3] === 'U') chars[3] = 'V'; // U-V karışıklığı
+  // // Pozisyon 3: Harf bölgesi ikinci harf
+  // if (chars[3] === 'W') chars[3] = 'M'; // W genellikle M olarak okunur
+  // if (chars[3] === '5') chars[3] = 'R'; // 5-R karışıklığı
+  // if (chars[3] === '4') chars[3] = 'A'; // 4-A karışıklığı
+  // if (chars[3] === 'N') chars[3] = 'M'; // N-M karışıklığı
+  // if (chars[3] === 'U') chars[3] = 'V'; // U-V karışıklığı
 
-  // Pozisyon 4: Üçüncü harf (varsa)
-  if (chars.length > 4) {
-    if (chars[4] === '4') chars[4] = 'A';
-    if (chars[4] === '5') chars[4] = 'S';
-    if (chars[4] === 'I') chars[4] = '1';
-  }
+  // // Pozisyon 4: Üçüncü harf (varsa)
+  // if (chars.length > 4) {
+  //   if (chars[4] === '4') chars[4] = 'A';
+  //   if (chars[4] === '5') chars[4] = 'S';
+  //   if (chars[4] === 'I') chars[4] = '1';
+  // }
 
-  // Harf bölgesi (2-4): rakam gibi okunanları harfe çek (tek yönlü)
-  for (let i = 2; i <= Math.min(4, chars.length - 1); i++) {
-    if (chars[i] === '0') chars[i] = 'O';
-    if (chars[i] === '1') chars[i] = 'I';
-    if (chars[i] === '2') chars[i] = 'Z';
-    if (chars[i] === '5') chars[i] = 'S';
-    if (chars[i] === '8') chars[i] = 'B';
-    if (chars[i] === '6') chars[i] = 'G';
-  }
+  // // Harf bölgesi (2-4): rakam gibi okunanları harfe çek (tek yönlü)
+  // for (let i = 2; i <= Math.min(4, chars.length - 1); i++) {
+  //   if (chars[i] === '0') chars[i] = 'O';
+  //   if (chars[i] === '1') chars[i] = 'I';
+  //   if (chars[i] === '2') chars[i] = 'Z';
+  //   if (chars[i] === '5') chars[i] = 'S';
+  //   if (chars[i] === '8') chars[i] = 'B';
+  //   if (chars[i] === '6') chars[i] = 'G';
+  // }
 
-  // Rakam bölgesi (>=5): harf gibi okunanları rakama çek (tek yönlü)
-  for (let i = 5; i < chars.length; i++) {
-    if (chars[i] === 'O') chars[i] = '0';
-    if (chars[i] === 'I') chars[i] = '1';
-    if (chars[i] === 'Z') chars[i] = '2';
-    if (chars[i] === 'S') chars[i] = '5';
-    if (chars[i] === 'B') chars[i] = '8';
-    if (chars[i] === 'G') chars[i] = '6';
-  }
+  // // Rakam bölgesi (>=5): harf gibi okunanları rakama çek (tek yönlü)
+  // for (let i = 5; i < chars.length; i++) {
+  //   if (chars[i] === 'O') chars[i] = '0';
+  //   if (chars[i] === 'I') chars[i] = '1';
+  //   if (chars[i] === 'Z') chars[i] = '2';
+  //   if (chars[i] === 'S') chars[i] = '5';
+  //   if (chars[i] === 'B') chars[i] = '8';
+  //   if (chars[i] === 'G') chars[i] = '6';
+  // }
 
   return chars.join('');
 }
@@ -293,7 +293,7 @@ function applyAdaptiveThreshold(canvas, blockSize = 25, C = 12) {
       const y2 = Math.min(h - 1, y + half);
       const area = (x2 - x1 + 1) * (y2 - y1 + 1);
       const sum =
-        integral[(y2 + 1) * (w + 1) + (x2 +1)] -
+        integral[(y2 + 1) * (w + 1) + (x2 + 1)] -
         integral[(y1) * (w + 1) + (x2 + 1)] -
         integral[(y2 + 1) * (w + 1) + (x1)] +
         integral[(y1) * (w + 1) + (x1)];
@@ -351,7 +351,7 @@ async function getWorker() {
     workerPromise = (async () => {
       const Tesseract = await import('tesseract.js');
       const worker = await Tesseract.createWorker('eng', 1, {
-        logger: () => {},
+        logger: () => { },
       });
       await worker.setParameters({
         tessedit_char_whitelist: PLATE_WHITELIST,
@@ -805,7 +805,7 @@ export async function recognizePlate(file, options = {}) {
         r.variant = variant.name;
 
         if (r.matched) {
-// Bulunan ilk eşleşmeyi hemen döndür
+          // Bulunan ilk eşleşmeyi hemen döndür
           onProgress?.(`Eşleşme bulundu: ${r.guess} (${variant.name})`);
           return r;
         }
@@ -840,7 +840,7 @@ export async function disposeOCR() {
     try {
       const w = await workerPromise;
       await w.terminate();
-    } catch {}
+    } catch { }
     workerPromise = null;
   }
 }
