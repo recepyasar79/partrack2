@@ -8,6 +8,7 @@ const { buildUpload, isR2Configured } = require('../services/storage');
 const { todayTR } = require('../utils/timezone');
 const { normalizePlaka } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
+const axios = require('axios');
 
 const router = express.Router();
 const storage = buildUpload();
@@ -87,8 +88,29 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
     if (err) return next(err);
     if (!req.file) return res.status(400).json({ error: 'Dosya alınamadı.' });
 
-    const rawOcrPlaka = (req.body.plaka || '').trim();
-    let plaka = normalizePlaka(rawOcrPlaka);
+    let plaka = '';
+    
+    // Python OCR servisine istek at
+    try {
+      const formData = new FormData();
+      formData.append('file', req.file.buffer || req.file, req.file.originalname || 'plate.jpg');
+      
+      const ocrResponse = await axios.post(
+        `${process.env.PYTHON_OCR_URL || 'http://python-ocr:5000'}/ocr`,
+        formData,
+        { headers: { ...formData.getHeaders(), 'Content-Type': 'multipart/form-data' } }
+      );
+      
+      if (ocrResponse.data?.plate) {
+        plaka = normalizePlaka(ocrResponse.data.plate);
+        console.log(`Python OCR result: ${ocrResponse.data.plate} → normalized: ${plaka}`);
+      }
+    } catch (e) {
+      console.warn('Python OCR failed, falling back to Tesseract.js:', e.message);
+      // Fallback: use frontend OCR result
+      const rawOcrPlaka = (req.body.plaka || '').trim();
+      plaka = normalizePlaka(rawOcrPlaka);
+    }
 
     // OCR çıktısını veritabanındaki plakalarla otomatik eşleştir
     let matchResult = null;

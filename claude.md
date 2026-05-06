@@ -122,10 +122,14 @@ Frontend görsel iyileştirmeleri tamamlandı:
 ## Teknoloji Stack'i
 ### Önerilen Yapı (Web Tabanlı - Mobil First)
 - **Frontend:** React + Vite + TailwindCSS
-- **Backend:** Node.js + Express veya Python + FastAPI
-- **Veritabanı:** SQLite (hafif) veya PostgreSQL
-- **Görsel İşleme:** Tesseract.js (OCR ile plaka tanıma)
+- **Backend:** Node.js + Express (PostgreSQL) + Python OCR microservice (OpenCV + Tesseract)
+- **Veritabanı:** PostgreSQL (Neon managed)
+- **Görsel İşleme:** 
+  - Python OCR servisi (OpenCV ile plate detection + Tesseract OCR) - daha yüksek doğruluk
+  - Tesseract.js (frontend'de yedek)
 - **Kamera:** getUserMedia API
+- **Foto Storage:** Cloudflare R2
+- **Hosting:** Fly.io (backend), Vercel (frontend)
 
 ## Proje Yapısı
 parktrack/
@@ -509,28 +513,30 @@ parktrack/
 
 ### Faz 7 — Cloud Deploy, Monitoring & Güvenlik (Fly.io + Neon)
 - **Backend:** **Fly.io** (Docker container) + **Neon PostgreSQL** (managed, günlük otomatik backup)
+- **Python OCR Service:** **Fly.io** (Docker container) - OpenCV + Tesseract ile gelişmiş plaka tanıma
 - **Frontend:** Vercel'e deploy
 - **Foto storage:** **Cloudflare R2** (multer-s3 ile) — bucket public read veya signed URL stratejisi
 - `fly.toml` konfigürasyonu: web service + env var tanımları
+- **Python OCR:** `backend/python_ocr/` dizininde Flask uygulaması, ayrı Fly.io appsi olarak deploy edilir
 - HTTPS zorunlu (Fly.io otomatik SSL), CORS whitelist (frontend domain)
 - helmet middleware: güvenlik header'ları (CSP, X-Frame-Options vs)
 - Rate limiting: login 5/dk, foto upload 50/dk, genel API 100/dk
 - Secret yönetimi: `fly secrets set` (tüm sensitive değerler)
 - Login brute-force koruma (rate limit + 10 başarısız sonrası 15dk IP lockout)
 - WhatsApp API key güvenliği (sadece backend'de)
-- **Health check:** `GET /health` (DB ping + R2 ping)
+- **Health check:** `GET /health` (DB ping + R2 ping) + Python OCR `GET /health`
 - **Uptime monitoring:** UptimeRobot veya Better Stack ile 5dk'da ping (free tier sleep'i de önler)
-- **Error tracking:** Sentry (backend + frontend) — production hatalar otomatik raporlanır
+- **Error tracking:** Sentry (backend + frontend) — production hataları otomatik raporlanır
 - **CI/CD pipeline:**
   - GitHub Actions: PR → test (Jest + Vitest + Playwright) + lint
   - main merge → Fly.io deploy (GitHub Actions) + Vercel auto-deploy
   - DB migration'lar deploy öncesi otomatik (`knex migrate:latest`)
-- **Ortam ayrımı:** dev (lokal), staging (Render preview), production (Render main)
-- **WhatsApp Meta hazırlığı:**
-  - Meta Business Manager hesabı + business verification
-  - Phone number kayıt + onay
-  - `ihlal_bildirimi` template Meta'ya submit (Türkçe + parametreli)
-  - Webhook URL setup (delivery receipts için, opsiyonel)
+- **Ortam ayrımı:** dev (lokal), staging (Fly.io preview), production (Fly.io main)
+- **Python OCR Meta hazırlığı:**
+  - OpenCV preprocessing: bilateralFilter, Canny edge, contour detection
+  - Tesseract config: `--psm 7` (single text line for plates)
+  - Endpoint: `POST /ocr` → plaka döndürür
+  - Node.js backend'den `http://python-ocr:5000/ocr` ile çağrılır
 
 ---
 
