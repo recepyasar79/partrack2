@@ -18,7 +18,7 @@ primary_region = 'fra'
   WHATSAPP_TEMPLATE_NAME = 'ihlal_bildirimi'
 
 [deploy]
-  release_command = 'cd /app && ./node_modules/.bin/knex migrate:latest'
+  release_command = "sh -c './node_modules/.bin/knex migrate:latest'"
 
 [http_service]
   internal_port = 3000
