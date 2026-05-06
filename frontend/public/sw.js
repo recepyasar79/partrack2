@@ -45,7 +45,7 @@ self.addEventListener('fetch', (event) => {
           }
           return res;
         })
-        .catch(() => caches.match(req).then((c) => c || caches.match('/index.html'))
+        .catch(() => caches.match(req).then((c) => c || caches.match('/'))
     );
     return;
   }
