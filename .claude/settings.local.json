@@ -33,7 +33,16 @@
       "Bash(npx jest *)",
       "Bash(taskkill //F //PID 113251)",
       "Bash(taskkill //F //PID 113216)",
-      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")"
+      "Bash(tasklist //FI \"IMAGENAME eq node.exe\")",
+      "Bash(Get-ChildItem -Path 'C:\\\\Users\\\\recep.yasar\\\\claude\\\\parkTrack2' -Force)",
+      "Bash(Select-Object Mode, Name)",
+      "Bash(git add *)",
+      "Bash(git commit -m ' *)",
+      "Bash(git push *)",
+      "Bash(gh run *)",
+      "Bash(gh secret *)",
+      "Bash(gh workflow *)",
+      "PowerShell($r = Invoke-WebRequest -Uri 'https://akasyaparktrack.vercel.app/' -UseBasicParsing; $r.StatusCode; \\($r.Content | Select-String -Pattern 'assets/[^\"]+\\\\.\\(js|css\\)' -AllMatches\\).Matches.Value | Select-Object -Unique)"
     ]
   }
 }
