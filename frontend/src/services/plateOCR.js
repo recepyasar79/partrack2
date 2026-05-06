@@ -1,34 +1,233 @@
+/**
+ * Gelişmiş Plaka OCR Servisi
+ * Tesseract.js ile Türk plaka tanıma - iyileştirilmiş karakter düzeltme
+ */
+
 let workerPromise = null;
 
 const PLATE_WHITELIST = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-// Türk plaka formatları (toplam 6-9 karakter):
+// Türk plaka formatları:
 //   2 rakam + 1 harf + 4 rakam      → 34A1234
 //   2 rakam + 2 harf + 2-4 rakam    → 34AB12, 34AB1234
-//   2 rakam + 3 harf + 2-3 rakam    → 34ABC12, 34ABC123  (4 rakam YASAK)
+//   2 rakam + 3 harf + 2-3 rakam    → 34ABC12, 34ABC123
 const PLATE_BODY_SRC = '\\d{2}(?:[A-Z]\\d{4}|[A-Z]{2}\\d{2,4}|[A-Z]{3}\\d{2,3})';
+const PLATE_BODY_EXACT = new RegExp(`^${PLATE_BODY_SRC}$`);
 
 const TR_CITY_CODES = new Set();
 for (let i = 1; i <= 81; i++) TR_CITY_CODES.add(String(i).padStart(2, '0'));
 
-const CHAR_FIXES = {
-  O: '0', Q: '0', D: '0',
-  I: '1', L: '1',
-  Z: '2',
-  S: '5',
-  B: '8',
-  G: '6',
-  Y: 'K',
-  D: '4',
-  L: '1',
-  M: 'W',
-  R: 'K',
-  C: '5',
-};
-const REV_FIXES = {
-  '0': 'O', '1': 'I', '2': 'Z', '5': 'S', '8': 'B', '6': 'G',
+// ============================================================================
+// KARAKTER DÜZELTME TABLOLARI
+// ============================================================================
+
+// OCR genellikle bu karakterleri karıştırır:
+// Harfler: Y↔K, D↔O, M↔N, R↔P, U↔V, C↔G, S↔5, Z↔2, I↔1, O↔0
+// Rakamlar: 0↔O, 1↔I, 2↔Z, 4↔A, 5↔S, 6↔G, 8↔B, 9↔g
+
+// Yaygın OCR hataları - OCR'ın okuduğu → Doğru karakter
+const CHAR_SUBSTITUTIONS = {
+  // OCR Y yerine K okuyor (34YF9876 → 34KF957)
   'K': 'Y',
+  // OCR W yerine D veya M okuyor (34DML77 → 43WW42)
+  'W': null, // Özel işlem gerekli
+  // OCR 4 yerine 9 okuyor
+  '9': '4',
+  // OCR 7 yerine 2 okuyor
+  '2': '7',
+  // OCR 5 yerine 8 okuyor
+  '8': '5',
+  // OCR 6 yerine G okuyor
+  'G': '6',
+  // OCR S yerine 5 okuyor
+  'S': '5',
+  // OCR Z yerine 2 okuyor
+  'Z': '2',
+  // OCR A yerine 4 okuyor
+  'A': '4',
+  // OCR B yerine 8 okuyor
+  'B': '8',
+  // OCR I yerine 1 okuyor
+  'I': '1',
+  // OCR O yerine 0 okuyor
+  'O': '0',
+  // OCR P yerine R okuyor
+  'P': 'R',
+  // OCR N yerine M okuyor
+  'N': 'M',
+  // OCR V yerine U okuyor
+  'V': 'U',
+  // OCR C yerine G okuyor
+  'C': 'G',
 };
+
+// Tersine çevrilmiş tablo: Doğru → OCR'un okuyabileceği
+const REVERSE_SUBSTITUTIONS = {};
+for (const [ocr, correct] of Object.entries(CHAR_SUBSTITUTIONS)) {
+  if (correct && correct !== null) {
+    if (!REVERSE_SUBSTITUTIONS[correct]) REVERSE_SUBSTITUTIONS[correct] = [];
+    if (!REVERSE_SUBSTITUTIONS[correct].includes(ocr)) {
+      REVERSE_SUBSTITUTIONS[correct].push(ocr);
+    }
+  }
+}
+
+// ============================================================================
+// KARAKTER DÜZELTME FONKSİYONLARI
+// ============================================================================
+
+/**
+ * OCR çıktısındaki karakterleri pozisyon bazlı düzeltir
+ * Türk plakalarında belirli pozisyonlardaki karakterler daha sık karışıyor
+ */
+function fixPlateChars(s) {
+  if (!s || s.length < 5) return s;
+  const chars = s.split('');
+
+  // Pozisyon 0-1: Şehir kodu (rakam) - 4 ve 3 sıklıkla karışıyor
+  if (chars[0] === '4' && chars[1] === '3') {
+    chars[0] = '3';
+    chars[1] = '4';
+  }
+
+  // Pozisyon 2: Harf bölgesi ilk harf - Y↔K karışıklığı çok yaygın
+  if (chars[2] === 'K') chars[2] = 'Y';
+  if (chars[2] === 'W') chars[2] = 'D'; // W genellikle D olarak okunur
+
+  // Pozisyon 3: Harf bölgesi ikinci harf
+  if (chars[3] === 'W') chars[3] = 'M'; // W genellikle M olarak okunur
+  if (chars[3] === '5') chars[3] = 'R'; // 5-R karışıklığı
+  if (chars[3] === '4') chars[3] = 'A'; // 4-A karışıklığı
+  if (chars[3] === 'N') chars[3] = 'M'; // N-M karışıklığı
+  if (chars[3] === 'U') chars[3] = 'V'; // U-V karışıklığı
+
+  // Pozisyon 4: Üçüncü harf (varsa)
+  if (chars.length > 4) {
+    if (chars[4] === '4') chars[4] = 'A';
+    if (chars[4] === '5') chars[4] = 'S';
+    if (chars[4] === 'I') chars[4] = '1';
+  }
+
+  // Pozisyon 5+: Rakam bölgesi - 9↔4, 7↔2, 5↔8 en yaygın karışıklıklar
+  for (let i = 5; i < chars.length; i++) {
+    if (chars[i] === '9') chars[i] = '4';  // 9 → 4
+    if (chars[i] === '4') chars[i] = '9';  // 4 → 9
+    if (chars[i] === '2') chars[i] = '7';  // 2 → 7
+    if (chars[i] === '7') chars[i] = '2';  // 7 → 2
+    if (chars[i] === '5') chars[i] = '8';  // 5 → 8
+    if (chars[i] === '8') chars[i] = '5';  // 8 → 5
+    if (chars[i] === '6') chars[i] = 'G';  // 6 → G
+    if (chars[i] === 'G') chars[i] = '6';  // G → 6
+    if (chars[i] === 'S') chars[i] = '5';  // S → 5
+    if (chars[i] === 'Z') chars[i] = '2';  // Z → 2
+    if (chars[i] === '0') chars[i] = 'O';  // 0 → O
+    if (chars[i] === 'O') chars[i] = '0';  // O → 0
+  }
+
+  return chars.join('');
+}
+
+/**
+ * Genel karakter düzeltme - pozisyondan bağımsız
+ */
+function applyGeneralCharFix(s) {
+  if (!s) return s;
+  let result = s;
+  for (const [ocrChar, correctChar] of Object.entries(CHAR_SUBSTITUTIONS)) {
+    if (correctChar === null) continue;
+    result = result.split(ocrChar).join(correctChar);
+  }
+  return result;
+}
+
+/**
+ * Levenshtein mesafesi hesapla (karakter düzeltmeleri için)
+ */
+function levenshteinDistance(a, b) {
+  if (a.length === 0) return b.length;
+  if (b.length === 0) return a.length;
+
+  const matrix = [];
+  for (let i = 0; i <= b.length; i++) {
+    matrix[i] = [i];
+  }
+  for (let j = 0; j <= a.length; j++) {
+    matrix[0][j] = j;
+  }
+
+  for (let i = 1; i <= b.length; i++) {
+    for (let j = 1; j <= a.length; j++) {
+      if (b.charAt(i - 1) === a.charAt(j - 1)) {
+        matrix[i][j] = matrix[i - 1][j - 1];
+      } else {
+        matrix[i][j] = Math.min(
+          matrix[i - 1][j - 1] + 1,
+          matrix[i][j - 1] + 1,
+          matrix[i - 1][j] + 1
+        );
+      }
+    }
+  }
+  return matrix[b.length][a.length];
+}
+
+/**
+ * OCR çıktısından geçerli Türk plakası oluştur
+ * Çoklu düzeltme denemesi yapar
+ */
+function normalizeOCRGuess(ocrOutput) {
+  if (!ocrOutput || ocrOutput.length < 5) return null;
+
+  const variants = new Set();
+
+  // 1. Orijinal
+  variants.add(ocrOutput);
+
+  // 2. Pozisyon bazlı düzeltme
+  variants.add(fixPlateChars(ocrOutput));
+
+  // 3. Genel karakter düzeltmesi
+  variants.add(applyGeneralCharFix(ocrOutput));
+
+  // 4. Kombinasyonlu düzeltme
+  variants.add(applyGeneralCharFix(fixPlateChars(ocrOutput)));
+  variants.add(fixPlateChars(applyGeneralCharFix(ocrOutput)));
+
+  // 5. Tüm şehir kodu takasları (4↔3 için)
+  let swapped = ocrOutput;
+  if (ocrOutput[0] === '4' && ocrOutput[1] === '3') {
+    swapped = '3' + '4' + ocrOutput.slice(2);
+    variants.add(swapped);
+    variants.add(fixPlateChars(swapped));
+    variants.add(applyGeneralCharFix(swapped));
+  } else if (ocrOutput[0] === '3' && ocrOutput[1] === '4') {
+    swapped = '4' + '3' + ocrOutput.slice(2);
+    variants.add(swapped);
+    variants.add(fixPlateChars(swapped));
+  }
+
+  // Geçerli plakaları filtrele
+  const validPlates = [];
+  for (const variant of variants) {
+    if (!variant) continue;
+    const cleaned = variant.toUpperCase().replace(/[^0-9A-Z]/g, '');
+    if (PLATE_BODY_EXACT.test(cleaned) && TR_CITY_CODES.has(cleaned.slice(0, 2))) {
+      validPlates.push(cleaned);
+    }
+  }
+
+  if (validPlates.length > 0) {
+    // En kısa (en az düzeltme gerektiren) olanı seç
+    validPlates.sort((a, b) => a.length - b.length);
+    return validPlates[0];
+  }
+
+  return null;
+}
+
+// ============================================================================
+// KANVAS VE GÖRÜNTÜ İŞLEME
+// ============================================================================
 
 async function bitmapFromFile(file) {
   return await createImageBitmap(file);
@@ -36,13 +235,14 @@ async function bitmapFromFile(file) {
 
 function makeCanvas(w, h) {
   const c = document.createElement('canvas');
-  c.width = w; c.height = h;
+  c.width = w;
+  c.height = h;
   return c;
 }
 
 async function makeScaledCanvas(file, targetMaxDim) {
   const bitmap = await bitmapFromFile(file);
-  const scale = Math.min(targetMaxDim / Math.max(bitmap.width, bitmap.height), 3);
+  const scale = Math.min(targetMaxDim / Math.max(bitmap.width, bitmap.height), 4);
   const w = Math.max(1, Math.round(bitmap.width * scale));
   const h = Math.max(1, Math.round(bitmap.height * scale));
   const c = makeCanvas(w, h);
@@ -54,6 +254,9 @@ async function makeScaledCanvas(file, targetMaxDim) {
   return c;
 }
 
+/**
+ * Yüksek kontrast uygula
+ */
 function applyHighContrast(canvas, threshold = 145, dark = 45, light = 65) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
@@ -67,6 +270,9 @@ function applyHighContrast(canvas, threshold = 145, dark = 45, light = 65) {
   return canvas;
 }
 
+/**
+ * Adaptif eşikleme uygula (OCR için optimize)
+ */
 function applyAdaptiveThreshold(canvas, blockSize = 25, C = 12) {
   const ctx = canvas.getContext('2d', { willReadFrequently: true });
   const w = canvas.width, h = canvas.height;
@@ -96,7 +302,7 @@ function applyAdaptiveThreshold(canvas, blockSize = 25, C = 12) {
       const y2 = Math.min(h - 1, y + half);
       const area = (x2 - x1 + 1) * (y2 - y1 + 1);
       const sum =
-        integral[(y2 + 1) * (w + 1) + (x2 + 1)] -
+        integral[(y2 + 1) * (w + 1) + (x2 +1)] -
         integral[(y1) * (w + 1) + (x2 + 1)] -
         integral[(y2 + 1) * (w + 1) + (x1)] +
         integral[(y1) * (w + 1) + (x1)];
@@ -109,6 +315,45 @@ function applyAdaptiveThreshold(canvas, blockSize = 25, C = 12) {
   ctx.putImageData(img, 0, 0);
   return canvas;
 }
+
+/**
+ * Parlaklık ve kontrast ayarla
+ */
+function adjustBrightnessContrast(canvas, brightness = 10, contrast = 1.3) {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    for (let c = 0; c < 3; c++) {
+      let val = d[i + c];
+      val = val + brightness;
+      val = ((val - 128) * contrast) + 128;
+      d[i + c] = Math.max(0, Math.min(255, val));
+    }
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+/**
+ * invert (siyah yazı, beyaz arka plan)
+ */
+function invertColors(canvas) {
+  const ctx = canvas.getContext('2d', { willReadFrequently: true });
+  const img = ctx.getImageData(0, 0, canvas.width, canvas.height);
+  const d = img.data;
+  for (let i = 0; i < d.length; i += 4) {
+    d[i] = 255 - d[i];
+    d[i + 1] = 255 - d[i + 1];
+    d[i + 2] = 255 - d[i + 2];
+  }
+  ctx.putImageData(img, 0, 0);
+  return canvas;
+}
+
+// ============================================================================
+// OCR ÇEKİRDEK
+// ============================================================================
 
 async function getWorker() {
   if (!workerPromise) {
@@ -128,61 +373,20 @@ async function getWorker() {
   return workerPromise;
 }
 
-function fixPlateChars(s) {
-  if (!s) return s;
-  if (s.length < 5) return s;
-  const fix = (ch, table) => table[ch] || ch;
-  let out = '';
-  let cityRead = '';
-  let i = 0;
-  while (i < 2 && i < s.length) {
-    cityRead += fix(s[i], CHAR_FIXES);
-    i++;
-  }
-  out += cityRead;
-  let j = i;
-  while (j < s.length && /[A-Z]/.test(fix(s[j], CHAR_FIXES))) {
-    out += fix(s[j], CHAR_FIXES);
-    j++;
-    if (j - i >= 3) break;
-  }
-  while (j < s.length) {
-    out += fix(s[j], CHAR_FIXES);
-    j++;
+function flattenWords(data) {
+  const out = [];
+  if (Array.isArray(data?.words)) out.push(...data.words);
+  for (const block of data?.blocks || []) {
+    for (const para of block?.paragraphs || []) {
+      for (const line of para?.lines || []) {
+        for (const w of line?.words || []) out.push(w);
+      }
+    }
   }
   return out;
 }
 
-const PLATE_BODY_EXACT = new RegExp(`^${PLATE_BODY_SRC}$`);
-
-function collectFromCleaned(cleaned, numLines, candidates, source) {
-  if (!cleaned || cleaned.length < 5) return;
-
-  // Just try ALL substrings of the cleaned string
-  for (let len = Math.min(10, cleaned.length); len >= 5; len--) {
-    for (let i = 0; i + len <= cleaned.length; i++) {
-      const sub = cleaned.slice(i, i + len);
-      if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
-      const fixed = fixPlateChars(sub);
-      if (PLATE_BODY_EXACT.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
-        candidates.push({
-          plate: fixed,
-          length: fixed.length,
-          kind: 'substring',
-          extraChars: cleaned.length - fixed.length,
-          numLines,
-          source,
-        });
-      }
-    }
-  }
-}
-
 function tokensFromWords(words) {
-  // Tesseract bazen alt satırdaki karakteri (örn. plate-altı çıkartmadaki bir
-  // rakam) aynı word'e dahil eder; o zaman word-level bbox tek satır gibi
-  // görünür. Symbol-level (karakter başı) bbox varsa onu kullan ki gerçek
-  // y-pozisyonuna göre satırlara ayrılabilsin.
   const tokens = [];
   for (const w of words || []) {
     if (!w || !w.bbox || typeof w.text !== 'string') continue;
@@ -212,7 +416,6 @@ function tokensFromWords(words) {
 function rowsFromWords(words) {
   const items = tokensFromWords(words).sort((a, b) => a.cy - b.cy);
   if (items.length === 0) return [];
-
   const rows = [];
   let current = [items[0]];
   let rowCy = items[0].cy;
@@ -232,7 +435,6 @@ function rowsFromWords(words) {
     }
   }
   rows.push(current);
-
   return rows
     .map((row) =>
       row
@@ -244,14 +446,55 @@ function rowsFromWords(words) {
     .filter(Boolean);
 }
 
+function collectFromCleaned(cleaned, numLines, candidates, source) {
+  if (!cleaned || cleaned.length < 5) return;
+
+  // Tüm alt stringleri dene
+  for (let len = Math.min(12, cleaned.length); len >= 5; len--) {
+    for (let i = 0; i + len <= cleaned.length; i++) {
+      const sub = cleaned.slice(i, i + len);
+      if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
+
+      // Düzeltilmiş versiyonları dene
+      const normalized = normalizeOCRGuess(sub);
+      if (normalized && PLATE_BODY_EXACT.test(normalized)) {
+        candidates.push({
+          plate: normalized,
+          length: normalized.length,
+          kind: 'normalized',
+          extraChars: cleaned.length - normalized.length,
+          numLines,
+          source,
+          original: sub,
+        });
+      }
+
+      // Orijinal versiyonu da dene
+      if (PLATE_BODY_EXACT.test(sub) && TR_CITY_CODES.has(sub.slice(0, 2))) {
+        candidates.push({
+          plate: sub,
+          length: sub.length,
+          kind: 'direct',
+          extraChars: cleaned.length - sub.length,
+          numLines,
+          source,
+          original: sub,
+        });
+      }
+    }
+  }
+}
+
 export function extractPlate(rawText, words = null) {
   const candidates = [];
 
+  // Görsel satırlardan (bbox bazlı) dene
   const visualRows = rowsFromWords(words);
   for (const row of visualRows) {
     collectFromCleaned(row, 1, candidates, 'visual');
   }
 
+  // Metin satırlarından dene
   const lines = (rawText || '').split(/[\n\r]+/).map((l) => l.trim()).filter(Boolean);
   const cleanedLines = lines
     .map((l) => l.toUpperCase().replace(/[^0-9A-Z]/g, ''))
@@ -261,36 +504,36 @@ export function extractPlate(rawText, words = null) {
     collectFromCleaned(cleaned, 1, candidates, 'text');
   }
 
-  // Last resort: join adjacent text lines (some PSM modes split a single
-  // visual row across multiple text lines). Prefer the FEWEST joined
-  // lines that produce an exact plate match — adding rows below shouldn't
-  // extend the plate.
+  // Satırları birleştirerek dene
   for (let start = 0; start < cleanedLines.length; start++) {
     let joined = cleanedLines[start];
     for (let end = start + 1; end < cleanedLines.length; end++) {
       joined += cleanedLines[end];
-      if (joined.length > 12) break;
+      if (joined.length > 14) break;
       const numLines = end - start + 1;
-      const std = joined.match(PLATE_BODY_EXACT);
-      if (std && TR_CITY_CODES.has(std[0].slice(0, 2))) {
+
+      const normalized = normalizeOCRGuess(joined);
+      if (normalized && PLATE_BODY_EXACT.test(normalized)) {
         candidates.push({
-          plate: std[0],
-          length: std[0].length,
-          kind: 'joined',
+          plate: normalized,
+          length: normalized.length,
+          kind: 'joined-normalized',
           extraChars: 0,
           numLines,
           source: 'joined',
+          original: joined,
         });
       }
-      const dipl = joined.match(/^((?:CC|CD)\d{4,5})$/);
-      if (dipl) {
+
+      if (PLATE_BODY_EXACT.test(joined)) {
         candidates.push({
-          plate: dipl[1],
-          length: dipl[1].length,
-          kind: 'joined-diplomatic',
+          plate: joined,
+          length: joined.length,
+          kind: 'joined-direct',
           extraChars: 0,
           numLines,
           source: 'joined',
+          original: joined,
         });
       }
     }
@@ -299,40 +542,43 @@ export function extractPlate(rawText, words = null) {
   if (candidates.length > 0) {
     const sourceRank = { visual: 0, text: 1, joined: 2 };
     candidates.sort((a, b) => {
-      // Exact match (no extra chars on its row) wins.
+      // Düzeltilmiş plakalar öncelikli
+      if (a.kind === 'normalized' && b.kind !== 'normalized') return -1;
+      if (b.kind === 'normalized' && a.kind !== 'normalized') return 1;
+
+      // Ekstra karakter yoksa tercih et
       if (a.extraChars === 0 && b.extraChars > 0) return -1;
       if (a.extraChars > 0 && b.extraChars === 0) return 1;
-      // Bbox-derived visual rows are authoritative — prefer them over
-      // text-line analysis, which can't tell when a "5" is one row below.
+
+      // Kaynak önceliği
       const sa = sourceRank[a.source] ?? 9;
       const sb = sourceRank[b.source] ?? 9;
       if (sa !== sb) return sa - sb;
-      // Prefer fewer joined lines — don't pull characters from other rows.
+
+      // Daha az satır birleşimi tercih et
       const an = a.numLines || 1;
       const bn = b.numLines || 1;
       if (an !== bn) return an - bn;
+
+      // Uzunluk tercihi
       if (b.length !== a.length) return b.length - a.length;
-      const order = { standard: 0, joined: 1, fixed: 2, diplomatic: 3, 'joined-diplomatic': 4 };
+
+      // Tür önceliği
+      const order = { direct: 0, normalized: 1, 'joined-direct': 2, 'joined-normalized': 3 };
       return (order[a.kind] ?? 9) - (order[b.kind] ?? 9);
     });
-    return { guess: candidates[0].plate, matched: true };
+
+    return {
+      guess: candidates[0].plate,
+      original: candidates[0].original,
+      matched: true,
+      candidates: candidates.slice(0, 5)
+    };
   }
 
-  const fallback = cleanedLines.join('').slice(0, 16);
-  return { guess: fallback, matched: false };
-}
-
-function flattenWords(data) {
-  const out = [];
-  if (Array.isArray(data?.words)) out.push(...data.words);
-  for (const block of data?.blocks || []) {
-    for (const para of block?.paragraphs || []) {
-      for (const line of para?.lines || []) {
-        for (const w of line?.words || []) out.push(w);
-      }
-    }
-  }
-  return out;
+  // Hiçbir şey bulamadıysa en azından düzeltilmiş versiyonu döndür
+  const fallback = normalizeOCRGuess(cleanedLines.join('').slice(0, 16)) || cleanedLines.join('').slice(0, 16);
+  return { guess: fallback, original: rawText, matched: false };
 }
 
 async function ocrImage(image, psm) {
@@ -345,6 +591,10 @@ async function ocrImage(image, psm) {
   return { raw, ...extracted, confidence: data?.confidence || 0, psm };
 }
 
+// ============================================================================
+// PLAKA DETECTÖRÜ
+// ============================================================================
+
 async function tryDetectionPipeline(file, onProgress) {
   let detector;
   try {
@@ -354,15 +604,15 @@ async function tryDetectionPipeline(file, onProgress) {
     return null;
   }
   try {
-    onProgress?.('Plaka adayları aranıyor (kenar + projeksiyon)');
+    onProgress?.('Plaka adayları aranıyor');
     const candidates = await detector.detectPlateCandidates(file);
-    onProgress?.(`${candidates?.length || 0} plaka adayı bulundu`);
+    onProgress?.(`${candidates?.length || 0} aday bulundu`);
     if (!candidates || candidates.length === 0) return null;
 
     let best = null;
     for (let i = 0; i < candidates.length; i++) {
       const cand = candidates[i];
-      onProgress?.(`Aday ${i + 1}/${candidates.length} OCR ediliyor`);
+      onProgress?.(`Aday ${i + 1}/${candidates.length} işleniyor`);
       try {
         const r = await ocrImage(cand.cropped, '7');
         if (r.matched) {
@@ -381,33 +631,74 @@ async function tryDetectionPipeline(file, onProgress) {
   }
 }
 
+// ============================================================================
+// GÖRÜNTÜ VARYANTLARI
+// ============================================================================
+
 async function buildVariants(file, onProgress) {
   const variants = [];
-  onProgress?.('Orijinal foto hazırlanıyor');
+
+  // Orijinal - büyük boyut
+  onProgress?.('Orijinal görüntü hazırlanıyor');
   const original = await makeScaledCanvas(file, 1800);
   variants.push({ name: 'original', image: original });
 
-  onProgress?.('Yüksek kontrast varyant');
-  const hc = await makeScaledCanvas(file, 1800);
-  applyHighContrast(hc);
-  variants.push({ name: 'high-contrast', image: hc });
+  // Yüksek kontrast varyantları
+  onProgress?.('Yüksek kontrast varyantı hazırlanıyor');
+  const hc1 = await makeScaledCanvas(file, 1800);
+  applyHighContrast(hc1);
+  variants.push({ name: 'high-contrast', image: hc1 });
 
-  onProgress?.('Adaptive threshold varyant');
-  const adapt = await makeScaledCanvas(file, 1800);
-  applyAdaptiveThreshold(adapt, 31, 12);
-  variants.push({ name: 'adaptive', image: adapt });
+  onProgress?.('Güçlü yüksek kontrast hazırlanıyor');
+  const hc2 = await makeScaledCanvas(file, 1800);
+  applyHighContrast(hc2, 140, 50, 70);
+  variants.push({ name: 'strong-hc', image: hc2 });
 
-  onProgress?.('2x büyütülmüş varyant');
-  const big = await makeScaledCanvas(file, 2600);
-  applyHighContrast(big, 140, 35, 50);
-  variants.push({ name: 'large-hc', image: big });
+  // Adaptif eşikleme
+  onProgress?.('Adaptif eşikleme varyantı hazırlanıyor');
+  const adapt1 = await makeScaledCanvas(file, 1800);
+  applyAdaptiveThreshold(adapt1, 31, 12);
+  variants.push({ name: 'adaptive', image: adapt1 });
+
+  onProgress?.('Adaptif eşikleme (küçük blok) hazırlanıyor');
+  const adapt2 = await makeScaledCanvas(file, 1800);
+  applyAdaptiveThreshold(adapt2, 15, 8);
+  variants.push({ name: 'adaptive-small', image: adapt2 });
+
+  // Parlaklık/kontrast varyantları
+  onProgress?.('Parlaklık/kontrast varyantı hazırlanıyor');
+  const bc1 = await makeScaledCanvas(file, 1800);
+  adjustBrightnessContrast(bc1, 15, 1.4);
+  variants.push({ name: 'bright-contrast', image: bc1 });
+
+  // Büyütülmüş varyantlar
+  onProgress?.('2x büyütülmüş varyant hazırlanıyor');
+  const big1 = await makeScaledCanvas(file, 2600);
+  applyHighContrast(big1, 140, 35, 50);
+  variants.push({ name: 'large-hc', image: big1 });
+
+  onProgress?.('2.5x büyütülmüş varyant hazırlanıyor');
+  const big2 = await makeScaledCanvas(file, 3200);
+  applyHighContrast(big2, 135, 40, 55);
+  variants.push({ name: 'xlarge-hc', image: big2 });
+
+  // İnvert (negatif) varyant - bazı durumlarda işe yarar
+  onProgress?.('İnvert varyant hazırlanıyor');
+  const inv = await makeScaledCanvas(file, 1800);
+  invertColors(inv);
+  variants.push({ name: 'inverted', image: inv });
 
   return variants;
 }
 
+// ============================================================================
+// ANA FONKSİYON
+// ============================================================================
+
 export async function recognizePlate(file, options = {}) {
   const { onProgress, usePlateDetector = true } = options;
 
+  // Önce plaka detector dene
   let detected = null;
   if (usePlateDetector) {
     try {
@@ -419,31 +710,56 @@ export async function recognizePlate(file, options = {}) {
       detected = { raw: '', guess: '', confidence: 0, error: err.message, source: 'detector-error' };
     }
   }
-  if (detected?.matched) return detected;
+  if (detected?.matched) {
+    onProgress?.('Plaka detector ile bulundu');
+    return detected;
+  }
 
+  // Fallback: Görüntü varyantları
   let best = detected;
-  let lastErr = detected;
+  let bestVariants = [];
   const variants = await buildVariants(file, onProgress);
+
+  // PSM modları - plaka okuma için en iyileri
+  const psmModes = ['7', '11', '6', '12', '13'];
+
   for (const variant of variants) {
-    for (const psm of ['11', '7', '6', '12']) {
+    for (const psm of psmModes) {
       onProgress?.(`OCR: ${variant.name} / PSM ${psm}`);
       try {
         const r = await ocrImage(variant.image, psm);
+        r.source = 'fallback';
+        r.variant = variant.name;
+
         if (r.matched) {
-          return { ...r, source: 'fallback', variant: variant.name };
+// Bulunan ilk eşleşmeyi hemen döndür
+          onProgress?.(`Eşleşme bulundu: ${r.guess} (${variant.name})`);
+          return r;
         }
+
+        // En iyi sonuçları sakla
         if (!best || r.confidence > (best.confidence || 0)) {
-          best = { ...r, source: 'fallback', variant: variant.name };
-        }
-        if (!lastErr || r.confidence > (lastErr.confidence || 0)) {
-          lastErr = best;
+          best = r;
+          bestVariants = [{ ...r, variant: variant.name, psm }];
+        } else if (r.confidence === best.confidence) {
+          bestVariants.push({ ...r, variant: variant.name, psm });
         }
       } catch (err) {
-        if (!lastErr) lastErr = { raw: '', guess: '', confidence: 0, error: err.message, source: 'fallback', variant: variant.name };
+        if (!best) best = { raw: '', guess: '', confidence: 0, error: err.message, source: 'fallback', variant: variant.name };
       }
     }
   }
-  return best || lastErr || { raw: '', guess: '', confidence: 0 };
+
+  // Hiç eşleşme yoksa en iyi tahmini döndür
+  if (best && best.guess) {
+    // Son bir düzeltme denemesi
+    const normalized = normalizeOCRGuess(best.guess);
+    if (normalized && normalized !== best.guess) {
+      return { ...best, guess: normalized, original: best.guess, wasNormalized: true };
+    }
+  }
+
+  return best || { raw: '', guess: '', confidence: 0 };
 }
 
 export async function disposeOCR() {
