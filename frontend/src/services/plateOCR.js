@@ -364,8 +364,8 @@ async function getWorker() {
       });
       await worker.setParameters({
         tessedit_char_whitelist: PLATE_WHITELIST,
-        tessedit_pageseg_mode: '11',
-        preserve_interword_spaces: '1',
+        tessedit_pageseg_mode: '7',  // Single text line (plates are one line!)
+        preserve_interword_spaces: '0',
       });
       return worker;
     })();
