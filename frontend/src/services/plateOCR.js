@@ -18,7 +18,7 @@ const CHAR_FIXES = {
   S: '5',
   B: '8',
   G: '6',
-  Y: 'K',
+  Y: 'Y',
   D: '4', L: '1', M: 'W',
 };
 const REV_FIXES = {
@@ -154,51 +154,21 @@ const PLATE_BODY_EXACT = new RegExp(`^${PLATE_BODY_SRC}$`);
 function collectFromCleaned(cleaned, numLines, candidates, source) {
   if (!cleaned || cleaned.length < 5) return;
 
-  const standardRe = new RegExp(PLATE_BODY_SRC, 'g');
-  let m;
-  while ((m = standardRe.exec(cleaned)) !== null) {
-    const plate = m[0];
-    if (TR_CITY_CODES.has(plate.slice(0, 2))) {
-      candidates.push({
-        plate,
-        length: plate.length,
-        kind: 'standard',
-        extraChars: cleaned.length - plate.length,
-        numLines,
-        source,
-      });
-    }
-    if (m.index === standardRe.lastIndex) standardRe.lastIndex++;
-  }
-
-  const diplRe = /(CC|CD)\d{4,5}/g;
-  while ((m = diplRe.exec(cleaned)) !== null) {
-    candidates.push({
-      plate: m[0],
-      length: m[0].length,
-      kind: 'diplomatic',
-      extraChars: cleaned.length - m[0].length,
-      numLines,
-      source,
-    });
-  }
-
-  if (!/^\d{2}/.test(cleaned)) {
-    for (let len = Math.min(10, cleaned.length); len >= 5; len--) {
-      for (let i = 0; i + len <= cleaned.length; i++) {
-        const sub = cleaned.slice(i, i + len);
-        if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
-        const fixed = fixPlateChars(sub);
-        if (PLATE_BODY_EXACT.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
-          candidates.push({
-            plate: fixed,
-            length: fixed.length,
-            kind: 'fixed',
-            extraChars: cleaned.length - fixed.length,
-            numLines,
-            source,
-          });
-        }
+  // Just try ALL substrings of the cleaned string
+  for (let len = Math.min(10, cleaned.length); len >= 5; len--) {
+    for (let i = 0; i + len <= cleaned.length; i++) {
+      const sub = cleaned.slice(i, i + len);
+      if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
+      const fixed = fixPlateChars(sub);
+      if (PLATE_BODY_EXACT.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
+        candidates.push({
+          plate: fixed,
+          length: fixed.length,
+          kind: 'substring',
+          extraChars: cleaned.length - fixed.length,
+          numLines,
+          source,
+        });
       }
     }
   }
