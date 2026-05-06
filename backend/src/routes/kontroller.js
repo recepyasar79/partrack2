@@ -7,6 +7,7 @@ const { writeAudit } = require('../middleware/audit');
 const { buildUpload, isR2Configured } = require('../services/storage');
 const { todayTR } = require('../utils/timezone');
 const { normalizePlaka } = require('../utils/validators');
+const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
 
 const router = express.Router();
 const storage = buildUpload();
@@ -82,11 +83,26 @@ router.get('/:id/foto', authRequired, async (req, res, next) => {
 });
 
 router.post('/foto-upload', authRequired, (req, res, next) => {
-  storage.upload.single('foto')(req, res, (err) => {
+  storage.upload.single('foto')(req, res, async (err) => {
     if (err) return next(err);
     if (!req.file) return res.status(400).json({ error: 'Dosya alınamadı.' });
 
-    const plaka = normalizePlaka(req.body.plaka || '');
+    const rawOcrPlaka = (req.body.plaka || '').trim();
+    let plaka = normalizePlaka(rawOcrPlaka);
+
+    // OCR çıktısını veritabanındaki plakalarla otomatik eşleştir
+    let matchResult = null;
+    if (plaka && plaka.length >= 5) {
+      try {
+        matchResult = await correctOCRGuess(plaka);
+        if (matchResult?.corrected && matchResult.corrected !== plaka) {
+          plaka = matchResult.corrected;
+        }
+      } catch (e) {
+        console.warn('OCR correction failed:', e.message);
+      }
+    }
+
     let foto_url;
     if (storage.mode === 'r2') {
       foto_url = storage.publicUrl(req.file.key);
@@ -109,13 +125,23 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
 
 router.patch('/:id/plaka', authRequired, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const plaka = normalizePlaka(req.body.plaka || '');
-  if (!plaka) return res.status(400).json({ error: 'Plaka zorunlu.' });
+  const newPlaka = normalizePlaka(req.body.plaka || '');
+  if (!newPlaka) return res.status(400).json({ error: 'Plaka zorunlu.' });
   const eski = await db('gunluk_kontroller').where({ id }).first();
   if (!eski) return res.status(404).json({ error: 'Kontrol bulunamadı.' });
+
+  // Eski plaka ile yeni plaka farklıysa öğren
+  if (eski.plaka && eski.plaka !== newPlaka) {
+    try {
+      await recordLearning(eski.plaka, newPlaka);
+    } catch (e) {
+      console.warn('Learning record failed:', e.message);
+    }
+  }
+
   const [updated] = await db('gunluk_kontroller')
     .where({ id })
-    .update({ plaka })
+    .update({ plaka: newPlaka })
     .returning('*');
   await writeAudit({
     user_id: req.user.id,
@@ -123,7 +149,7 @@ router.patch('/:id/plaka', authRequired, async (req, res) => {
     tablo_adi: 'gunluk_kontroller',
     kayit_id: id,
     eski_deger: { plaka: eski.plaka },
-    yeni_deger: { plaka },
+    yeni_deger: { plaka: newPlaka },
     ip_adres: req.ip,
   });
   res.json({ kontrol: updated });

@@ -2,12 +2,15 @@ const DAIRE_NO_REGEX = /^[A-D](?:[1-9]|[12][0-9]|3[0-4])$/;
 const TEL_REGEX = /^05[0-9]{9}$/;
 
 const PLAKA_PATTERNS = [
-  /^[0-9]{2}[A-Z]{1,3}[0-9]{2,4}$/,
+  /^[0-9]{2}[A-Z]{1,3}[0-9]{2,5}$/,
   /^CC[0-9]{4,5}$/,
   /^CD[0-9]{4,5}$/,
   /^G[0-9]{4,5}$/,
   /^M[A-Z]{1,2}[0-9]{3,4}$/,
 ];
+
+const RENK_LIST = ['Beyaz', 'Siyah', 'Gri', 'Kırmızı', 'Mavi', 'Yeşil', 'Sarı', 'Kahverengi', 'Diğer'];
+const MARKA_LIST = ['Toyota', 'Renault', 'Ford', 'Fiat', 'Volkswagen', 'Hyundai', 'Honda', 'Mercedes', 'BMW', 'Audi', 'Diğer'];
 
 function normalizePlaka(input) {
   if (typeof input !== 'string') return '';
@@ -28,6 +31,14 @@ function isValidTelefon(t) {
   return typeof t === 'string' && TEL_REGEX.test(t);
 }
 
+function isValidRenk(r) {
+  return typeof r === 'string' && RENK_LIST.includes(r);
+}
+
+function isValidMarka(m) {
+  return typeof m === 'string' && MARKA_LIST.includes(m);
+}
+
 function parseDaireNo(no) {
   if (!isValidDaireNo(no)) return null;
   return { blok: no[0], sira_no: parseInt(no.slice(1), 10) };
@@ -37,9 +48,13 @@ module.exports = {
   DAIRE_NO_REGEX,
   TEL_REGEX,
   PLAKA_PATTERNS,
+  RENK_LIST,
+  MARKA_LIST,
   normalizePlaka,
   isValidDaireNo,
   isValidPlaka,
   isValidTelefon,
+  isValidRenk,
+  isValidMarka,
   parseDaireNo,
 };
