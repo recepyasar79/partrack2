@@ -17,6 +17,9 @@ primary_region = 'fra'
   TZ = 'Europe/Istanbul'
   WHATSAPP_TEMPLATE_NAME = 'ihlal_bildirimi'
 
+[deploy]
+  release_command = 'cd /app && ./node_modules/.bin/knex migrate:latest'
+
 [http_service]
   internal_port = 3000
   force_https = true
