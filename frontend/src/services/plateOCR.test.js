@@ -75,7 +75,8 @@ describe('extractPlate', () => {
   test('son rakam gürültülü satırlar arasında kaybolursa (2 harf) yine eklenir', () => {
     const r = extractPlate('NCROAAY\n34YF987\nXY\n7\nRC');
     expect(r.matched).toBe(true);
-    expect(r.guess).toBe('34YF9877');
+    // 6/7 belirsizliğinde 6'yı tercih ederiz.
+    expect(r.guess).toBe('34YF9876');
   });
 
   test('aynı satırda fazla karakter varsa tam eşleşmeli aday tercih edilir', () => {

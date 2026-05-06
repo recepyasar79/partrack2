@@ -617,6 +617,22 @@ export function extractPlate(rawText, words = null) {
   if (candidates.length > 0) {
     const sourceRank = { visual: 0, text: 1, joined: 2 };
     candidates.sort((a, b) => {
+      // 6/7 belirsizliği: OCR son haneyi 6↔7 karıştırabiliyor.
+      // Aynı prefix için hem ...6 hem ...7 üretildiyse 6'yı tercih et (deterministic).
+      if (
+        a.kind === 'joined-tail-digit' &&
+        b.kind === 'joined-tail-digit' &&
+        typeof a.plate === 'string' &&
+        typeof b.plate === 'string' &&
+        a.plate.length === b.plate.length &&
+        a.plate.slice(0, -1) === b.plate.slice(0, -1)
+      ) {
+        const al = a.plate[a.plate.length - 1];
+        const bl = b.plate[b.plate.length - 1];
+        if (al === '6' && bl === '7') return -1;
+        if (al === '7' && bl === '6') return 1;
+      }
+
       // Tail-digit join özel durumu: "34YF987" + "\n6" => "34YF9876"
       // Eğer daha uzun aday, daha kısanın sonuna tek rakam eklenmiş haliyse onu tercih et.
       if (a.kind === 'joined-tail-digit' && b.plate && a.plate && a.plate.slice(0, -1) === b.plate) return -1;
