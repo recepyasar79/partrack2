@@ -28,40 +28,13 @@ for (let i = 1; i <= 81; i++) TR_CITY_CODES.add(String(i).padStart(2, '0'));
 // Harfler: Y↔K, D↔O, M↔N, R↔P, U↔V, C↔G, S↔5, Z↔2, I↔1, O↔0
 // Rakamlar: 0↔O, 1↔I, 2↔Z, 4↔A, 5↔S, 6↔G, 8↔B, 9↔g
 
-// Yaygın OCR hataları - OCR'ın okuduğu → Doğru karakter
+// Not: Global "harf/rakam düzeltmeleri" çok riskli (başka plakaları bozuyor).
+// Bu yüzden sadece sınırlı, pozisyon-bazlı düzeltme yapıyoruz.
 const CHAR_SUBSTITUTIONS = {
-  // OCR Y yerine K okuyor (34YF9876 → 34KF957)
-  'K': 'Y',
-  // OCR W yerine D veya M okuyor (34DML77 → 43WW42)
-  'W': null, // Özel işlem gerekli
-  // OCR 4 yerine 9 okuyor
-  '9': '4',
-  // OCR 7 yerine 2 okuyor
-  '2': '7',
-  // OCR 5 yerine 8 okuyor
-  '8': '5',
-  // OCR 6 yerine G okuyor
-  'G': '6',
-  // OCR S yerine 5 okuyor
-  'S': '5',
-  // OCR Z yerine 2 okuyor
-  'Z': '2',
-  // OCR A yerine 4 okuyor
-  'A': '4',
-  // OCR B yerine 8 okuyor
-  'B': '8',
-  // OCR I yerine 1 okuyor
-  'I': '1',
-  // OCR O yerine 0 okuyor
-  'O': '0',
-  // OCR P yerine R okuyor
-  'P': 'R',
-  // OCR N yerine M okuyor
-  'N': 'M',
-  // OCR V yerine U okuyor
-  'V': 'U',
-  // OCR C yerine G okuyor
-  'C': 'G',
+  // OCR Y yerine K okuyabiliyor (Y↔K karışıklığı)
+  K: 'Y',
+  // W plaka harfi değil; bazı fontlarda D/M gibi okunabiliyor (özel işleme)
+  W: null,
 };
 
 // Tersine çevrilmiş tablo: Doğru → OCR'un okuyabileceği
@@ -111,20 +84,24 @@ function fixPlateChars(s) {
     if (chars[4] === 'I') chars[4] = '1';
   }
 
-  // Pozisyon 5+: Rakam bölgesi - 9↔4, 7↔2, 5↔8 en yaygın karışıklıklar
+  // Harf bölgesi (2-4): rakam gibi okunanları harfe çek (tek yönlü)
+  for (let i = 2; i <= Math.min(4, chars.length - 1); i++) {
+    if (chars[i] === '0') chars[i] = 'O';
+    if (chars[i] === '1') chars[i] = 'I';
+    if (chars[i] === '2') chars[i] = 'Z';
+    if (chars[i] === '5') chars[i] = 'S';
+    if (chars[i] === '8') chars[i] = 'B';
+    if (chars[i] === '6') chars[i] = 'G';
+  }
+
+  // Rakam bölgesi (>=5): harf gibi okunanları rakama çek (tek yönlü)
   for (let i = 5; i < chars.length; i++) {
-    if (chars[i] === '9') chars[i] = '4';  // 9 → 4
-    if (chars[i] === '4') chars[i] = '9';  // 4 → 9
-    if (chars[i] === '2') chars[i] = '7';  // 2 → 7
-    if (chars[i] === '7') chars[i] = '2';  // 7 → 2
-    if (chars[i] === '5') chars[i] = '8';  // 5 → 8
-    if (chars[i] === '8') chars[i] = '5';  // 8 → 5
-    if (chars[i] === '6') chars[i] = 'G';  // 6 → G
-    if (chars[i] === 'G') chars[i] = '6';  // G → 6
-    if (chars[i] === 'S') chars[i] = '5';  // S → 5
-    if (chars[i] === 'Z') chars[i] = '2';  // Z → 2
-    if (chars[i] === '0') chars[i] = 'O';  // 0 → O
-    if (chars[i] === 'O') chars[i] = '0';  // O → 0
+    if (chars[i] === 'O') chars[i] = '0';
+    if (chars[i] === 'I') chars[i] = '1';
+    if (chars[i] === 'Z') chars[i] = '2';
+    if (chars[i] === 'S') chars[i] = '5';
+    if (chars[i] === 'B') chars[i] = '8';
+    if (chars[i] === 'G') chars[i] = '6';
   }
 
   return chars.join('');
