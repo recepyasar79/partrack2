@@ -525,6 +525,58 @@ export function extractPlate(rawText, words = null) {
     collectFromCleaned(cleaned, 1, candidates, 'text');
   }
 
+  // Heuristic: bazı OCR modlarında son rakam ayrı satıra düşebiliyor.
+  // 1 harfli (34A1234) ve 2 harfli (34AB1234) plakalar 4 haneli rakam ile bitebildiği için,
+  // ilk satır "eksik 1 rakam" gibi görünüyorsa ve takip eden satır tek rakamsa birleştir.
+  const oneLetterNeeds4 = /^\d{2}[A-Z]\d{3}$/;
+  const twoLetterNeeds4 = /^\d{2}[A-Z]{2}\d{3}$/;
+  const singleDigit = /^\d$/;
+
+  function digitAlternatives(d) {
+    // Son hane için çok sınırlı alternatif denemesi (yaygın OCR karışıklıkları).
+    if (d === '7') return ['7', '6'];
+    if (d === '6') return ['6', '7'];
+    if (d === '8') return ['8', '6'];
+    if (d === '0') return ['0'];
+    return [d];
+  }
+
+  // Not: OCR çıktısı çok gürültülü olabiliyor; son rakam her zaman hemen bir sonraki satırda olmayabiliyor.
+  // Bu yüzden plaka satırından sonra kısa bir pencerede (3 satır) tek rakam arıyoruz.
+  for (let i = 0; i < cleanedLines.length; i++) {
+    const a = cleanedLines[i];
+    if (!a) continue;
+    if (!oneLetterNeeds4.test(a) && !twoLetterNeeds4.test(a)) continue;
+    if (!TR_CITY_CODES.has(a.slice(0, 2))) continue;
+
+    const lookahead = 3;
+    for (let j = i + 1; j <= Math.min(cleanedLines.length - 1, i + lookahead); j++) {
+      const b = cleanedLines[j];
+      if (!b) continue;
+
+      // Pencerede başka bir geçerli plaka gövdesi görürsek bu "son rakam" değildir → vazgeç.
+      if (PLATE_BODY_EXACT.test(b) || DIPLO_PLATE_EXACT.test(b)) break;
+
+      if (!singleDigit.test(b)) continue;
+
+      for (const d of digitAlternatives(b)) {
+        const joined = a + d;
+        if (PLATE_BODY_EXACT.test(joined)) {
+          candidates.push({
+            plate: joined,
+            length: joined.length,
+            kind: 'joined-tail-digit',
+            extraChars: 0,
+            // Aynı plaka iki satıra bölündü gibi davran.
+            numLines: 1,
+            source: 'tail-digit',
+            original: `${a}\\n...\\n${b}`,
+          });
+        }
+      }
+    }
+  }
+
   // Satırları birleştirerek dene
   for (let start = 0; start < cleanedLines.length; start++) {
     let joined = cleanedLines[start];
@@ -563,17 +615,18 @@ export function extractPlate(rawText, words = null) {
   if (candidates.length > 0) {
     const sourceRank = { visual: 0, text: 1, joined: 2 };
     candidates.sort((a, b) => {
-      // Düzeltilmiş plakalar öncelikli
-      if (a.kind === 'normalized' && b.kind !== 'normalized') return -1;
-      if (b.kind === 'normalized' && a.kind !== 'normalized') return 1;
+      // Tail-digit join özel durumu: "34YF987" + "\n6" => "34YF9876"
+      // Eğer daha uzun aday, daha kısanın sonuna tek rakam eklenmiş haliyse onu tercih et.
+      if (a.kind === 'joined-tail-digit' && b.plate && a.plate && a.plate.slice(0, -1) === b.plate) return -1;
+      if (b.kind === 'joined-tail-digit' && a.plate && b.plate && b.plate.slice(0, -1) === a.plate) return 1;
 
       // Ekstra karakter yoksa tercih et
       if (a.extraChars === 0 && b.extraChars > 0) return -1;
       if (a.extraChars > 0 && b.extraChars === 0) return 1;
 
       // Kaynak önceliği
-      const sa = sourceRank[a.source] ?? 9;
-      const sb = sourceRank[b.source] ?? 9;
+      const sa = sourceRank[a.source] ?? (a.source === 'tail-digit' ? sourceRank.text : 9);
+      const sb = sourceRank[b.source] ?? (b.source === 'tail-digit' ? sourceRank.text : 9);
       if (sa !== sb) return sa - sb;
 
       // Daha az satır birleşimi tercih et
@@ -584,8 +637,12 @@ export function extractPlate(rawText, words = null) {
       // Uzunluk tercihi
       if (b.length !== a.length) return b.length - a.length;
 
+      // Aynı uzunlukta ise normalize edilmiş olanı tercih et
+      if (a.kind === 'normalized' && b.kind !== 'normalized') return -1;
+      if (b.kind === 'normalized' && a.kind !== 'normalized') return 1;
+
       // Tür önceliği
-      const order = { direct: 0, normalized: 1, 'joined-direct': 2, 'joined-normalized': 3 };
+      const order = { direct: 0, normalized: 1, 'joined-tail-digit': 2, 'joined-direct': 3, 'joined-normalized': 4 };
       return (order[a.kind] ?? 9) - (order[b.kind] ?? 9);
     });
 

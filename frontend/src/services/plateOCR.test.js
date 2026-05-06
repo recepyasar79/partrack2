@@ -66,6 +66,18 @@ describe('extractPlate', () => {
     expect(r.guess).toBe('34AB1234');
   });
 
+  test('son rakam ayrı satıra düşerse (2 harf) plakaya eklenir', () => {
+    const r = extractPlate('34YF987\n6');
+    expect(r.matched).toBe(true);
+    expect(r.guess).toBe('34YF9876');
+  });
+
+  test('son rakam gürültülü satırlar arasında kaybolursa (2 harf) yine eklenir', () => {
+    const r = extractPlate('NCROAAY\n34YF987\nXY\n7\nRC');
+    expect(r.matched).toBe(true);
+    expect(r.guess).toBe('34YF9877');
+  });
+
   test('aynı satırda fazla karakter varsa tam eşleşmeli aday tercih edilir', () => {
     // "X34BHP198Y" değil; ama "34BHP198 GARBAGE" olabilir
     const r = extractPlate('34BHP198\n34BHP198XX');
