@@ -39,6 +39,7 @@ test-results/
 # Uploads (local dev)
 uploads/
 
-# Database (local SQLite if used in dev)
-*.db
-*.sqlite
+# Screenshots
+Screenshot*.png
+Screenshot*.jpg
+Screenshot*.jpeg
