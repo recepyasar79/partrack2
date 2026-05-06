@@ -29,6 +29,7 @@ export default function Kontrol() {
   });
   const [zoomImage, setZoomImage] = useState(null);
   const fileRef = useRef();
+  const deletingRef = useRef(new Set());
 
   function toggleDetector(v) {
     setUsePlateDetector(v);
@@ -142,13 +143,26 @@ export default function Kontrol() {
   }
 
   async function silKontrol(kontrolId, itemId) {
+    if (deletingRef.current.has(kontrolId)) return;
     if (!window.confirm('Bu kayıt silinsin mi?')) return;
-    try {
-      await api.delete(`/kontroller/${kontrolId}`);
+    deletingRef.current.add(kontrolId);
+    const dropFromState = () => {
       if (itemId) setItems((prev) => prev.filter((i) => i.id !== itemId));
       setBugun((prev) => prev.filter((k) => k.id !== kontrolId));
+    };
+    try {
+      await api.delete(`/kontroller/${kontrolId}`);
+      dropFromState();
       toast.success('Silindi.');
-    } catch (e) { toast.error(apiError(e)); }
+    } catch (e) {
+      if (e?.response?.status === 404) {
+        dropFromState();
+      } else {
+        toast.error(apiError(e));
+      }
+    } finally {
+      deletingRef.current.delete(kontrolId);
+    }
   }
 
   return (
