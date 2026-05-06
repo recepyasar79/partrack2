@@ -201,17 +201,39 @@ function collectFromCleaned(cleaned, numLines, candidates, source) {
   }
 }
 
+function tokensFromWords(words) {
+  // Tesseract bazen alt satırdaki karakteri (örn. plate-altı çıkartmadaki bir
+  // rakam) aynı word'e dahil eder; o zaman word-level bbox tek satır gibi
+  // görünür. Symbol-level (karakter başı) bbox varsa onu kullan ki gerçek
+  // y-pozisyonuna göre satırlara ayrılabilsin.
+  const tokens = [];
+  for (const w of words || []) {
+    if (!w || !w.bbox || typeof w.text !== 'string') continue;
+    const symbols = Array.isArray(w.symbols) ? w.symbols : null;
+    if (symbols && symbols.length > 0) {
+      for (const s of symbols) {
+        if (!s || !s.bbox || typeof s.text !== 'string') continue;
+        tokens.push({
+          text: s.text,
+          cy: (s.bbox.y0 + s.bbox.y1) / 2,
+          h: Math.max(1, s.bbox.y1 - s.bbox.y0),
+          x0: s.bbox.x0,
+        });
+      }
+    } else {
+      tokens.push({
+        text: w.text,
+        cy: (w.bbox.y0 + w.bbox.y1) / 2,
+        h: Math.max(1, w.bbox.y1 - w.bbox.y0),
+        x0: w.bbox.x0,
+      });
+    }
+  }
+  return tokens;
+}
+
 function rowsFromWords(words) {
-  if (!Array.isArray(words) || words.length === 0) return [];
-  const items = words
-    .filter((w) => w && w.bbox && typeof w.text === 'string')
-    .map((w) => ({
-      text: w.text,
-      cy: (w.bbox.y0 + w.bbox.y1) / 2,
-      h: Math.max(1, w.bbox.y1 - w.bbox.y0),
-      x0: w.bbox.x0,
-    }))
-    .sort((a, b) => a.cy - b.cy);
+  const items = tokensFromWords(words).sort((a, b) => a.cy - b.cy);
   if (items.length === 0) return [];
 
   const rows = [];

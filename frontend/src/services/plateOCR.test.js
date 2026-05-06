@@ -85,6 +85,30 @@ describe('extractPlate', () => {
     expect(r.matched).toBe(false);
   });
 
+  test('symbol-level bbox: tek word içinde alt satıra düşen karakter ayrılır', () => {
+    // Tesseract '34KRC458' tek kelime olarak rapor edebiliyor; ama symbol
+    // bbox'larından son '8' alt satırda (yüksek y). Karakterleri y'ye göre
+    // grupla → '34KRC45' üst satır, '8' alt satır → plaka '34KRC45'.
+    const symbol = (text, y0, y1, x0, x1) => ({ text, bbox: { x0, y0, x1, y1 } });
+    const word = {
+      text: '34KRC458',
+      bbox: { x0: 0, y0: 100, x1: 320, y1: 230 },
+      symbols: [
+        symbol('3', 100, 130, 0, 30),
+        symbol('4', 100, 130, 35, 65),
+        symbol('K', 100, 130, 80, 120),
+        symbol('R', 100, 130, 125, 165),
+        symbol('C', 100, 130, 170, 210),
+        symbol('4', 100, 130, 220, 250),
+        symbol('5', 100, 130, 255, 285),
+        symbol('8', 200, 230, 290, 320), // alt satır
+      ],
+    };
+    const r = extractPlate('34KRC458', [word]);
+    expect(r.matched).toBe(true);
+    expect(r.guess).toBe('34KRC45');
+  });
+
   test('iki ayrı plaka aday: aynı satırda extraChars=0 olan kazanır', () => {
     // İlk satırda fazlalık var, ikincide tam eşleşme.
     const r = extractPlate('XXX34ABC123\n06DEF45');
