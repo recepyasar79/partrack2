@@ -20,3 +20,12 @@ if ('serviceWorker' in navigator && import.meta.env.PROD) {
     navigator.serviceWorker.register('/sw.js').catch(() => {});
   });
 }
+
+// Yeni deploy sonrası eski sekmede chunk hash'leri 404 olursa sayfayı yenile
+window.addEventListener('vite:preloadError', (event) => {
+  if (!sessionStorage.getItem('preloadReloaded')) {
+    sessionStorage.setItem('preloadReloaded', '1');
+    event.preventDefault();
+    window.location.reload();
+  }
+});
