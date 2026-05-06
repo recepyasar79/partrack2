@@ -13,6 +13,28 @@ export async function detectPlateCandidates(file) {
     const w = canvas.width;
     const h = canvas.height;
 
+    function clampBox(x, y, width, height) {
+      const x0 = Math.max(0, Math.min(w - 1, x));
+      const y0 = Math.max(0, Math.min(h - 1, y));
+      const x1 = Math.max(0, Math.min(w, x + width));
+      const y1 = Math.max(0, Math.min(h, y + height));
+      return { x: x0, y: y0, width: Math.max(1, x1 - x0), height: Math.max(1, y1 - y0) };
+    }
+
+    function expandPlateBox(box) {
+      // OCR için kritik: sağ tarafta son karakter sık kesiliyor.
+      // Bu yüzden sağa daha agresif padding veriyoruz.
+      const padXLeft = Math.round(box.width * 0.12);
+      const padXRight = Math.round(box.width * 0.28);
+      const padY = Math.round(box.height * 0.25);
+      return clampBox(
+        box.x - padXLeft,
+        box.y - padY,
+        box.width + padXLeft + padXRight,
+        box.height + padY * 2,
+      );
+    }
+
     // 1. Convert to grayscale
     const imageData = ctx.getImageData(0, 0, w, h);
     const data = imageData.data;
@@ -59,10 +81,21 @@ export async function detectPlateCandidates(file) {
           x, y, width, height,
           score: area / (w * h) * 100,
           cropped: function() {
+            const box = expandPlateBox({ x, y, width, height });
             const c2 = document.createElement('canvas');
-            c2.width = width;
-            c2.height = height;
-            c2.getContext('2d').drawImage(canvas, x, y, width, height, 0, 0, width, height);
+            c2.width = box.width;
+            c2.height = box.height;
+            c2.getContext('2d').drawImage(
+              canvas,
+              box.x,
+              box.y,
+              box.width,
+              box.height,
+              0,
+              0,
+              box.width,
+              box.height,
+            );
             return c2;
           }
         });
