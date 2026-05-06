@@ -19,16 +19,11 @@ const CHAR_FIXES = {
   B: '8',
   G: '6',
   Y: 'K',
-  D: '4',
-  L: '1', 
-  M: 'W',
+  D: '4', L: '1', M: 'W',
 };
 const REV_FIXES = {
   '0': 'O', '1': 'I', '2': 'Z', '5': 'S', '8': 'B', '6': 'G',
   'K': 'Y',
-};
-const REV_FIXES = {
-  '0': 'O', '1': 'I', '2': 'Z', '5': 'S', '8': 'B', '6': 'G',
 };
 
 async function bitmapFromFile(file) {
