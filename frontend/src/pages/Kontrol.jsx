@@ -162,26 +162,45 @@ export default function Kontrol() {
       </div>
 
       {/* Action Buttons */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-        <input
-          ref={fileRef}
-          type="file"
-          accept="image/jpeg,image/png,image/webp"
-          capture="environment"
-          multiple
-          onChange={onFiles}
-          className="hidden"
-          id="foto-input"
-        />
-        <Button
-          as="label"
-          htmlFor="foto-input"
-          size="xl"
-          className="cursor-pointer"
-        >
-          <CameraIcon className="w-6 h-6 mr-2" />
-          Foto Çek / Yükle
-        </Button>
+      <div className="flex flex-col gap-3">
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <input
+            ref={fileRef}
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            capture="environment"
+            onChange={onFiles}
+            className="hidden"
+            id="foto-input-camera"
+          />
+          <input
+            type="file"
+            accept="image/jpeg,image/png,image/webp"
+            multiple
+            onChange={onFiles}
+            className="hidden"
+            id="foto-input-gallery"
+          />
+          <Button
+            as="label"
+            htmlFor="foto-input-camera"
+            size="xl"
+            className="cursor-pointer"
+          >
+            <CameraIcon className="w-6 h-6 mr-2" />
+            Kameradan Çek
+          </Button>
+          <Button
+            as="label"
+            htmlFor="foto-input-gallery"
+            variant="secondary"
+            size="xl"
+            className="cursor-pointer"
+          >
+            <CameraIcon className="w-6 h-6 mr-2" />
+            Galeriden Yükle
+          </Button>
+        </div>
         <Link to="/kontrol/aksam" className="contents">
           <Button as="span" variant="success" size="xl" className="w-full cursor-pointer">
             <CheckIcon className="w-6 h-6 mr-2" />
