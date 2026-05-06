@@ -18,6 +18,7 @@ const CHAR_FIXES = {
   S: '5',
   B: '8',
   G: '6',
+  Y: 'K',
 };
 const REV_FIXES = {
   '0': 'O', '1': 'I', '2': 'Z', '5': 'S', '8': 'B', '6': 'G',
@@ -134,8 +135,8 @@ function fixPlateChars(s) {
   }
   out += cityRead;
   let j = i;
-  while (j < s.length && /[A-Z]/.test(fix(s[j], REV_FIXES))) {
-    out += fix(s[j], REV_FIXES);
+  while (j < s.length && /[A-Z]/.test(fix(s[j], CHAR_FIXES))) {
+    out += fix(s[j], CHAR_FIXES);
     j++;
     if (j - i >= 3) break;
   }
