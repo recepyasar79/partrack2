@@ -2,11 +2,11 @@ let workerPromise = null;
 
 const PLATE_WHITELIST = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 
-const PLATE_PATTERNS = [
-  /(?:^|[^A-Z0-9])(\d{2}\s*[A-Z]{1,3}\s*\d{2,4})(?:[^A-Z0-9]|$)/,
-  /(?:^|[^A-Z0-9])(CC\s*\d{4,5})(?:[^A-Z0-9]|$)/,
-  /(?:^|[^A-Z0-9])(CD\s*\d{4,5})(?:[^A-Z0-9]|$)/,
-];
+// Türk plaka formatları (toplam 6-9 karakter):
+//   2 rakam + 1 harf + 4 rakam      → 34A1234
+//   2 rakam + 2 harf + 2-4 rakam    → 34AB12, 34AB1234
+//   2 rakam + 3 harf + 2-3 rakam    → 34ABC12, 34ABC123  (4 rakam YASAK)
+const PLATE_BODY_SRC = '\\d{2}(?:[A-Z]\\d{4}|[A-Z]{2}\\d{2,4}|[A-Z]{3}\\d{2,3})';
 
 const TR_CITY_CODES = new Set();
 for (let i = 1; i <= 81; i++) TR_CITY_CODES.add(String(i).padStart(2, '0'));
@@ -146,10 +146,12 @@ function fixPlateChars(s) {
   return out;
 }
 
+const PLATE_BODY_EXACT = new RegExp(`^${PLATE_BODY_SRC}$`);
+
 function collectFromCleaned(cleaned, numLines, candidates, source) {
   if (!cleaned || cleaned.length < 5) return;
 
-  const standardRe = /\d{2}[A-Z]{1,3}\d{2,4}/g;
+  const standardRe = new RegExp(PLATE_BODY_SRC, 'g');
   let m;
   while ((m = standardRe.exec(cleaned)) !== null) {
     const plate = m[0];
@@ -184,7 +186,7 @@ function collectFromCleaned(cleaned, numLines, candidates, source) {
         const sub = cleaned.slice(i, i + len);
         if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
         const fixed = fixPlateChars(sub);
-        if (/^\d{2}[A-Z]{1,3}\d{2,4}$/.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
+        if (PLATE_BODY_EXACT.test(fixed) && TR_CITY_CODES.has(fixed.slice(0, 2))) {
           candidates.push({
             plate: fixed,
             length: fixed.length,
@@ -270,11 +272,11 @@ export function extractPlate(rawText, words = null) {
       joined += cleanedLines[end];
       if (joined.length > 12) break;
       const numLines = end - start + 1;
-      const std = joined.match(/^(\d{2}[A-Z]{1,3}\d{2,4})$/);
-      if (std && TR_CITY_CODES.has(std[1].slice(0, 2))) {
+      const std = joined.match(PLATE_BODY_EXACT);
+      if (std && TR_CITY_CODES.has(std[0].slice(0, 2))) {
         candidates.push({
-          plate: std[1],
-          length: std[1].length,
+          plate: std[0],
+          length: std[0].length,
           kind: 'joined',
           extraChars: 0,
           numLines,

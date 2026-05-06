@@ -46,11 +46,24 @@ describe('extractPlate', () => {
     expect(r.guess).toBe('34BHP198');
   });
 
-  test('bbox bilgisi yoksa tek satır metin tek plaka olarak yorumlanır', () => {
-    // Bbox yokken "34BHP1985" tek satırdaysa ayıramayız — greedy matchwins.
+  test('3 harfli plakada 4 rakam Türk plaka kuralına aykırı, alt satır rakamı yutulmaz', () => {
+    // 3 harf + 4 rakam Türk plakası YOK. "34BHP1985" tek satırda gelse bile
+    // "34BHP198" doğru ayrıştırma; "5" plakaya katılmamalı.
     const r = extractPlate('34BHP1985');
     expect(r.matched).toBe(true);
-    expect(r.guess).toBe('34BHP1985');
+    expect(r.guess).toBe('34BHP198');
+  });
+
+  test('1 harfli plaka 4 rakam alabilir', () => {
+    const r = extractPlate('34A1234');
+    expect(r.matched).toBe(true);
+    expect(r.guess).toBe('34A1234');
+  });
+
+  test('2 harfli plaka 4 rakam alabilir', () => {
+    const r = extractPlate('34AB1234');
+    expect(r.matched).toBe(true);
+    expect(r.guess).toBe('34AB1234');
   });
 
   test('aynı satırda fazla karakter varsa tam eşleşmeli aday tercih edilir', () => {
