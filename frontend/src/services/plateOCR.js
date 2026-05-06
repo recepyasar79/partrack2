@@ -14,6 +14,9 @@ const PLATE_WHITELIST = '0123456789ABCDEFGHIJKLMNOPQRSTUVWXYZ';
 const PLATE_BODY_SRC = '\\d{2}(?:[A-Z]\\d{4}|[A-Z]{2}\\d{2,4}|[A-Z]{3}\\d{2,3})';
 const PLATE_BODY_EXACT = new RegExp(`^${PLATE_BODY_SRC}$`);
 
+// Diplomatik format (basit): CC/CD + 3-6 rakam (ör: CC12345)
+const DIPLO_PLATE_EXACT = /^(?:CC|CD)\d{3,6}$/;
+
 const TR_CITY_CODES = new Set();
 for (let i = 1; i <= 81; i++) TR_CITY_CODES.add(String(i).padStart(2, '0'));
 
@@ -211,14 +214,25 @@ function normalizeOCRGuess(ocrOutput) {
   for (const variant of variants) {
     if (!variant) continue;
     const cleaned = variant.toUpperCase().replace(/[^0-9A-Z]/g, '');
+    if (DIPLO_PLATE_EXACT.test(cleaned)) {
+      validPlates.push(cleaned);
+      continue;
+    }
     if (PLATE_BODY_EXACT.test(cleaned) && TR_CITY_CODES.has(cleaned.slice(0, 2))) {
       validPlates.push(cleaned);
     }
   }
 
   if (validPlates.length > 0) {
-    // En kısa (en az düzeltme gerektiren) olanı seç
-    validPlates.sort((a, b) => a.length - b.length);
+    // En az değişiklik gerektiren varyantı seç; eşitse daha uzunu tercih et.
+    const base = String(ocrOutput).toUpperCase().replace(/[^0-9A-Z]/g, '');
+    validPlates.sort((a, b) => {
+      const da = levenshteinDistance(a, base);
+      const db = levenshteinDistance(b, base);
+      if (da !== db) return da - db; // daha yakın olan
+      if (b.length !== a.length) return b.length - a.length; // daha uzun olan
+      return a.localeCompare(b);
+    });
     return validPlates[0];
   }
 
@@ -422,7 +436,9 @@ function rowsFromWords(words) {
   let rowH = items[0].h;
   for (let i = 1; i < items.length; i++) {
     const w = items[i];
-    const threshold = Math.max(rowH, w.h) * 0.6;
+    // Plakada aynı satır içinde küçük dikey kaymalar olabiliyor (özellikle son rakam).
+    // Çok agresif ayırmak (0.6) son haneyi yanlışlıkla alt satıra atabiliyor.
+    const threshold = Math.max(rowH, w.h) * 0.9;
     if (Math.abs(w.cy - rowCy) <= threshold) {
       current.push(w);
       rowCy = (rowCy * (current.length - 1) + w.cy) / current.length;
@@ -453,11 +469,12 @@ function collectFromCleaned(cleaned, numLines, candidates, source) {
   for (let len = Math.min(12, cleaned.length); len >= 5; len--) {
     for (let i = 0; i + len <= cleaned.length; i++) {
       const sub = cleaned.slice(i, i + len);
-      if (!TR_CITY_CODES.has(sub.slice(0, 2))) continue;
+      const isDiplo = sub.startsWith('CC') || sub.startsWith('CD');
+      if (!isDiplo && !TR_CITY_CODES.has(sub.slice(0, 2))) continue;
 
       // Düzeltilmiş versiyonları dene
       const normalized = normalizeOCRGuess(sub);
-      if (normalized && PLATE_BODY_EXACT.test(normalized)) {
+      if (normalized && (PLATE_BODY_EXACT.test(normalized) || DIPLO_PLATE_EXACT.test(normalized))) {
         candidates.push({
           plate: normalized,
           length: normalized.length,
@@ -470,7 +487,10 @@ function collectFromCleaned(cleaned, numLines, candidates, source) {
       }
 
       // Orijinal versiyonu da dene
-      if (PLATE_BODY_EXACT.test(sub) && TR_CITY_CODES.has(sub.slice(0, 2))) {
+      if (
+        DIPLO_PLATE_EXACT.test(sub) ||
+        (PLATE_BODY_EXACT.test(sub) && TR_CITY_CODES.has(sub.slice(0, 2)))
+      ) {
         candidates.push({
           plate: sub,
           length: sub.length,
@@ -486,6 +506,7 @@ function collectFromCleaned(cleaned, numLines, candidates, source) {
 }
 
 export function extractPlate(rawText, words = null) {
+  if (!rawText && (!words || words.length === 0)) return { guess: '', matched: false };
   const candidates = [];
 
   // Görsel satırlardan (bbox bazlı) dene

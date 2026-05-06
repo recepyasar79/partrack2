@@ -37,7 +37,8 @@ describe('AracListesi', () => {
 
   test('CSV indir butonu görünür', () => {
     renderWithToast(<AracListesi />);
-    expect(screen.getByRole('button', { name: /csv indir/i })).toBeInTheDocument();
+    // Türkçe 'İ' harfi (Unicode) sebebiyle regex case-folding her ortamda aynı değil.
+    expect(screen.getByRole('button', { name: 'CSV İndir' })).toBeInTheDocument();
   });
 
   test('araç bulunamadı mesajı boş listede görünür', () => {

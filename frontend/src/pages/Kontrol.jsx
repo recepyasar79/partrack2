@@ -23,6 +23,16 @@ export default function Kontrol() {
   const [bugun, setBugun] = useState([]);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [ocrDebug, setOcrDebug] = useState(() => {
+    try {
+      const qs = new URLSearchParams(window.location.search);
+      if (qs.get('ocrDebug') === '1') return true;
+      const v = localStorage.getItem('ocrDebug');
+      return v === '1';
+    } catch {
+      return false;
+    }
+  });
   const [usePlateDetector, setUsePlateDetector] = useState(() => {
     const v = localStorage.getItem('usePlateDetector');
     return v === null ? true : v === '1';
@@ -34,6 +44,13 @@ export default function Kontrol() {
   function toggleDetector(v) {
     setUsePlateDetector(v);
     localStorage.setItem('usePlateDetector', v ? '1' : '0');
+  }
+
+  function toggleOcrDebug(v) {
+    setOcrDebug(v);
+    try {
+      localStorage.setItem('ocrDebug', v ? '1' : '0');
+    } catch {}
   }
 
   async function loadBugun() {
@@ -78,6 +95,11 @@ export default function Kontrol() {
         let ocrRaw = '';
         let ocrError = null;
         let ocrSource = null;
+        let ocrCandidates = null;
+        let ocrMatched = null;
+        let ocrOriginal = null;
+        let ocrVariant = null;
+        let ocrPsm = null;
         try {
           const { recognizePlate } = await import('../services/plateOCR');
           const r = await recognizePlate(item.file, {
@@ -88,6 +110,11 @@ export default function Kontrol() {
           ocrConfidence = r.confidence;
           ocrRaw = r.raw;
           ocrSource = r.source;
+          ocrCandidates = r.candidates || null;
+          ocrMatched = typeof r.matched === 'boolean' ? r.matched : null;
+          ocrOriginal = r.original || null;
+          ocrVariant = r.variant || null;
+          ocrPsm = r.psm || null;
           if (r.error) ocrError = r.error;
         } catch (ocrErr) {
           console.warn('OCR hata:', ocrErr);
@@ -101,6 +128,11 @@ export default function Kontrol() {
           ocrRaw,
           ocrError,
           ocrSource,
+          ocrCandidates,
+          ocrMatched,
+          ocrOriginal,
+          ocrVariant,
+          ocrPsm,
         });
 
         const compressed = await imageCompression(item.file, {
@@ -236,6 +268,19 @@ export default function Kontrol() {
         </span>
       </label>
 
+      <label className="flex items-center gap-2 text-sm bg-white rounded-xl p-3 border border-slate-200">
+        <input
+          type="checkbox"
+          checked={ocrDebug}
+          onChange={(e) => toggleOcrDebug(e.target.checked)}
+          className="w-5 h-5"
+        />
+        <span>
+          <strong>OCR debug</strong> — ham OCR çıktısı, aday listesi, kaynak/PSM bilgisi görünür.
+          Geçici kullanım içindir.
+        </span>
+      </label>
+
       {/* Session Uploads */}
       {items.length > 0 && (
         <div className="flex flex-col gap-3">
@@ -292,10 +337,72 @@ export default function Kontrol() {
                     )}
                     
                     {/* OCR Debug */}
-                    {it.ocrRaw && it.ocrConfidence < 50 && (
-                      <details className="text-xs bg-slate-50 rounded-lg p-2">
-                        <summary className="cursor-pointer text-slate-500 font-medium">OCR ham çıktı</summary>
-                        <pre className="whitespace-pre-wrap break-all mt-1 text-slate-400">{it.ocrRaw}</pre>
+                    {ocrDebug && (
+                      <details className="text-xs bg-slate-50 rounded-lg p-2 border border-slate-200">
+                        <summary className="cursor-pointer text-slate-600 font-medium">
+                          OCR debug (raw / candidates)
+                        </summary>
+                        <div className="mt-2 grid gap-2">
+                          <div className="flex flex-wrap gap-2 text-[11px]">
+                            {it.ocrMatched != null && (
+                              <span className={`px-2 py-0.5 rounded-full ${it.ocrMatched ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
+                                matched: {String(it.ocrMatched)}
+                              </span>
+                            )}
+                            {it.ocrPsm && (
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                PSM: {it.ocrPsm}
+                              </span>
+                            )}
+                            {it.ocrVariant && (
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                variant: {it.ocrVariant}
+                              </span>
+                            )}
+                            {it.ocrSource && (
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                source: {it.ocrSource}
+                              </span>
+                            )}
+                            {typeof it.ocrConfidence === 'number' && (
+                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
+                                conf: %{Math.round(it.ocrConfidence)}
+                              </span>
+                            )}
+                          </div>
+
+                          {it.ocrOriginal && (
+                            <div className="text-[11px] text-slate-600">
+                              original: <span className="font-mono">{it.ocrOriginal}</span>
+                            </div>
+                          )}
+
+                          <div>
+                            <div className="text-[11px] text-slate-600 font-medium">raw</div>
+                            <pre className="whitespace-pre-wrap break-all mt-1 text-slate-500 max-h-40 overflow-auto">
+{it.ocrRaw || '—'}
+                            </pre>
+                          </div>
+
+                          <div>
+                            <div className="text-[11px] text-slate-600 font-medium">candidates (top 5)</div>
+                            {Array.isArray(it.ocrCandidates) && it.ocrCandidates.length > 0 ? (
+                              <div className="mt-1 grid gap-1">
+                                {it.ocrCandidates.map((c, idx) => (
+                                  <div key={idx} className="font-mono text-[11px] text-slate-600 flex flex-wrap gap-2">
+                                    <span className="px-1.5 py-0.5 rounded bg-white border border-slate-200">{c.plate}</span>
+                                    <span className="text-slate-400">kind={c.kind}</span>
+                                    <span className="text-slate-400">src={c.source}</span>
+                                    <span className="text-slate-400">len={c.length}</span>
+                                    <span className="text-slate-400">extra={c.extraChars}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            ) : (
+                              <div className="mt-1 text-[11px] text-slate-400">—</div>
+                            )}
+                          </div>
+                        </div>
                       </details>
                     )}
                     
