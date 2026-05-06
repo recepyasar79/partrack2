@@ -549,7 +549,9 @@ export function extractPlate(rawText, words = null) {
     if (!oneLetterNeeds4.test(a) && !twoLetterNeeds4.test(a)) continue;
     if (!TR_CITY_CODES.has(a.slice(0, 2))) continue;
 
-    const lookahead = 3;
+    // Çok gürültülü OCR çıktısında tek rakam 3 satırdan daha uzağa düşebiliyor.
+    // Yine de yanlış birleştirmeyi sınırlamak için, ileride başka bir plaka görürsek kırıyoruz.
+    const lookahead = 12;
     for (let j = i + 1; j <= Math.min(cleanedLines.length - 1, i + lookahead); j++) {
       const b = cleanedLines[j];
       if (!b) continue;
