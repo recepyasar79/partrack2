@@ -18,7 +18,7 @@ const CHAR_FIXES = {
   S: '5',
   B: '8',
   G: '6',
-  Y: 'K',
+  Y: 'Y',
 };
 const REV_FIXES = {
   '0': 'O', '1': 'I', '2': 'Z', '5': 'S', '8': 'B', '6': 'G',
