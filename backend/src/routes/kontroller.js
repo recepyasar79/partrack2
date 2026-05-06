@@ -92,13 +92,21 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
     
     // Python OCR servisine istek at
     try {
-      const formData = new FormData();
-      formData.append('file', req.file.buffer || req.file, req.file.originalname || 'plate.jpg');
+      const FormData = require('form-data');
+      const form = new FormData();
+      
+      // multer disk storage kullanıyorsa dosyayı oku
+      if (req.file.buffer) {
+        form.append('file', req.file.buffer, req.file.originalname || 'plate.jpg');
+      } else {
+        const fs = require('fs');
+        form.append('file', fs.createReadStream(req.file.path), req.file.originalname || 'plate.jpg');
+      }
       
       const ocrResponse = await axios.post(
         `${process.env.PYTHON_OCR_URL || 'http://python-ocr:5000'}/ocr`,
-        formData,
-        { headers: { ...formData.getHeaders(), 'Content-Type': 'multipart/form-data' } }
+        form,
+        { headers: { ...form.getHeaders(), 'Content-Type': 'multipart/form-data' } }
       );
       
       if (ocrResponse.data?.plate) {
