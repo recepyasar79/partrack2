@@ -42,7 +42,12 @@
       "Bash(gh run *)",
       "Bash(gh secret *)",
       "Bash(gh workflow *)",
-      "PowerShell($r = Invoke-WebRequest -Uri 'https://akasyaparktrack.vercel.app/' -UseBasicParsing; $r.StatusCode; \\($r.Content | Select-String -Pattern 'assets/[^\"]+\\\\.\\(js|css\\)' -AllMatches\\).Matches.Value | Select-Object -Unique)"
+      "PowerShell($r = Invoke-WebRequest -Uri 'https://akasyaparktrack.vercel.app/' -UseBasicParsing; $r.StatusCode; \\($r.Content | Select-String -Pattern 'assets/[^\"]+\\\\.\\(js|css\\)' -AllMatches\\).Matches.Value | Select-Object -Unique)",
+      "Bash(git -C \"C:\\\\Users\\\\recep.yasar\\\\Claude\\\\parkTrack2\" status)",
+      "Bash(git -C \"C:\\\\Users\\\\recep.yasar\\\\Claude\\\\parkTrack2\" diff --stat)",
+      "Bash(git -C \"C:\\\\Users\\\\recep.yasar\\\\Claude\\\\parkTrack2\" add frontend/src/services/plateDetector.js frontend/src/services/plateOCR.js)",
+      "Bash(git -C 'C:\\\\Users\\\\recep.yasar\\\\Claude\\\\parkTrack2' commit -m ' *)",
+      "Bash(git *)"
     ]
   }
 }

@@ -3,6 +3,7 @@ const db = require('../db');
 const { authRequired, requireRole } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { isValidPlaka, normalizePlaka } = require('../utils/validators');
+const { normalizeMisafirZaman } = require('../utils/timezone');
 
 const router = express.Router();
 
@@ -16,7 +17,11 @@ router.get('/', authRequired, async (req, res) => {
       'daireler.sahip_ad'
     );
   if (tarih) {
-    qb = qb.where('baslangic_tarihi', '<=', tarih).andWhere('bitis_tarihi', '>=', tarih);
+    // O gün içinde herhangi bir anda aktif olan misafirler:
+    //   baslangic_tarihi <= gün sonu  AND  bitis_tarihi >= gün başı
+    const gunBasi = normalizeMisafirZaman(tarih, false);
+    const gunSonu = normalizeMisafirZaman(tarih, true);
+    qb = qb.where('baslangic_tarihi', '<=', gunSonu).andWhere('bitis_tarihi', '>=', gunBasi);
   }
   const list = await qb.orderBy('baslangic_tarihi', 'desc');
   res.json({ misafir_araclar: list });
@@ -30,14 +35,19 @@ router.post('/', authRequired, async (req, res) => {
   if (!baslangic_tarihi || !bitis_tarihi) {
     return res.status(400).json({ error: 'Başlangıç ve bitiş tarihi zorunlu.' });
   }
-  if (new Date(bitis_tarihi) < new Date(baslangic_tarihi)) {
-    return res.status(400).json({ error: 'Bitiş tarihi başlangıçtan önce olamaz.' });
+  const baslangic = normalizeMisafirZaman(baslangic_tarihi, false);
+  const bitis = normalizeMisafirZaman(bitis_tarihi, true);
+  if (!baslangic || !bitis) {
+    return res.status(400).json({ error: 'Tarih/saat formatı geçersiz.' });
+  }
+  if (new Date(bitis) < new Date(baslangic)) {
+    return res.status(400).json({ error: 'Bitiş başlangıçtan önce olamaz.' });
   }
   const daire = await db('daireler').where({ id: daire_id, aktif: true }).first();
   if (!daire) return res.status(404).json({ error: 'Daire bulunamadı.' });
 
   const [created] = await db('misafir_araclar').insert({
-    daire_id, plaka: p, baslangic_tarihi, bitis_tarihi,
+    daire_id, plaka: p, baslangic_tarihi: baslangic, bitis_tarihi: bitis,
     aciklama: aciklama || null,
     ekleyen_user_id: req.user.id,
   }).returning('*');

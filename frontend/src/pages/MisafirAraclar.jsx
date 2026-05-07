@@ -6,6 +6,20 @@ import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { isValidPlaka, normalizePlaka } from '../utils/validation';
 
+function nowLocal() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+function formatTarihSaat(iso) {
+  if (!iso) return '';
+  const d = new Date(iso);
+  if (Number.isNaN(d.getTime())) return iso;
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
 export default function MisafirAraclar() {
   const toast = useToast();
   const { user } = useAuth();
@@ -16,8 +30,8 @@ export default function MisafirAraclar() {
   const [form, setForm] = useState({
     daire_id: '',
     plaka: '',
-    baslangic_tarihi: new Date().toISOString().slice(0, 10),
-    bitis_tarihi: new Date().toISOString().slice(0, 10),
+    baslangic_tarihi: nowLocal(),
+    bitis_tarihi: nowLocal(),
     aciklama: '',
   });
   const [busy, setBusy] = useState(false);
@@ -51,7 +65,13 @@ export default function MisafirAraclar() {
       await api.post('/misafir-araclar', { ...form, plaka: p });
       toast.success('Misafir araç eklendi.');
       setShowForm(false);
-      setForm({ ...form, plaka: '', aciklama: '' });
+      setForm({
+        daire_id: '',
+        plaka: '',
+        baslangic_tarihi: nowLocal(),
+        bitis_tarihi: nowLocal(),
+        aciklama: '',
+      });
       load();
     } catch (e) {
       toast.error(apiError(e));
@@ -94,16 +114,16 @@ export default function MisafirAraclar() {
             </select>
           </div>
           <Input label="Plaka" value={form.plaka} onChange={(e) => setForm({ ...form, plaka: e.target.value })} />
-          <div className="grid grid-cols-2 gap-2">
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Input
-              label="Başlangıç"
-              type="date"
+              label="Başlangıç (tarih + saat)"
+              type="datetime-local"
               value={form.baslangic_tarihi}
               onChange={(e) => setForm({ ...form, baslangic_tarihi: e.target.value })}
             />
             <Input
-              label="Bitiş"
-              type="date"
+              label="Bitiş (tarih + saat)"
+              type="datetime-local"
               value={form.bitis_tarihi}
               onChange={(e) => setForm({ ...form, bitis_tarihi: e.target.value })}
             />
@@ -133,7 +153,7 @@ export default function MisafirAraclar() {
               <tr key={m.id} className="border-t border-slate-100">
                 <td className="p-3 font-mono">{m.plaka}</td>
                 <td className="p-3 font-mono">{m.daire_no}</td>
-                <td className="p-3 hidden sm:table-cell">{m.baslangic_tarihi?.slice(0,10)} → {m.bitis_tarihi?.slice(0,10)}</td>
+                <td className="p-3 hidden sm:table-cell text-sm">{formatTarihSaat(m.baslangic_tarihi)} → {formatTarihSaat(m.bitis_tarihi)}</td>
                 <td className="p-3 hidden md:table-cell text-slate-600">{m.aciklama}</td>
                 {isYonetici && (
                   <td className="p-3 text-right">

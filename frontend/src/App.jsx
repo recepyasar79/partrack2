@@ -18,15 +18,6 @@ import AksamKontrolu from './pages/AksamKontrolu';
 import Raporlar from './pages/Raporlar';
 import Kvkk from './pages/Kvkk';
 
-function Placeholder({ title }) {
-  return (
-    <div className="p-6 max-w-2xl mx-auto text-center">
-      <h1 className="text-2xl font-bold mb-2">{title}</h1>
-      <p className="text-slate-600">Bu sayfa sonraki fazda geliyor.</p>
-    </div>
-  );
-}
-
 export default function App() {
   return (
     <AuthProvider>

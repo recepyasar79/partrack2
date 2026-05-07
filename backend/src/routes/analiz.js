@@ -3,7 +3,7 @@ const db = require('../db');
 const { authRequired } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { detectViolations } = require('../utils/violations');
-const { todayTR } = require('../utils/timezone');
+const { todayTR, normalizeMisafirZaman } = require('../utils/timezone');
 const { normalizePlaka } = require('../utils/validators');
 
 const router = express.Router();
@@ -37,10 +37,13 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
     const plakaToDaire = new Map();
     for (const a of aktifAraclar) plakaToDaire.set(normalizePlaka(a.plaka), a);
 
+    // Akşam kontrol referansı: tarih + 20:00 TR. Body ile override edilebilir.
+    const referansZaman =
+      req.body?.referans_zaman || normalizeMisafirZaman(`${tarih}T20:00`, false);
     const misafirler = await db('misafir_araclar')
       .join('daireler', 'misafir_araclar.daire_id', 'daireler.id')
-      .where('baslangic_tarihi', '<=', tarih)
-      .andWhere('bitis_tarihi', '>=', tarih)
+      .where('baslangic_tarihi', '<=', referansZaman)
+      .andWhere('bitis_tarihi', '>=', referansZaman)
       .andWhere('daireler.aktif', true)
       .select(
         'misafir_araclar.plaka',
