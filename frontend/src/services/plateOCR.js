@@ -556,38 +556,14 @@ export function extractPlate(rawText, words = null) {
     }
   }
 
-  // Satırları birleştirerek dene
+  // Satırları birleştirerek dene — substring taraması ile (önünde/arkasında ekstra rakam/harf varsa da bulur)
   for (let start = 0; start < cleanedLines.length; start++) {
     let joined = cleanedLines[start];
     for (let end = start + 1; end < cleanedLines.length; end++) {
       joined += cleanedLines[end];
-      if (joined.length > 14) break;
+      if (joined.length > 16) break;
       const numLines = end - start + 1;
-
-      const normalized = normalizeOCRGuess(joined);
-      if (normalized && PLATE_BODY_EXACT.test(normalized)) {
-        candidates.push({
-          plate: normalized,
-          length: normalized.length,
-          kind: 'joined-normalized',
-          extraChars: 0,
-          numLines,
-          source: 'joined',
-          original: joined,
-        });
-      }
-
-      if (PLATE_BODY_EXACT.test(joined)) {
-        candidates.push({
-          plate: joined,
-          length: joined.length,
-          kind: 'joined-direct',
-          extraChars: 0,
-          numLines,
-          source: 'joined',
-          original: joined,
-        });
-      }
+      collectFromCleaned(joined, numLines, candidates, 'joined');
     }
   }
 
@@ -649,7 +625,33 @@ export function extractPlate(rawText, words = null) {
     };
   }
 
-  // Hiçbir şey bulamadıysa en azından düzeltilmiş versiyonu döndür
+  // Son çare: tüm satırları birleştirip substring taraması yap
+  if (candidates.length === 0) {
+    const fullJoined = cleanedLines.join('').slice(0, 20);
+    if (fullJoined.length >= 5) {
+      collectFromCleaned(fullJoined, cleanedLines.length, candidates, 'joined');
+    }
+  }
+
+  if (candidates.length > 0) {
+    const sourceRank2 = { visual: 0, text: 1, joined: 2 };
+    candidates.sort((a, b) => {
+      if (a.extraChars === 0 && b.extraChars > 0) return -1;
+      if (a.extraChars > 0 && b.extraChars === 0) return 1;
+      const sa = sourceRank2[a.source] ?? 9;
+      const sb = sourceRank2[b.source] ?? 9;
+      if (sa !== sb) return sa - sb;
+      if (b.length !== a.length) return b.length - a.length;
+      return (a.numLines || 1) - (b.numLines || 1);
+    });
+    return {
+      guess: candidates[0].plate,
+      original: candidates[0].original,
+      matched: true,
+      candidates: candidates.slice(0, 5),
+    };
+  }
+
   const fallback = normalizeOCRGuess(cleanedLines.join('').slice(0, 16)) || cleanedLines.join('').slice(0, 16);
   return { guess: fallback, original: rawText, matched: false };
 }
@@ -687,12 +689,17 @@ async function tryDetectionPipeline(file, onProgress) {
       const cand = candidates[i];
       onProgress?.(`Aday ${i + 1}/${candidates.length} işleniyor`);
       try {
-        const r = await ocrImage(cand.cropped, '7');
-        if (r.matched) {
-          return { ...r, source: 'detector', candidateIndex: i, candidateScore: cand.score };
-        }
-        if (!best || r.confidence > best.confidence) {
-          best = { ...r, source: 'detector', candidateIndex: i, candidateScore: cand.score };
+        const croppedCanvas = cand.cropped(); // fonksiyon — canvas üretmek için çağır
+        for (const psm of ['7', '11', '6']) {
+          try {
+            const r = await ocrImage(croppedCanvas, psm);
+            if (r.matched) {
+              return { ...r, source: 'detector', candidateIndex: i, candidateScore: cand.score };
+            }
+            if (!best || r.confidence > best.confidence) {
+              best = { ...r, source: 'detector', candidateIndex: i, candidateScore: cand.score };
+            }
+          } catch { /* PSM hatası — sonraki dene */ }
         }
       } catch (err) {
         if (!best) best = { raw: '', guess: '', confidence: 0, error: err.message, source: 'detector' };

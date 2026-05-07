@@ -1,14 +1,31 @@
 // Plate region detector - inspired by Python OpenCV approach
 // Uses: grayscale → bilateral filter → Canny → contours → plate detection
 
+const DETECT_MAX_DIM = 1200; // Büyük galeri fotoğraflarını küçült — bilateral filter çok yavaş
+
 export async function detectPlateCandidates(file) {
   try {
     const img = await createImageBitmap(file);
+
+    // Büyük fotoğrafları algılama için küçült; orijinal boyutla scale faktörünü sakla
+    const scale = Math.min(DETECT_MAX_DIM / Math.max(img.width, img.height), 1);
+    const dw = Math.round(img.width * scale);
+    const dh = Math.round(img.height * scale);
+
     const canvas = document.createElement('canvas');
-    canvas.width = img.width;
-    canvas.height = img.height;
+    canvas.width = dw;
+    canvas.height = dh;
     const ctx = canvas.getContext('2d');
-    ctx.drawImage(img, 0, 0);
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = 'high';
+    ctx.drawImage(img, 0, 0, dw, dh);
+
+    // Orijinal fotoğrafı kırpma için ayrı tut
+    const origCanvas = document.createElement('canvas');
+    origCanvas.width = img.width;
+    origCanvas.height = img.height;
+    origCanvas.getContext('2d').drawImage(img, 0, 0);
+    img.close?.();
 
     const w = canvas.width;
     const h = canvas.height;
@@ -21,18 +38,19 @@ export async function detectPlateCandidates(file) {
       return { x: x0, y: y0, width: Math.max(1, x1 - x0), height: Math.max(1, y1 - y0) };
     }
 
-    function expandPlateBox(box) {
+    function expandPlateBox(box, maxW, maxH) {
       // OCR için kritik: sağ tarafta son karakter sık kesiliyor.
       // Bu yüzden sağa daha agresif padding veriyoruz.
       const padXLeft = Math.round(box.width * 0.12);
       const padXRight = Math.round(box.width * 0.28);
-      const padY = Math.round(box.height * 0.25);
-      return clampBox(
-        box.x - padXLeft,
-        box.y - padY,
-        box.width + padXLeft + padXRight,
-        box.height + padY * 2,
-      );
+      const padY = Math.round(box.height * 0.30);
+      const bw = maxW ?? w;
+      const bh = maxH ?? h;
+      const x0 = Math.max(0, box.x - padXLeft);
+      const y0 = Math.max(0, box.y - padY);
+      const x1 = Math.min(bw, box.x + box.width + padXRight);
+      const y1 = Math.min(bh, box.y + box.height + padY);
+      return { x: x0, y: y0, width: Math.max(1, x1 - x0), height: Math.max(1, y1 - y0) };
     }
 
     // 1. Convert to grayscale
@@ -77,25 +95,28 @@ export async function detectPlateCandidates(file) {
         const angle = Math.abs(Math.atan2(height, width)) * 180 / Math.PI;
         if (angle > 30 && angle < 150) continue;
 
+        // Orijinal görüntü koordinatlarına geri ölçekle (algılama küçültülmüş canvas'ta yapıldı)
+        const ox = Math.round(x / scale);
+        const oy = Math.round(y / scale);
+        const ow = Math.round(width / scale);
+        const oh = Math.round(height / scale);
+
         candidates.push({
-          x, y, width, height,
+          x: ox, y: oy, width: ow, height: oh,
           score: area / (w * h) * 100,
           cropped: function() {
-            const box = expandPlateBox({ x, y, width, height });
+            // Orijinal yüksek çözünürlüklü canvas'tan kırp — OCR kalitesi için
+            const box = expandPlateBox({ x: ox, y: oy, width: ow, height: oh }, origCanvas.width, origCanvas.height);
+            // OCR için yeterli genişliğe sahip olacak şekilde büyüt
+            const targetW = Math.max(box.width, 600);
+            const targetH = Math.round(box.height * (targetW / box.width));
             const c2 = document.createElement('canvas');
-            c2.width = box.width;
-            c2.height = box.height;
-            c2.getContext('2d').drawImage(
-              canvas,
-              box.x,
-              box.y,
-              box.width,
-              box.height,
-              0,
-              0,
-              box.width,
-              box.height,
-            );
+            c2.width = targetW;
+            c2.height = targetH;
+            const c2ctx = c2.getContext('2d');
+            c2ctx.imageSmoothingEnabled = true;
+            c2ctx.imageSmoothingQuality = 'high';
+            c2ctx.drawImage(origCanvas, box.x, box.y, box.width, box.height, 0, 0, targetW, targetH);
             return c2;
           }
         });
