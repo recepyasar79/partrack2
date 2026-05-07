@@ -128,4 +128,38 @@ describe('extractPlate', () => {
     expect(r.matched).toBe(true);
     expect(r.guess).toBe('06DEF45');
   });
+
+  test('görsel cropta fazla karakter, metinde 1 fazla karakter varsa daha az ekstra olan kazanır', () => {
+    // Sahada görülen hata: plaka detector "AFE"yi kaybedip "AF" cropladı.
+    // Visual OCR'da plaka cropu çevresinde gürültü var → "GG34AF290HH" (extra=4).
+    // Text OCR'da raw "434AFE290" var → "34AFE290" (extra=1, doğru plaka).
+    // Source rank yerine extraChars önceliği olmalı.
+    const words = [
+      w('GG34AF290HH', 100, 130, 0, 220),
+    ];
+    const r = extractPlate('434AFE290', words);
+    expect(r.matched).toBe(true);
+    expect(r.guess).toBe('34AFE290');
+  });
+
+  test('raw text önünde 1 fazla rakamla 3 harfli plaka doğru çıkarılır', () => {
+    // OCR'ın plakayı "434AFE290" gibi öne 1 rakam ekleyerek okuduğu gerçek vaka.
+    const r = extractPlate('434AFE290');
+    expect(r.matched).toBe(true);
+    expect(r.guess).toBe('34AFE290');
+  });
+
+  test('1-harfli plakada tail-digit join çalışır', () => {
+    // 2-harfli için test var, 1-harfli için yoktu. 34A123\n4 → 34A1234.
+    const r = extractPlate('34A123\n4');
+    expect(r.matched).toBe(true);
+    expect(r.guess).toBe('34A1234');
+  });
+
+  test('K plaka K olarak korunur (K→Y substitution geri çıkmamalı)', () => {
+    // Gerçek bir K plakası olan 06KAS123 yanlışlıkla 06YAS123'e çevrilmemeli.
+    const r = extractPlate('06KAS123');
+    expect(r.matched).toBe(true);
+    expect(r.guess).toBe('06KAS123');
+  });
 });

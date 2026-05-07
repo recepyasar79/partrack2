@@ -21,100 +21,22 @@ const TR_CITY_CODES = new Set();
 for (let i = 1; i <= 81; i++) TR_CITY_CODES.add(String(i).padStart(2, '0'));
 
 // ============================================================================
-// KARAKTER DÜZELTME TABLOLARI
+// KARAKTER DÜZELTME
 // ============================================================================
 
-// OCR genellikle bu karakterleri karıştırır:
-// Harfler: Y↔K, D↔O, M↔N, R↔P, U↔V, C↔G, S↔5, Z↔2, I↔1, O↔0
-// Rakamlar: 0↔O, 1↔I, 2↔Z, 4↔A, 5↔S, 6↔G, 8↔B, 9↔g
-
-// Not: Global "harf/rakam düzeltmeleri" çok riskli (başka plakaları bozuyor).
-// Bu yüzden sadece sınırlı, pozisyon-bazlı düzeltme yapıyoruz.
+// Global karakter substitution'ları riskli: gerçek K/Y plakaları bozuyor.
+// Onun yerine normalizeOCRGuess varyant kümesini Levenshtein ile sıralar;
+// orijinal valid format ise distance=0 ile öne çıkar.
 const CHAR_SUBSTITUTIONS = {
-  // OCR Y yerine K okuyabiliyor (Y↔K karışıklığı)
+  // Y plaka yaygınca K olarak okunuyor; gerçek K plakaysa orig distance 0 ile kazanır.
   K: 'Y',
-  // W plaka harfi değil; bazı fontlarda D/M gibi okunabiliyor (özel işleme)
-  W: null,
 };
 
-// Tersine çevrilmiş tablo: Doğru → OCR'un okuyabileceği
-const REVERSE_SUBSTITUTIONS = {};
-for (const [ocr, correct] of Object.entries(CHAR_SUBSTITUTIONS)) {
-  if (correct && correct !== null) {
-    if (!REVERSE_SUBSTITUTIONS[correct]) REVERSE_SUBSTITUTIONS[correct] = [];
-    if (!REVERSE_SUBSTITUTIONS[correct].includes(ocr)) {
-      REVERSE_SUBSTITUTIONS[correct].push(ocr);
-    }
-  }
-}
-
-// ============================================================================
-// KARAKTER DÜZELTME FONKSİYONLARI
-// ============================================================================
-
-/**
- * OCR çıktısındaki karakterleri pozisyon bazlı düzeltir
- * Türk plakalarında belirli pozisyonlardaki karakterler daha sık karışıyor
- */
-function fixPlateChars(s) {
-  if (!s || s.length < 5) return s;
-  const chars = s.split('');
-
-  // // Pozisyon 0-1: Şehir kodu (rakam) - 4 ve 3 sıklıkla karışıyor
-  // if (chars[0] === '4' && chars[1] === '3') {
-  //   chars[0] = '3';
-  //   chars[1] = '4';
-  // }
-
-  // // Pozisyon 2: Harf bölgesi ilk harf - Y↔K karışıklığı çok yaygın
-  // if (chars[2] === 'K') chars[2] = 'Y';
-  // if (chars[2] === 'W') chars[2] = 'D'; // W genellikle D olarak okunur
-
-  // // Pozisyon 3: Harf bölgesi ikinci harf
-  // if (chars[3] === 'W') chars[3] = 'M'; // W genellikle M olarak okunur
-  // if (chars[3] === '5') chars[3] = 'R'; // 5-R karışıklığı
-  // if (chars[3] === '4') chars[3] = 'A'; // 4-A karışıklığı
-  // if (chars[3] === 'N') chars[3] = 'M'; // N-M karışıklığı
-  // if (chars[3] === 'U') chars[3] = 'V'; // U-V karışıklığı
-
-  // // Pozisyon 4: Üçüncü harf (varsa)
-  // if (chars.length > 4) {
-  //   if (chars[4] === '4') chars[4] = 'A';
-  //   if (chars[4] === '5') chars[4] = 'S';
-  //   if (chars[4] === 'I') chars[4] = '1';
-  // }
-
-  // // Harf bölgesi (2-4): rakam gibi okunanları harfe çek (tek yönlü)
-  // for (let i = 2; i <= Math.min(4, chars.length - 1); i++) {
-  //   if (chars[i] === '0') chars[i] = 'O';
-  //   if (chars[i] === '1') chars[i] = 'I';
-  //   if (chars[i] === '2') chars[i] = 'Z';
-  //   if (chars[i] === '5') chars[i] = 'S';
-  //   if (chars[i] === '8') chars[i] = 'B';
-  //   if (chars[i] === '6') chars[i] = 'G';
-  // }
-
-  // // Rakam bölgesi (>=5): harf gibi okunanları rakama çek (tek yönlü)
-  // for (let i = 5; i < chars.length; i++) {
-  //   if (chars[i] === 'O') chars[i] = '0';
-  //   if (chars[i] === 'I') chars[i] = '1';
-  //   if (chars[i] === 'Z') chars[i] = '2';
-  //   if (chars[i] === 'S') chars[i] = '5';
-  //   if (chars[i] === 'B') chars[i] = '8';
-  //   if (chars[i] === 'G') chars[i] = '6';
-  // }
-
-  return chars.join('');
-}
-
-/**
- * Genel karakter düzeltme - pozisyondan bağımsız
- */
 function applyGeneralCharFix(s) {
   if (!s) return s;
   let result = s;
   for (const [ocrChar, correctChar] of Object.entries(CHAR_SUBSTITUTIONS)) {
-    if (correctChar === null) continue;
+    if (!correctChar) continue;
     result = result.split(ocrChar).join(correctChar);
   }
   return result;
@@ -159,31 +81,16 @@ function normalizeOCRGuess(ocrOutput) {
   if (!ocrOutput || ocrOutput.length < 5) return null;
 
   const variants = new Set();
-
-  // 1. Orijinal
   variants.add(ocrOutput);
-
-  // 2. Pozisyon bazlı düzeltme
-  variants.add(fixPlateChars(ocrOutput));
-
-  // 3. Genel karakter düzeltmesi
   variants.add(applyGeneralCharFix(ocrOutput));
 
-  // 4. Kombinasyonlu düzeltme
-  variants.add(applyGeneralCharFix(fixPlateChars(ocrOutput)));
-  variants.add(fixPlateChars(applyGeneralCharFix(ocrOutput)));
-
-  // 5. Tüm şehir kodu takasları (4↔3 için)
-  let swapped = ocrOutput;
+  // 4↔3 şehir kodu takası (Istanbul/Bilecik karışıklığı)
   if (ocrOutput[0] === '4' && ocrOutput[1] === '3') {
-    swapped = '3' + '4' + ocrOutput.slice(2);
+    const swapped = '34' + ocrOutput.slice(2);
     variants.add(swapped);
-    variants.add(fixPlateChars(swapped));
     variants.add(applyGeneralCharFix(swapped));
   } else if (ocrOutput[0] === '3' && ocrOutput[1] === '4') {
-    swapped = '4' + '3' + ocrOutput.slice(2);
-    variants.add(swapped);
-    variants.add(fixPlateChars(swapped));
+    variants.add('43' + ocrOutput.slice(2));
   }
 
   // Geçerli plakaları filtrele
@@ -591,9 +498,10 @@ export function extractPlate(rawText, words = null) {
       if (a.kind === 'joined-tail-digit' && b.plate && a.plate && a.plate.slice(0, -1) === b.plate) return -1;
       if (b.kind === 'joined-tail-digit' && a.plate && b.plate && b.plate.slice(0, -1) === a.plate) return 1;
 
-      // Ekstra karakter yoksa tercih et
-      if (a.extraChars === 0 && b.extraChars > 0) return -1;
-      if (a.extraChars > 0 && b.extraChars === 0) return 1;
+      // Daha az ekstra karakter daha güvenilir aday (continuous compare).
+      // Source rank'tan ÖNCE: visual'da extra=4 ile text'te extra=1 yarıştığında
+      // text kazanmalı, çünkü plaka detector cropunda gürültü olabiliyor.
+      if (a.extraChars !== b.extraChars) return a.extraChars - b.extraChars;
 
       // Kaynak önceliği
       const sa = sourceRank[a.source] ?? (a.source === 'tail-digit' ? sourceRank.text : 9);
@@ -636,8 +544,7 @@ export function extractPlate(rawText, words = null) {
   if (candidates.length > 0) {
     const sourceRank2 = { visual: 0, text: 1, joined: 2 };
     candidates.sort((a, b) => {
-      if (a.extraChars === 0 && b.extraChars > 0) return -1;
-      if (a.extraChars > 0 && b.extraChars === 0) return 1;
+      if (a.extraChars !== b.extraChars) return a.extraChars - b.extraChars;
       const sa = sourceRank2[a.source] ?? 9;
       const sb = sourceRank2[b.source] ?? 9;
       if (sa !== sb) return sa - sb;
