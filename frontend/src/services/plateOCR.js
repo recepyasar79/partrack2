@@ -498,6 +498,14 @@ export function extractPlate(rawText, words = null) {
       if (a.kind === 'joined-tail-digit' && b.plate && a.plate && a.plate.slice(0, -1) === b.plate) return -1;
       if (b.kind === 'joined-tail-digit' && a.plate && b.plate && b.plate.slice(0, -1) === a.plate) return 1;
 
+      // Daha az satır birleşimi daha güvenilir aday.
+      // Source ve extraChars'tan ÖNCE: 6 satırın birleştirilmesinden çıkan
+      // extra=0 plaka (gürültüden derlenmiş) tek satırdaki extra=1 plakaya
+      // tercih edilmemeli.
+      const an = a.numLines || 1;
+      const bn = b.numLines || 1;
+      if (an !== bn) return an - bn;
+
       // Daha az ekstra karakter daha güvenilir aday (continuous compare).
       // Source rank'tan ÖNCE: visual'da extra=4 ile text'te extra=1 yarıştığında
       // text kazanmalı, çünkü plaka detector cropunda gürültü olabiliyor.
@@ -507,11 +515,6 @@ export function extractPlate(rawText, words = null) {
       const sa = sourceRank[a.source] ?? (a.source === 'tail-digit' ? sourceRank.text : 9);
       const sb = sourceRank[b.source] ?? (b.source === 'tail-digit' ? sourceRank.text : 9);
       if (sa !== sb) return sa - sb;
-
-      // Daha az satır birleşimi tercih et
-      const an = a.numLines || 1;
-      const bn = b.numLines || 1;
-      if (an !== bn) return an - bn;
 
       // Uzunluk tercihi
       if (b.length !== a.length) return b.length - a.length;
@@ -544,12 +547,14 @@ export function extractPlate(rawText, words = null) {
   if (candidates.length > 0) {
     const sourceRank2 = { visual: 0, text: 1, joined: 2 };
     candidates.sort((a, b) => {
+      const an = a.numLines || 1;
+      const bn = b.numLines || 1;
+      if (an !== bn) return an - bn;
       if (a.extraChars !== b.extraChars) return a.extraChars - b.extraChars;
       const sa = sourceRank2[a.source] ?? 9;
       const sb = sourceRank2[b.source] ?? 9;
       if (sa !== sb) return sa - sb;
-      if (b.length !== a.length) return b.length - a.length;
-      return (a.numLines || 1) - (b.numLines || 1);
+      return b.length - a.length;
     });
     return {
       guess: candidates[0].plate,

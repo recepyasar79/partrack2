@@ -162,4 +162,14 @@ describe('extractPlate', () => {
     expect(r.matched).toBe(true);
     expect(r.guess).toBe('06KAS123');
   });
+
+  test('çok parçalı joined aday, tek satırlı doğru plakayı yenmemeli', () => {
+    // Sahada görülen hata: OCR çıktısı parça parça satırlara ayrılmış.
+    // 6 ayrı satır birleştirilince "43HCE41" gibi yanlış bir plaka üretiliyor (extra=0
+    // ama numLines=6). Doğru plaka "34DLM77" tek satırda L önekiyle (numLines=1, extra=1)
+    // gözüküyor. numLines önceliği extraChars'tan önce gelmeli.
+    const r = extractPlate('BN\n4\n3\nH\nCE\n4\n1\n4\nL34DLM77\nA\nJS\nAE');
+    expect(r.matched).toBe(true);
+    expect(r.guess).toBe('34DLM77');
+  });
 });
