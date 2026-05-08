@@ -16,10 +16,12 @@ const FormData = require('form-data');
 const DEFAULT_URL = process.env.PYTHON_OCR_URL || 'http://python-ocr:5000';
 const TIMEOUT_MS = parseInt(process.env.PYTHON_OCR_TIMEOUT_MS || '20000', 10);
 
-// Reuse TCP connections between requests — saves the 50-200ms handshake
-// per upload and lets the kernel keep the socket warm.
-const httpAgent = new http.Agent({ keepAlive: true, maxSockets: 8 });
-const httpsAgent = new https.Agent({ keepAlive: true, maxSockets: 8 });
+// Short-lived agents — keep-alive was causing stuck-socket timeouts when the
+// OCR machine restarted (backend was reusing dead TCP connections that hung
+// silently for 180s). The 50-200ms handshake savings per request aren't
+// worth the reliability hit.
+const httpAgent = new http.Agent({ keepAlive: false });
+const httpsAgent = new https.Agent({ keepAlive: false });
 
 function isConfigured() {
   // We always treat the service as configured because the URL has a default,
