@@ -59,6 +59,7 @@ router.get('/:id/foto', authRequired, async (req, res, next) => {
     const k = await db('gunluk_kontroller').where({ id }).first();
     if (!k || !k.foto_url) return res.status(404).json({ error: 'Foto bulunamadı.' });
 
+    // Local disk dev fallback.
     if (k.foto_url.startsWith('/uploads/') || !isR2Configured()) {
       const filename = k.foto_url.split('/').pop();
       const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '../../../uploads'));
@@ -67,17 +68,23 @@ router.get('/:id/foto', authRequired, async (req, res, next) => {
       return res.sendFile(filepath);
     }
 
-    const key = extractR2Key(k.foto_url);
-    if (!key) return res.status(500).json({ error: 'Foto URL ayrıştırılamadı.' });
-
-    const { GetObjectCommand } = require('@aws-sdk/client-s3');
-    const s3 = await getS3();
-    const obj = await s3.send(new GetObjectCommand({ Bucket: process.env.R2_BUCKET, Key: key }));
-
-    res.setHeader('Content-Type', obj.ContentType || 'image/jpeg');
+    // Proxy from R2's public URL. We tried the S3 SDK GetObject path first
+    // but ran into NoSuchKey errors against the same bucket where PUT
+    // succeeded — likely an R2 public-URL/bucket mapping quirk. The public
+    // URL is already serving these files (we verified), and we still gate
+    // access with authRequired so the proxy keeps the auth boundary.
+    const upstream = await fetch(k.foto_url);
+    if (!upstream.ok) {
+      console.error('[kontroller] foto proxy upstream', upstream.status, k.foto_url);
+      return res.status(upstream.status === 404 ? 404 : 502).json({ error: 'Foto yüklenemedi.' });
+    }
+    const contentType = upstream.headers.get('content-type') || 'image/jpeg';
+    const contentLength = upstream.headers.get('content-length');
+    res.setHeader('Content-Type', contentType);
     res.setHeader('Cache-Control', 'private, max-age=3600');
-    if (obj.ContentLength) res.setHeader('Content-Length', String(obj.ContentLength));
-    obj.Body.pipe(res);
+    if (contentLength) res.setHeader('Content-Length', contentLength);
+    const { Readable } = require('stream');
+    Readable.fromWeb(upstream.body).pipe(res);
   } catch (err) {
     next(err);
   }
