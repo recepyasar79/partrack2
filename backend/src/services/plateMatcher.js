@@ -119,10 +119,13 @@ async function getAllRegisteredPlates() {
     .select('plaka')
     .where('aktif', true);
 
+  // misafir_araclar has no `aktif` column — bitis_tarihi is the only
+  // expiry check. Pull current (date range covers today) entries.
+  const today = new Date().toISOString().slice(0, 10);
   const registeredMisafir = await db('misafir_araclar')
     .select('plaka')
-    .where('aktif', true)
-    .whereNull('bitis_tarihi');
+    .where('baslangic_tarihi', '<=', today)
+    .where('bitis_tarihi', '>=', today);
 
   return [
     ...registeredPlates.map(r => r.plaka),
