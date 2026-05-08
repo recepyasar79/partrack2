@@ -4,12 +4,12 @@ Site içindeki araç park düzenini otomatikleştirir: her dairenin sadece 1 ara
 
 ## Teknoloji Stack
 
-- **Frontend:** React + Vite + TailwindCSS (PWA, mobil-first)
+- **Frontend:** React + Vite + TailwindCSS (PWA, mobil-first, gece/gündüz tema)
 - **Backend:** Node.js + Express + PostgreSQL (Knex migration)
-- **OCR:** Tesseract.js (client-side plaka okuma)
+- **OCR:** Python microservice (FastAPI + EasyOCR + OpenCV) — sunucu tarafında plaka okuma
 - **Foto storage:** Cloudflare R2 (lokal disk fallback)
 - **Bildirim:** WhatsApp Business Cloud API (Meta)
-- **Hosting:** Fly.io (backend), Neon (PostgreSQL), Vercel (frontend)
+- **Hosting:** Fly.io (backend + OCR), Neon (PostgreSQL), Vercel (frontend)
 
 Tüm proje kararları, fazlar ve iş kuralları için → [CLAUDE.md](./CLAUDE.md)
 
@@ -23,14 +23,18 @@ cp .env.example .env
 # 2. Lokal PostgreSQL (Docker varsa)
 docker run --name parktrack-pg -e POSTGRES_PASSWORD=postgres -e POSTGRES_DB=parktrack -p 5432:5432 -d postgres:16
 
-# 3. Backend
+# 3. Python OCR mikroservisi (Docker ile)
+docker compose up -d python-ocr   # ilk seferde ~5dk (imaj build + EasyOCR weights)
+# veya host'ta çalıştırmak için: cd backend/python_ocr && pip install -r requirements.txt && uvicorn app:app --port 5000
+
+# 4. Backend
 cd backend
 npm install
 npm run migrate
 npm run seed       # development seed data (admin + 1 güvenlik + örnek daireler)
 npm run dev        # http://localhost:3001
 
-# 4. Frontend (yeni terminal)
+# 5. Frontend (yeni terminal)
 cd frontend
 npm install
 npm run dev        # http://localhost:5173
@@ -71,8 +75,18 @@ npm run dev        # http://localhost:5173
 - Connection string'i kopyala
 - Fly.io secret olarak ekle: `fly secrets set DATABASE_URL="postgresql://..."`
 
-### 4. Fly.io'ya backend deploy
+### 4. Python OCR servisini Fly.io'ya deploy et
 ```bash
+cd backend/python_ocr
+fly launch --copy-config --name parktrack-ocr --region fra --no-deploy
+fly deploy
+# URL'i not al: https://parktrack-ocr.fly.dev
+```
+EasyOCR weights Docker imajına bake edildiği için cold start ~5sn. Bellek için en az 1GB makine gerekli (`fly.toml`'da 2GB ayarlı).
+
+### 5. Fly.io'ya backend deploy
+```bash
+cd backend
 # Fly CLI kurulum (https://fly.io/docs/hands-on/install-flyctl/)
 fly launch --name parktrack-backend --region fra
 # fly.toml zaten mevcut, gerekli env değerlerini ekle:
@@ -82,6 +96,7 @@ fly secrets set \
   BOOTSTRAP_ADMIN_USER="admin" \
   BOOTSTRAP_ADMIN_PASS="güçlü-şifre" \
   FRONTEND_URL="https://akasyaparktrack.vercel.app" \
+  PYTHON_OCR_URL="https://parktrack-ocr.fly.dev" \
   R2_ACCOUNT_ID="..." \
   R2_ACCESS_KEY_ID="..." \
   R2_SECRET_ACCESS_KEY="..." \
@@ -95,17 +110,18 @@ fly deploy
 
 Servisler:
 - `parktrack-backend` (Fly.io web service)
+- `parktrack-ocr` (Fly.io Python OCR mikroservis)
 - `parktrack-db` (Neon managed PostgreSQL)
 - Cron işleri için Fly Machines veya GitHub Actions scheduled workflows kullanılabilir
 
-### 5. Vercel'e frontend deploy
+### 6. Vercel'e frontend deploy
 ```bash
 cd frontend
 # Vercel dashboard → Import → bu repo → root: frontend
 # Env: VITE_API_URL=https://parktrack-backend.fly.dev/api
 ```
 
-### 6. Frontend domain'i Fly.io CORS whitelist'ine ekle
+### 7. Frontend domain'i Fly.io CORS whitelist'ine ekle
 - `fly secrets set FRONTEND_URL=https://parktrack.vercel.app`
 
 ## Proje Yapısı

@@ -65,10 +65,27 @@ async function findBestMatch(ocrGuess, minScore = 60) {
 
   const ocrNormalized = ocrGuess.toUpperCase().replace(/\s+/g, '');
 
-  // 1. ÖNCE registered plakalarla fuzzy match yap
-  // (Öğrenme tablosundan ÖNCE! Çünkü 34YF957 gerçek plaka olabilir)
+  // 1. Exact learning match — fastest path. If we've seen this exact OCR
+  // output before and the user corrected it, just use that mapping.
+  const exactLearned = await db('plate_learnings')
+    .where('ocr_raw', ocrNormalized)
+    .first();
+  if (exactLearned) {
+    return {
+      plaka: exactLearned.correct_plaka,
+      score: 100,
+      source: 'learned-exact',
+      confirmCount: exactLearned.confirm_count,
+    };
+  }
+
+  // 2. Fuzzy match against the union of registered plates and previously
+  // learned correct plates. A plate that has been confirmed once becomes
+  // part of the "known good" pool for future variants of the same OCR
+  // output (e.g. 34MN1089 / 34MNI089 / 34MNT089 all snap to 34MNL089).
   const registeredPlates = await getAllRegisteredPlates();
-  
+  const learnedPlates = await db('plate_learnings').select('correct_plaka', 'confirm_count');
+
   let bestMatch = null;
   let bestScore = 0;
 
@@ -76,29 +93,24 @@ async function findBestMatch(ocrGuess, minScore = 60) {
     const score = similarityScore(ocrNormalized, plate);
     if (score > bestScore && score >= minScore) {
       bestScore = score;
-      bestMatch = { plaka: plate, score, source: 'fuzzy' };
+      bestMatch = { plaka: plate, score, source: 'fuzzy-registered' };
     }
   }
 
-  if (bestMatch) {
-    return bestMatch; // Registered plate bulundu, öğrenme tablosuna BAKMA
+  for (const row of learnedPlates) {
+    const score = similarityScore(ocrNormalized, row.correct_plaka);
+    // Boost score by a small amount per confirmation so well-validated
+    // learnings beat ties; cap the boost so a single learned plate can't
+    // override a strictly more similar registered match.
+    const boost = Math.min(5, row.confirm_count - 1);
+    const adjusted = score + boost;
+    if (adjusted > bestScore && score >= minScore) {
+      bestScore = adjusted;
+      bestMatch = { plaka: row.correct_plaka, score, source: 'fuzzy-learned', confirmCount: row.confirm_count };
+    }
   }
 
-  // 2. Fuzzy match bulamadıysan, öğrenme tablosuna bak
-  const learned = await db('plate_learnings')
-    .where('ocr_raw', ocrNormalized)
-    .first();
-
-  if (learned) {
-    return {
-      plaka: learned.correct_plaka,
-      score: 100,
-      source: 'learned',
-      confirmCount: learned.confirm_count
-    };
-  }
-
-  return null;
+  return bestMatch;
 }
 
 // Yardımcı fonksiyon: Tüm kayıtlı plakaları al

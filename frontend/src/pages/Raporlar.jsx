@@ -95,17 +95,17 @@ export default function Raporlar() {
   return (
     <div className="p-4 max-w-5xl mx-auto flex flex-col gap-4">
       <div className="flex justify-between items-center flex-wrap gap-2">
-        <h1 className="text-2xl font-bold">Raporlar</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Raporlar</h1>
         <Button variant="secondary" onClick={exportCsv}>CSV İndir</Button>
       </div>
 
-      <div className="flex gap-1 bg-white rounded-2xl shadow p-1">
+      <div className="flex gap-1 bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-1">
         {TABS.map((t) => (
           <button
             key={t.id}
             onClick={() => setTab(t.id)}
             className={`flex-1 min-h-[44px] rounded-xl text-sm font-medium transition ${
-              tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-600 hover:bg-slate-100'
+              tab === t.id ? 'bg-blue-600 text-white' : 'text-slate-600 dark:text-slate-300 hover:bg-slate-100 dark:hover:bg-slate-800'
             }`}
           >
             {t.label}
@@ -113,7 +113,7 @@ export default function Raporlar() {
         ))}
       </div>
 
-      <div className="bg-white rounded-2xl shadow p-3 flex flex-wrap gap-2 items-end">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-3 flex flex-wrap gap-2 items-end">
         <Input
           label="Başlangıç"
           type="date"
@@ -128,11 +128,11 @@ export default function Raporlar() {
         />
         {tab === 'bildirim' && (
           <div className="flex flex-col gap-1">
-            <label className="text-sm">Durum</label>
+            <label className="text-sm text-slate-700 dark:text-slate-200">Durum</label>
             <select
               value={filt.durum}
               onChange={(e) => setFilt({ ...filt, durum: e.target.value })}
-              className="min-h-[44px] rounded-lg border border-slate-300 px-3"
+              className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-3"
             >
               <option value="">Tümü</option>
               <option value="gonderildi">Gönderildi</option>
@@ -144,9 +144,9 @@ export default function Raporlar() {
       </div>
 
       {tab === 'ihlal' && (
-        <div className="bg-white rounded-2xl shadow overflow-x-auto">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 overflow-x-auto">
           <table className="w-full text-base">
-            <thead className="bg-slate-100 text-left">
+            <thead className="bg-slate-100 dark:bg-slate-800 text-left text-slate-700 dark:text-slate-200">
               <tr>
                 <th className="p-3">Tarih</th>
                 <th className="p-3">Daire</th>
@@ -157,7 +157,7 @@ export default function Raporlar() {
             </thead>
             <tbody>
               {ihlaller.map((i) => (
-                <tr key={i.id} className="border-t border-slate-100">
+                <tr key={i.id} className="border-t border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200">
                   <td className="p-3 whitespace-nowrap">{String(i.kontrol_tarihi).slice(0, 10)}</td>
                   <td className="p-3 font-mono">{i.daire_no_snapshot || '—'}</td>
                   <td className="p-3 hidden sm:table-cell">{i.sahip_ad || '—'}</td>
@@ -168,7 +168,7 @@ export default function Raporlar() {
                 </tr>
               ))}
               {ihlaller.length === 0 && (
-                <tr><td colSpan={5} className="p-6 text-center text-slate-500">Kayıt yok.</td></tr>
+                <tr><td colSpan={5} className="p-6 text-center text-slate-500 dark:text-slate-400">Kayıt yok.</td></tr>
               )}
             </tbody>
           </table>
@@ -176,9 +176,9 @@ export default function Raporlar() {
       )}
 
       {tab === 'ozet' && (
-        <div className="bg-white rounded-2xl shadow overflow-x-auto">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 overflow-x-auto">
           <table className="w-full text-base">
-            <thead className="bg-slate-100 text-left">
+            <thead className="bg-slate-100 dark:bg-slate-800 text-left text-slate-700 dark:text-slate-200">
               <tr>
                 <th className="p-3">Daire</th>
                 <th className="p-3">Sahip</th>
@@ -188,7 +188,7 @@ export default function Raporlar() {
             </thead>
             <tbody>
               {ozet.map((o, idx) => (
-                <tr key={idx} className="border-t border-slate-100">
+                <tr key={idx} className="border-t border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200">
                   <td className="p-3 font-mono">{o.daire_no}</td>
                   <td className="p-3">{o.sahip_ad}</td>
                   <td className="p-3 font-bold">{o.ihlal_sayisi}</td>
@@ -196,7 +196,7 @@ export default function Raporlar() {
                 </tr>
               ))}
               {ozet.length === 0 && (
-                <tr><td colSpan={4} className="p-6 text-center text-slate-500">Kayıt yok.</td></tr>
+                <tr><td colSpan={4} className="p-6 text-center text-slate-500 dark:text-slate-400">Kayıt yok.</td></tr>
               )}
             </tbody>
           </table>
@@ -204,9 +204,9 @@ export default function Raporlar() {
       )}
 
       {tab === 'bildirim' && (
-        <div className="bg-white rounded-2xl shadow overflow-x-auto">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 overflow-x-auto">
           <table className="w-full text-base">
-            <thead className="bg-slate-100 text-left">
+            <thead className="bg-slate-100 dark:bg-slate-800 text-left text-slate-700 dark:text-slate-200">
               <tr>
                 <th className="p-3">Zaman</th>
                 <th className="p-3">Daire</th>
@@ -218,7 +218,7 @@ export default function Raporlar() {
             </thead>
             <tbody>
               {bildirimler.map((b) => (
-                <tr key={b.id} className="border-t border-slate-100">
+                <tr key={b.id} className="border-t border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200">
                   <td className="p-3 text-xs whitespace-nowrap">{new Date(b.olusturma_zamani).toLocaleString('tr-TR')}</td>
                   <td className="p-3 font-mono">{b.daire_no}</td>
                   <td className="p-3 hidden sm:table-cell">{b.telefon}</td>
@@ -232,11 +232,11 @@ export default function Raporlar() {
                     </span>
                   </td>
                   <td className="p-3">{b.deneme_sayisi}</td>
-                  <td className="p-3 hidden md:table-cell text-xs text-slate-600">{b.hata_mesaji || '—'}</td>
+                  <td className="p-3 hidden md:table-cell text-xs text-slate-600 dark:text-slate-400">{b.hata_mesaji || '—'}</td>
                 </tr>
               ))}
               {bildirimler.length === 0 && (
-                <tr><td colSpan={6} className="p-6 text-center text-slate-500">Kayıt yok.</td></tr>
+                <tr><td colSpan={6} className="p-6 text-center text-slate-500 dark:text-slate-400">Kayıt yok.</td></tr>
               )}
             </tbody>
           </table>

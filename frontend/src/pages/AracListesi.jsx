@@ -52,9 +52,9 @@ export default function AracListesi() {
   return (
     <div className="p-4 max-w-5xl mx-auto flex flex-col gap-4">
       <div className="flex flex-wrap items-center gap-2 justify-between">
-        <h1 className="text-2xl font-bold">Tüm Araç Listesi</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Tüm Araç Listesi</h1>
         <div className="flex gap-2">
-          <span className="text-sm text-slate-600 self-center">{araclar.length} araç</span>
+          <span className="text-sm text-slate-600 dark:text-slate-400 self-center">{araclar.length} araç</span>
           <Button variant="secondary" onClick={exportCSV} disabled={!araclar.length}>CSV İndir</Button>
         </div>
       </div>
@@ -69,26 +69,26 @@ export default function AracListesi() {
         <select
           value={blok}
           onChange={(e) => setBlok(e.target.value)}
-          className="min-h-[44px] rounded-lg border border-slate-300 px-3"
+          className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-3"
         >
           <option value="">Tüm bloklar</option>
           {BLOKLAR.map((b) => <option key={b} value={b}>{b}</option>)}
         </select>
       </div>
 
-      <div className="bg-white rounded-2xl shadow overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 overflow-hidden border border-transparent dark:border-slate-800">
         <table className="w-full text-base">
-          <thead className="bg-slate-100 text-left">
+          <thead className="bg-slate-100 dark:bg-slate-800 text-left">
             <tr>
-              <th className="p-3">Plaka</th>
-              <th className="p-3">Daire</th>
-              <th className="p-3 hidden sm:table-cell">Sahip</th>
-              <th className="p-3 hidden md:table-cell">Telefon</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200">Plaka</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200">Daire</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200 hidden sm:table-cell">Sahip</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200 hidden md:table-cell">Telefon</th>
             </tr>
           </thead>
           <tbody>
             {paged.map((a) => (
-              <tr key={a.id} className="border-t border-slate-100">
+              <tr key={a.id} className="border-t border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200">
                 <td className="p-3 font-mono font-semibold">{a.plaka}</td>
                 <td className="p-3 font-mono">{a.daire_no}</td>
                 <td className="p-3 hidden sm:table-cell">{a.sahip_ad}</td>
@@ -96,14 +96,14 @@ export default function AracListesi() {
               </tr>
             ))}
             {paged.length === 0 && (
-              <tr><td colSpan={4} className="p-6 text-center text-slate-500">Araç bulunamadı.</td></tr>
+              <tr><td colSpan={4} className="p-6 text-center text-slate-500 dark:text-slate-400">Araç bulunamadı.</td></tr>
             )}
           </tbody>
         </table>
         {totalPages > 1 && (
-          <div className="flex justify-center gap-2 p-3 border-t border-slate-100">
+          <div className="flex justify-center gap-2 p-3 border-t border-slate-100 dark:border-slate-800">
             <Button size="sm" variant="ghost" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>‹ Önceki</Button>
-            <span className="text-sm py-2">{page} / {totalPages}</span>
+            <span className="text-sm py-2 text-slate-600 dark:text-slate-300">{page} / {totalPages}</span>
             <Button size="sm" variant="ghost" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Sonraki ›</Button>
           </div>
         )}

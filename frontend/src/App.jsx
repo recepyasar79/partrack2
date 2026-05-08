@@ -1,5 +1,6 @@
 import { Routes, Route, Navigate } from 'react-router-dom';
 import { AuthProvider } from './auth/AuthContext';
+import { ThemeProvider } from './theme/ThemeContext';
 import { ToastProvider } from './components/ui/Toast';
 import { ProtectedRoute, RoleRoute } from './auth/ProtectedRoute';
 import Layout from './components/Layout';
@@ -20,6 +21,7 @@ import Kvkk from './pages/Kvkk';
 
 export default function App() {
   return (
+    <ThemeProvider>
     <AuthProvider>
       <ToastProvider>
         <Routes>
@@ -81,5 +83,6 @@ export default function App() {
         </Routes>
       </ToastProvider>
     </AuthProvider>
+    </ThemeProvider>
   );
 }

@@ -2,13 +2,13 @@ import { Link } from 'react-router-dom';
 
 export default function Kvkk() {
   return (
-    <div className="min-h-full bg-slate-50">
-      <header className="bg-slate-900 text-white p-4">
+    <div className="min-h-full bg-slate-50 dark:bg-slate-950">
+      <header className="bg-slate-900 dark:bg-slate-800 text-white p-4">
         <Link to="/" className="font-bold text-lg">ParkTrack</Link>
       </header>
       <main className="p-6 max-w-3xl mx-auto">
-        <h1 className="text-2xl font-bold mb-4">KVKK Aydınlatma Metni</h1>
-        <div className="bg-white rounded-2xl shadow p-6 text-sm text-slate-700 space-y-4 leading-relaxed">
+        <h1 className="text-2xl font-bold mb-4 text-slate-900 dark:text-slate-100">KVKK Aydınlatma Metni</h1>
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-6 text-sm text-slate-700 dark:text-slate-300 space-y-4 leading-relaxed">
           <p>
             <strong>Veri Sorumlusu:</strong> Site Yönetimi (ParkTrack uygulaması üzerinden işlenir).
           </p>
@@ -48,7 +48,7 @@ export default function Kvkk() {
           </p>
         </div>
         <div className="mt-6 text-center">
-          <Link to="/" className="text-blue-600 underline">Ana sayfaya dön</Link>
+          <Link to="/" className="text-blue-600 dark:text-blue-400 underline">Ana sayfaya dön</Link>
         </div>
       </main>
     </div>

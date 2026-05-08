@@ -1,74 +1,455 @@
-from flask import Flask, request, jsonify
+"""
+ParkTrack Python OCR Microservice
+- EasyOCR for character recognition (much better than Tesseract for plates)
+- OpenCV for plate localization with multiple strategies
+- FastAPI for HTTP layer
+"""
+import io
+import logging
+import os
+import re
+import time
+from typing import List, Optional, Tuple
+
 import cv2
 import numpy as np
-import pytesseract
-import sys
-import os
+from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi.responses import JSONResponse
 
-app = Flask(__name__)
+import easyocr
 
-# Tesseract path (Docker/Linux için genelde gerekmez)
-# pytesseract.pytesseract.tesseract_cmd = r'/usr/bin/tesseract'
+logging.basicConfig(
+    level=os.environ.get("LOG_LEVEL", "INFO"),
+    format="%(asctime)s [%(levelname)s] %(message)s",
+)
+log = logging.getLogger("plate_ocr")
 
-@app.route('/health', methods=['GET'])
-def health():
-    return jsonify({'status': 'ok', 'tesseract': 'configured'})
+# ---------------------------------------------------------------------------
+# OCR engine
+# ---------------------------------------------------------------------------
+# EasyOCR loads weights on first use; warming it up at startup avoids the cold
+# start on the first request.
+USE_GPU = os.environ.get("EASYOCR_GPU", "0") == "1"
+log.info("Initialising EasyOCR (gpu=%s)…", USE_GPU)
+_reader = easyocr.Reader(["en"], gpu=USE_GPU, verbose=False)
+log.info("EasyOCR ready.")
 
-@app.route('/ocr', methods=['POST'])
-def ocr_plate():
-    if 'file' not in request.files:
-        return jsonify({'error': 'Dosya yok'}), 400
-    
-    file = request.files['file']
-    img_bytes = file.read()
-    
-    # Bytes -> numpy array -> OpenCV image
-    nparr = np.frombuffer(img_bytes, np.uint8)
-    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
-    
-    if img is None:
-        return jsonify({'error': 'Resim okunamadı'}), 400
-    
-    # Python kodundaki işlemler
-    img = cv2.resize(img, (600, 400))
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    gray = cv2.bilateralFilter(gray, 13, 15, 15)
-    edged = cv2.Canny(gray, 30, 200)
-    
-    contours, _ = cv2.findContours(edged.copy(), cv2.RETR_TREE, cv2.CHAIN_APPROX_SIMPLE)
-    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:10]
-    
-    screenCnt = None
+# ---------------------------------------------------------------------------
+# Turkish plate validation
+# ---------------------------------------------------------------------------
+TR_CITY_CODES = {f"{i:02d}" for i in range(1, 82)}
+
+# Standard plate body:
+#   2 digits + 1 letter  + 4 digits   (34A1234)
+#   2 digits + 2 letters + 2-4 digits (34AB12, 34AB1234)
+#   2 digits + 3 letters + 2-3 digits (34ABC12, 34ABC123)
+PLATE_BODY = re.compile(
+    r"^\d{2}(?:[A-Z]\d{4}|[A-Z]{2}\d{2,4}|[A-Z]{3}\d{2,3})$"
+)
+DIPLO_PLATE = re.compile(r"^(?:CC|CD)\d{3,6}$")
+
+# Common OCR confusions on plate fonts. We try both directions because
+# EasyOCR sometimes reads them either way depending on lighting.
+CHAR_FIXES = {
+    "0": ["0", "O", "Q", "D"],
+    "O": ["O", "0", "Q", "D"],
+    "1": ["1", "I", "L", "T"],
+    "I": ["I", "1", "L", "T"],
+    "L": ["L", "1", "I"],
+    "2": ["2", "Z"],
+    "Z": ["Z", "2"],
+    "5": ["5", "S"],
+    "S": ["S", "5"],
+    "8": ["8", "B"],
+    "B": ["B", "8"],
+    "6": ["6", "G"],
+    "G": ["G", "6"],
+    "7": ["7", "T"],
+    "T": ["T", "7"],
+    "4": ["4", "A"],
+    "A": ["A", "4"],
+}
+
+
+def is_valid_plate(text: str) -> bool:
+    if not text:
+        return False
+    cleaned = "".join(ch for ch in text.upper() if ch.isalnum())
+    if DIPLO_PLATE.match(cleaned):
+        return True
+    return PLATE_BODY.match(cleaned) and cleaned[:2] in TR_CITY_CODES
+
+
+def clean_text(text: str) -> str:
+    """Strip everything but A-Z 0-9, uppercase."""
+    return re.sub(r"[^A-Z0-9]", "", (text or "").upper())
+
+
+def char_variants(text: str, max_swaps: int = 2):
+    """
+    Yield variants of `text` where up to `max_swaps` ambiguous characters are
+    swapped to plausible alternatives. Used when the raw text is almost a
+    valid plate but a digit/letter looks wrong (5↔S, 0↔O, etc.).
+    """
+    yield text
+    if max_swaps <= 0 or len(text) > 10:
+        return
+
+    indices = [i for i, ch in enumerate(text) if ch in CHAR_FIXES]
+    if not indices:
+        return
+
+    # Try single character swaps first, then double swaps. We don't go deeper
+    # because the search space explodes and false positives become likely.
+    seen = {text}
+    for n in range(1, min(max_swaps, len(indices)) + 1):
+        from itertools import combinations, product
+        for combo in combinations(indices, n):
+            options = [CHAR_FIXES[text[i]] for i in combo]
+            for choice in product(*options):
+                arr = list(text)
+                for idx, ch in zip(combo, choice):
+                    arr[idx] = ch
+                v = "".join(arr)
+                if v not in seen:
+                    seen.add(v)
+                    yield v
+
+
+def best_plate_from_substrings(text: str) -> Optional[str]:
+    """Search every substring for a valid plate; rank by length and city code."""
+    text = clean_text(text)
+    if len(text) < 5:
+        return None
+
+    found = []
+    for length in range(min(len(text), 12), 4, -1):
+        for i in range(0, len(text) - length + 1):
+            sub = text[i:i + length]
+            for variant in char_variants(sub):
+                if is_valid_plate(variant):
+                    found.append((variant, length))
+
+    if not found:
+        return None
+
+    # Prefer longer plates and earlier matches.
+    found.sort(key=lambda x: (-x[1], x[0]))
+    return found[0][0]
+
+
+# ---------------------------------------------------------------------------
+# Image preprocessing
+# ---------------------------------------------------------------------------
+
+def deskew(image: np.ndarray) -> np.ndarray:
+    """Try to rotate the image so the plate is horizontal."""
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY) if image.ndim == 3 else image
+    edges = cv2.Canny(gray, 50, 150, apertureSize=3)
+    lines = cv2.HoughLinesP(edges, 1, np.pi / 180, 100, minLineLength=100, maxLineGap=10)
+    if lines is None:
+        return image
+
+    angles = []
+    for line in lines:
+        x1, y1, x2, y2 = line[0]
+        angle = np.degrees(np.arctan2(y2 - y1, x2 - x1))
+        if -45 < angle < 45:
+            angles.append(angle)
+    if not angles:
+        return image
+
+    median_angle = float(np.median(angles))
+    if abs(median_angle) < 0.5:
+        return image
+
+    h, w = image.shape[:2]
+    M = cv2.getRotationMatrix2D((w / 2, h / 2), median_angle, 1.0)
+    return cv2.warpAffine(image, M, (w, h), flags=cv2.INTER_CUBIC, borderMode=cv2.BORDER_REPLICATE)
+
+
+def upscale_if_small(image: np.ndarray, target_height: int = 60) -> np.ndarray:
+    """Upscale very small crops so OCR has enough resolution."""
+    h, w = image.shape[:2]
+    if h >= target_height:
+        return image
+    scale = target_height / h
+    return cv2.resize(image, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_CUBIC)
+
+
+def preprocess_for_ocr(image: np.ndarray) -> List[np.ndarray]:
+    """
+    Produce a small set of preprocessed versions of an image; OCR tries each
+    in order and short-circuits when it finds a high-confidence plate.
+
+    We keep the variant count low (3) because each one costs an EasyOCR pass
+    (~300-700ms on shared CPU) and the marginal gain from extra variants is
+    small compared to running region detection.
+    """
+    if image.ndim == 3:
+        gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = image.copy()
+
+    variants = [image]
+
+    # CLAHE handles dark/uneven lighting well — usually the most useful single
+    # preprocessing step for plate photos.
+    clahe = cv2.createCLAHE(clipLimit=3.0, tileGridSize=(8, 8))
+    clahe_img = clahe.apply(gray)
+    variants.append(cv2.cvtColor(clahe_img, cv2.COLOR_GRAY2BGR))
+
+    # Adaptive threshold catches plates with strong shadows.
+    thresh = cv2.adaptiveThreshold(
+        gray, 255, cv2.ADAPTIVE_THRESH_GAUSSIAN_C, cv2.THRESH_BINARY, 21, 10
+    )
+    variants.append(cv2.cvtColor(thresh, cv2.COLOR_GRAY2BGR))
+
+    return variants
+
+
+# ---------------------------------------------------------------------------
+# Plate localisation
+# ---------------------------------------------------------------------------
+
+def detect_plate_regions(image: np.ndarray) -> List[Tuple[int, int, int, int]]:
+    """
+    Return up to N candidate plate rectangles (x, y, w, h) sorted by likelihood.
+    Strategy: morphological gradient + binarisation + contour filtering by
+    aspect ratio. This is the technique used by most lightweight ALPR pipelines.
+    """
+    h, w = image.shape[:2]
+    gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
+
+    # Top-hat highlights small bright regions (plate text on dark plate is fine
+    # because plate background tends to be lighter than surrounding metal).
+    rect_kern = cv2.getStructuringElement(cv2.MORPH_RECT, (13, 5))
+    blackhat = cv2.morphologyEx(gray, cv2.MORPH_BLACKHAT, rect_kern)
+
+    # Sobel on x picks up vertical strokes of plate characters.
+    grad_x = cv2.Sobel(blackhat, ddepth=cv2.CV_32F, dx=1, dy=0, ksize=-1)
+    grad_x = np.absolute(grad_x)
+    if grad_x.max() > 0:
+        grad_x = (255 * grad_x / grad_x.max()).astype("uint8")
+    else:
+        grad_x = grad_x.astype("uint8")
+
+    grad_x = cv2.GaussianBlur(grad_x, (5, 5), 0)
+    grad_x = cv2.morphologyEx(grad_x, cv2.MORPH_CLOSE, rect_kern)
+    _, thresh = cv2.threshold(grad_x, 0, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
+    thresh = cv2.erode(thresh, None, iterations=2)
+    thresh = cv2.dilate(thresh, None, iterations=2)
+
+    contours, _ = cv2.findContours(thresh, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    contours = sorted(contours, key=cv2.contourArea, reverse=True)[:20]
+
+    regions = []
+    img_area = h * w
     for c in contours:
-        peri = cv2.arcLength(c, True)
-        approx = cv2.approxPolyDP(c, 0.018 * peri, True)
-        if len(approx) == 4:
-            screenCnt = approx
-            break
-    
-    if screenCnt is None:
-        # Plaka bölgesi bulunamadı, tüm resmi OCR ile dene
-        text = pytesseract.image_to_string(gray, config='--psm 7')
-        return jsonify({'plate': text.strip(), 'method': 'full_image'})
-    
-    # Plaka bölgesini kırp
-    mask = np.zeros(gray.shape, np.uint8)
-    new_image = cv2.drawContours(mask, [screenCnt], 0, 255, -1)
-    new_image = cv2.bitwise_and(img, img, mask=mask)
-    
-    (x, y) = np.where(mask == 255)
-    topx, topy = np.min(x), np.min(y)
-    bottomx, bottomy = np.max(x), np.max(y)
-    Cropped = gray[topx:bottomx+1, topy:bottomy+1]
-    
-    # OCR
-    text = pytesseract.image_to_string(Cropped, config='--psm 7')
-    
-    return jsonify({
-        'plate': text.strip(),
-        'method': 'plate_detected',
-        'confidence': 'high'
-    })
+        x, y, cw, ch = cv2.boundingRect(c)
+        if ch == 0:
+            continue
+        aspect = cw / ch
+        area = cw * ch
+        # Turkish plate aspect is typically 3-5:1; allow a wide range.
+        if not (1.8 <= aspect <= 6.5):
+            continue
+        # Filter regions that are too small or implausibly large.
+        if area < img_area * 0.0008 or area > img_area * 0.20:
+            continue
+        # Plates are rarely at the very top of the photo.
+        if y < h * 0.05:
+            continue
+        regions.append((x, y, cw, ch, area))
 
-if __name__ == '__main__':
-    app.run(host='0.0.0.0', port=5000)
+    # Sort by area descending — bigger candidates first.
+    regions.sort(key=lambda r: -r[4])
+    return [(x, y, cw, ch) for x, y, cw, ch, _ in regions[:6]]
+
+
+def expand_box(box: Tuple[int, int, int, int], img_shape, pad_x=0.05, pad_y=0.25):
+    """Pad a plate box so OCR has a bit of background around the characters."""
+    x, y, w, h = box
+    H, W = img_shape[:2]
+    px = int(w * pad_x)
+    py = int(h * pad_y)
+    x0 = max(0, x - px)
+    y0 = max(0, y - py)
+    x1 = min(W, x + w + px)
+    y1 = min(H, y + h + py)
+    return x0, y0, x1 - x0, y1 - y0
+
+
+# ---------------------------------------------------------------------------
+# OCR pipeline
+# ---------------------------------------------------------------------------
+
+def run_easyocr(image: np.ndarray):
+    """
+    EasyOCR returns list of (bbox, text, confidence). We concatenate all
+    detections and also keep the per-detection list for debugging.
+    """
+    try:
+        result = _reader.readtext(
+            image,
+            allowlist="ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789",
+            detail=1,
+            paragraph=False,
+        )
+    except Exception as exc:
+        log.warning("EasyOCR failed: %s", exc)
+        return [], 0.0
+
+    # Sort by x then y so that left-to-right reading order is respected.
+    result.sort(key=lambda r: (r[0][0][1], r[0][0][0]))
+    texts = [(clean_text(t), float(c)) for _, t, c in result]
+    texts = [t for t in texts if t[0]]
+    if not texts:
+        return [], 0.0
+    avg_conf = sum(c for _, c in texts) / len(texts)
+    return texts, avg_conf
+
+
+def extract_plate(detections):
+    """
+    From a list of (text, confidence) tuples, return the most likely plate.
+    1. Concat in reading order, search substrings.
+    2. Try each individual detection.
+    3. Try permutations of 2-3 detections (handles plates split across boxes).
+    """
+    if not detections:
+        return None, 0.0, "none"
+
+    # Strategy 1: concatenated text.
+    joined = "".join(t for t, _ in detections)
+    plate = best_plate_from_substrings(joined)
+    if plate:
+        return plate, sum(c for _, c in detections) / len(detections), "joined"
+
+    # Strategy 2: each detection alone.
+    for text, conf in detections:
+        candidate = best_plate_from_substrings(text)
+        if candidate:
+            return candidate, conf, "single"
+
+    # Strategy 3: try pairs of adjacent detections.
+    for i in range(len(detections) - 1):
+        a, ca = detections[i]
+        b, cb = detections[i + 1]
+        candidate = best_plate_from_substrings(a + b)
+        if candidate:
+            return candidate, (ca + cb) / 2, "pair"
+
+    return None, 0.0, "none"
+
+
+def recognize(image_bytes: bytes, debug: bool = False):
+    started = time.monotonic()
+
+    nparr = np.frombuffer(image_bytes, np.uint8)
+    img = cv2.imdecode(nparr, cv2.IMREAD_COLOR)
+    if img is None:
+        raise HTTPException(status_code=400, detail="Image could not be decoded")
+
+    # Limit very large photos so OCR doesn't time out.
+    h, w = img.shape[:2]
+    max_side = 1600
+    if max(h, w) > max_side:
+        scale = max_side / max(h, w)
+        img = cv2.resize(img, (int(w * scale), int(h * scale)), interpolation=cv2.INTER_AREA)
+
+    img = deskew(img)
+
+    debug_info = {"strategies": []}
+    best = {"plate": None, "confidence": 0.0, "strategy": None, "raw": []}
+
+    def try_image(image_to_ocr, label):
+        detections, avg_conf = run_easyocr(image_to_ocr)
+        plate, conf, sub_strategy = extract_plate(detections)
+        debug_info["strategies"].append({
+            "label": label,
+            "detections": [{"text": t, "confidence": round(c, 3)} for t, c in detections],
+            "plate": plate,
+            "sub_strategy": sub_strategy,
+            "confidence": round(conf, 3),
+        })
+        if plate and conf > best["confidence"]:
+            best["plate"] = plate
+            best["confidence"] = conf
+            best["strategy"] = f"{label}/{sub_strategy}"
+            best["raw"] = [t for t, _ in detections]
+
+    # Pass 1: full image with preprocess variants. Exit as soon as we have a
+    # decent reading — extra variants rarely improve over the first hit.
+    for idx, variant in enumerate(preprocess_for_ocr(img)):
+        try_image(variant, f"full-{idx}")
+        if best["plate"] and best["confidence"] > 0.55:
+            break
+
+    # Pass 2: localised plate regions. This is the expensive path
+    # (region detection + N regions × M variants × OCR) so only run it when
+    # Pass 1 didn't find anything reliable. Cap region count.
+    if not (best["plate"] and best["confidence"] > 0.55):
+        regions = detect_plate_regions(img)[:3]
+        for r_idx, region in enumerate(regions):
+            box = expand_box(region, img.shape)
+            x, y, bw, bh = box
+            crop = img[y:y + bh, x:x + bw]
+            if crop.size == 0:
+                continue
+            crop = upscale_if_small(crop, target_height=80)
+            for v_idx, variant in enumerate(preprocess_for_ocr(crop)):
+                try_image(variant, f"region-{r_idx}-{v_idx}")
+                if best["plate"] and best["confidence"] > 0.75:
+                    break
+            if best["plate"] and best["confidence"] > 0.75:
+                break
+
+    elapsed = time.monotonic() - started
+    response = {
+        "plate": best["plate"] or "",
+        "confidence": round(best["confidence"], 3),
+        "strategy": best["strategy"],
+        "elapsed_ms": int(elapsed * 1000),
+        "raw_text": " ".join(best["raw"]) if best["raw"] else "",
+    }
+    if debug:
+        response["debug"] = debug_info
+    return response
+
+
+# ---------------------------------------------------------------------------
+# HTTP layer
+# ---------------------------------------------------------------------------
+app = FastAPI(title="ParkTrack OCR", version="2.0.0")
+
+
+@app.get("/health")
+def health():
+    return {"status": "ok", "engine": "easyocr", "version": "2.0.0"}
+
+
+@app.post("/ocr")
+async def ocr(file: UploadFile = File(...), debug: bool = False):
+    if not file:
+        raise HTTPException(status_code=400, detail="No file uploaded")
+    content = await file.read()
+    if not content:
+        raise HTTPException(status_code=400, detail="Empty file")
+    if len(content) > 12 * 1024 * 1024:
+        raise HTTPException(status_code=413, detail="File too large (max 12MB)")
+    try:
+        result = recognize(content, debug=debug)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        log.exception("OCR failed")
+        return JSONResponse(status_code=500, content={"error": str(exc)})
+    return result
+
+
+if __name__ == "__main__":
+    import uvicorn
+
+    port = int(os.environ.get("PORT", "5000"))
+    uvicorn.run(app, host="0.0.0.0", port=port, log_level="info")

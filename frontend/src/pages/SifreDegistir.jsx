@@ -29,8 +29,8 @@ export default function SifreDegistir() {
 
   return (
     <div className="p-4 max-w-md mx-auto">
-      <h1 className="text-xl font-bold mb-4">Şifre Değiştir</h1>
-      <form onSubmit={onSubmit} className="flex flex-col gap-3 bg-white rounded-2xl shadow p-4">
+      <h1 className="text-xl font-bold mb-4 text-slate-900 dark:text-slate-100">Şifre Değiştir</h1>
+      <form onSubmit={onSubmit} className="flex flex-col gap-3 bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-4">
         <Input label="Mevcut şifre" type="password" value={eski} onChange={(e) => setEski(e.target.value)} />
         <Input label="Yeni şifre" type="password" value={yeni} onChange={(e) => setYeni(e.target.value)} />
         <Input label="Yeni şifre (tekrar)" type="password" value={yeni2} onChange={(e) => setYeni2(e.target.value)} />

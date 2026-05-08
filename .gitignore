@@ -26,6 +26,9 @@ yarn-error.log*
 *.swp
 *.swo
 
+# Claude Code local settings (per-machine, may contain secrets in allowed command patterns)
+.claude/settings.local.json
+
 # OS
 .DS_Store
 Thumbs.db
@@ -35,6 +38,15 @@ coverage/
 .nyc_output/
 playwright-report/
 test-results/
+
+# Python
+__pycache__/
+*.pyc
+**/.venv/
+backend/python_ocr/python_ocr.log
+
+# Accidental root-level npm artifact (project npm lives in frontend/ and backend/)
+/package-lock.json
 
 # Uploads (local dev)
 uploads/

@@ -1,5 +1,6 @@
 const path = require('path');
 const fs = require('fs');
+const crypto = require('crypto');
 const multer = require('multer');
 
 const ALLOWED_MIME = ['image/jpeg', 'image/jpg', 'image/png', 'image/webp'];
@@ -23,11 +24,25 @@ function fileFilter(_req, file, cb) {
   cb(null, true);
 }
 
-function buildUpload() {
-  if (isR2Configured()) {
+function r2KeyFor(originalName) {
+  const ext = path.extname(originalName || '').toLowerCase() || '.jpg';
+  const ts = Date.now();
+  const rand = crypto.randomBytes(3).toString('hex');
+  return `kontroller/${new Date().toISOString().slice(0, 10)}/${ts}_${rand}${ext}`;
+}
+
+function diskFilenameFor(originalName) {
+  const ext = path.extname(originalName || '').toLowerCase() || '.jpg';
+  const ts = Date.now();
+  const rand = crypto.randomBytes(3).toString('hex');
+  return `${ts}_${rand}${ext}`;
+}
+
+let s3Client = null;
+function getS3() {
+  if (!s3Client) {
     const { S3Client } = require('@aws-sdk/client-s3');
-    const multerS3 = require('multer-s3');
-    const s3 = new S3Client({
+    s3Client = new S3Client({
       region: 'auto',
       endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
       credentials: {
@@ -35,26 +50,45 @@ function buildUpload() {
         secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
       },
     });
+  }
+  return s3Client;
+}
+
+function publicUrlForR2(key) {
+  if (process.env.R2_PUBLIC_URL) return `${process.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${key}`;
+  return `r2://${process.env.R2_BUCKET}/${key}`;
+}
+
+function publicUrlForDisk(filename) {
+  return `/uploads/${filename}`;
+}
+
+function buildUpload() {
+  // Memory storage so we have direct access to the file buffer for OCR before
+  // shipping it off to R2 or disk. The 10MB limit keeps memory usage bounded.
+  const upload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: MAX_BYTES },
+    fileFilter,
+  });
+
+  if (isR2Configured()) {
     return {
       mode: 'r2',
-      upload: multer({
-        storage: multerS3({
-          s3,
-          bucket: process.env.R2_BUCKET,
-          contentType: multerS3.AUTO_CONTENT_TYPE,
-          key: (_req, file, cb) => {
-            const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
-            const ts = Date.now();
-            const rand = Math.random().toString(36).slice(2, 8);
-            cb(null, `kontroller/${new Date().toISOString().slice(0, 10)}/${ts}_${rand}${ext}`);
-          },
-        }),
-        limits: { fileSize: MAX_BYTES },
-        fileFilter,
-      }),
-      publicUrl: (key) => {
-        if (process.env.R2_PUBLIC_URL) return `${process.env.R2_PUBLIC_URL.replace(/\/$/, '')}/${key}`;
-        return `r2://${process.env.R2_BUCKET}/${key}`;
+      upload,
+      publicUrl: publicUrlForR2,
+      async save(buffer, originalName, mimeType) {
+        const { PutObjectCommand } = require('@aws-sdk/client-s3');
+        const key = r2KeyFor(originalName);
+        await getS3().send(
+          new PutObjectCommand({
+            Bucket: process.env.R2_BUCKET,
+            Key: key,
+            Body: buffer,
+            ContentType: mimeType || 'image/jpeg',
+          })
+        );
+        return { key, url: publicUrlForR2(key) };
       },
     };
   }
@@ -64,20 +98,14 @@ function buildUpload() {
   return {
     mode: 'disk',
     uploadDir,
-    upload: multer({
-      storage: multer.diskStorage({
-        destination: (_req, _file, cb) => cb(null, uploadDir),
-        filename: (_req, file, cb) => {
-          const ext = path.extname(file.originalname || '').toLowerCase() || '.jpg';
-          const ts = Date.now();
-          const rand = Math.random().toString(36).slice(2, 8);
-          cb(null, `${ts}_${rand}${ext}`);
-        },
-      }),
-      limits: { fileSize: MAX_BYTES },
-      fileFilter,
-    }),
-    publicUrl: (filename) => `/uploads/${filename}`,
+    upload,
+    publicUrl: publicUrlForDisk,
+    async save(buffer, originalName) {
+      const filename = diskFilenameFor(originalName);
+      const filepath = path.join(uploadDir, filename);
+      await fs.promises.writeFile(filepath, buffer);
+      return { key: filename, url: publicUrlForDisk(filename) };
+    },
   };
 }
 

@@ -37,9 +37,9 @@ export default function SahipDegistirModal({ daire, onClose, onSaved }) {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4">
-      <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 flex flex-col gap-3">
-        <h2 className="text-lg font-bold">{daire.daire_no} — Sahip Değiştir</h2>
-        <p className="text-sm text-slate-600">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md p-5 flex flex-col gap-3 border border-transparent dark:border-slate-800">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{daire.daire_no} — Sahip Değiştir</h2>
+        <p className="text-sm text-slate-600 dark:text-slate-300">
           Eski sahip <strong>{daire.sahip_ad}</strong> tarihçeye taşınacak.
         </p>
         <Input label="Yeni sahip ad-soyad" value={ad} onChange={(e) => setAd(e.target.value)} />
@@ -48,11 +48,11 @@ export default function SahipDegistirModal({ daire, onClose, onSaved }) {
           value={tel}
           onChange={(e) => setTel(formatTelefon(e.target.value))}
         />
-        <label className="flex items-start gap-2 text-sm">
+        <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
           <input type="checkbox" checked={kvkk} onChange={(e) => setKvkk(e.target.checked)} className="mt-1 h-5 w-5" />
           <span>Yeni sahip KVKK rızası verdiğini onayladı.</span>
         </label>
-        <label className="flex items-start gap-2 text-sm">
+        <label className="flex items-start gap-2 text-sm text-slate-700 dark:text-slate-200">
           <input type="checkbox" checked={optIn} onChange={(e) => setOptIn(e.target.checked)} className="mt-1 h-5 w-5" />
           <span>WhatsApp bildirimi onayı</span>
         </label>

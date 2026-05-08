@@ -94,18 +94,18 @@ export default function MisafirAraclar() {
   return (
     <div className="p-4 max-w-3xl mx-auto flex flex-col gap-4">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Misafir Araçlar</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Misafir Araçlar</h1>
         <Button onClick={() => setShowForm((s) => !s)}>{showForm ? 'Kapat' : '+ Yeni'}</Button>
       </div>
 
       {showForm && (
-        <div className="bg-white rounded-2xl shadow p-4 flex flex-col gap-3">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-4 flex flex-col gap-3">
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Daire</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Daire</label>
             <select
               value={form.daire_id}
               onChange={(e) => setForm({ ...form, daire_id: e.target.value })}
-              className="min-h-[44px] rounded-lg border border-slate-300 px-3"
+              className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-3"
             >
               <option value="">Daire seçin…</option>
               {daireler.map((d) => (
@@ -137,24 +137,24 @@ export default function MisafirAraclar() {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl shadow overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 overflow-hidden border border-transparent dark:border-slate-800">
         <table className="w-full text-base">
-          <thead className="bg-slate-100 text-left">
+          <thead className="bg-slate-100 dark:bg-slate-800 text-left">
             <tr>
-              <th className="p-3">Plaka</th>
-              <th className="p-3">Daire</th>
-              <th className="p-3 hidden sm:table-cell">Tarih</th>
-              <th className="p-3 hidden md:table-cell">Açıklama</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200">Plaka</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200">Daire</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200 hidden sm:table-cell">Tarih</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200 hidden md:table-cell">Açıklama</th>
               {isYonetici && <th className="p-3"></th>}
             </tr>
           </thead>
           <tbody>
             {list.map((m) => (
-              <tr key={m.id} className="border-t border-slate-100">
+              <tr key={m.id} className="border-t border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200">
                 <td className="p-3 font-mono">{m.plaka}</td>
                 <td className="p-3 font-mono">{m.daire_no}</td>
                 <td className="p-3 hidden sm:table-cell text-sm">{formatTarihSaat(m.baslangic_tarihi)} → {formatTarihSaat(m.bitis_tarihi)}</td>
-                <td className="p-3 hidden md:table-cell text-slate-600">{m.aciklama}</td>
+                <td className="p-3 hidden md:table-cell text-slate-600 dark:text-slate-400">{m.aciklama}</td>
                 {isYonetici && (
                   <td className="p-3 text-right">
                     <Button size="sm" variant="danger" onClick={() => sil(m.id)}>Sil</Button>
@@ -163,7 +163,7 @@ export default function MisafirAraclar() {
               </tr>
             ))}
             {list.length === 0 && (
-              <tr><td colSpan={5} className="p-6 text-center text-slate-500">Misafir kayıt yok.</td></tr>
+              <tr><td colSpan={5} className="p-6 text-center text-slate-500 dark:text-slate-400">Misafir kayıt yok.</td></tr>
             )}
           </tbody>
         </table>

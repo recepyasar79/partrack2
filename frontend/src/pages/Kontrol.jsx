@@ -11,8 +11,8 @@ import AuthImage from '../components/AuthImage';
 
 const DURUM_MAP = {
   'sıkıştırılıyor': { label: 'Sıkıştırılıyor', color: 'text-slate-600', bg: 'bg-slate-100' },
-  'OCR yapılıyor': { label: 'OCR yapılıyor', color: 'text-amber-600', bg: 'bg-amber-100' },
   'yükleniyor': { label: 'Yükleniyor', color: 'text-blue-600', bg: 'bg-blue-100' },
+  'OCR yapılıyor': { label: 'OCR yapılıyor', color: 'text-amber-600', bg: 'bg-amber-100' },
   'kontrol bekliyor': { label: 'Onay Bekliyor', color: 'text-purple-600', bg: 'bg-purple-100' },
   'onaylandı': { label: 'Onaylandı', color: 'text-green-600', bg: 'bg-green-100' },
   'hata': { label: 'Hata', color: 'text-red-600', bg: 'bg-red-100' },
@@ -23,35 +23,9 @@ export default function Kontrol() {
   const [bugun, setBugun] = useState([]);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [ocrDebug, setOcrDebug] = useState(() => {
-    try {
-      const qs = new URLSearchParams(window.location.search);
-      if (qs.get('ocrDebug') === '1') return true;
-      const v = localStorage.getItem('ocrDebug');
-      return v === '1';
-    } catch {
-      return false;
-    }
-  });
-  const [usePlateDetector, setUsePlateDetector] = useState(() => {
-    const v = localStorage.getItem('usePlateDetector');
-    return v === null ? true : v === '1';
-  });
   const [zoomImage, setZoomImage] = useState(null);
   const fileRef = useRef();
   const deletingRef = useRef(new Set());
-
-  function toggleDetector(v) {
-    setUsePlateDetector(v);
-    localStorage.setItem('usePlateDetector', v ? '1' : '0');
-  }
-
-  function toggleOcrDebug(v) {
-    setOcrDebug(v);
-    try {
-      localStorage.setItem('ocrDebug', v ? '1' : '0');
-    } catch {}
-  }
 
   async function loadBugun() {
     try {
@@ -80,80 +54,75 @@ export default function Kontrol() {
       durum: 'sıkıştırılıyor',
       plaka: '',
       ocrConfidence: null,
+      ocrStrategy: null,
+      ocrRawText: null,
+      ocrError: null,
       kontrolId: null,
       hata: null,
     }));
     setItems((prev) => [...yeni, ...prev]);
     setBusy(true);
 
-    for (const item of yeni) {
+    // Limit concurrent uploads — too many in flight on a slow mobile link
+    // saturates bandwidth and tail latency gets worse for everyone.
+    const MAX_CONCURRENT = 3;
+    let cursor = 0;
+    async function worker() {
+      while (cursor < yeni.length) {
+        const idx = cursor++;
+        const item = yeni[idx];
+        await processOne(item);
+      }
+    }
+
+    async function processOne(item) {
       try {
-        updateItem(item.id, { durum: 'OCR yapılıyor' });
-
-        let ocrPlaka = '';
-        let ocrConfidence = 0;
-        let ocrRaw = '';
-        let ocrError = null;
-        let ocrSource = null;
-        let ocrCandidates = null;
-        let ocrMatched = null;
-        let ocrOriginal = null;
-        let ocrVariant = null;
-        let ocrPsm = null;
-        try {
-          const { recognizePlate } = await import('../services/plateOCR');
-          const r = await recognizePlate(item.file, {
-            usePlateDetector,
-            onProgress: (msg) => updateItem(item.id, { ocrProgress: msg }),
-          });
-          ocrPlaka = r.guess;
-          ocrConfidence = r.confidence;
-          ocrRaw = r.raw;
-          ocrSource = r.source;
-          ocrCandidates = r.candidates || null;
-          ocrMatched = typeof r.matched === 'boolean' ? r.matched : null;
-          ocrOriginal = r.original || null;
-          ocrVariant = r.variant || null;
-          ocrPsm = r.psm || null;
-          if (r.error) ocrError = r.error;
-        } catch (ocrErr) {
-          console.warn('OCR hata:', ocrErr);
-          ocrError = ocrErr.message;
-        }
-
-        updateItem(item.id, {
-          durum: 'sıkıştırılıyor',
-          plaka: ocrPlaka,
-          ocrConfidence,
-          ocrRaw,
-          ocrError,
-          ocrSource,
-          ocrCandidates,
-          ocrMatched,
-          ocrOriginal,
-          ocrVariant,
-          ocrPsm,
-        });
-
+        // Compress aggressively — plates only need ~50px character height to
+        // OCR reliably, so a 1200px-wide photo at quality 0.7 is plenty.
+        // Going from 1.5MB to ~400KB triples upload speed on 3G/4G.
         const compressed = await imageCompression(item.file, {
-          maxSizeMB: 0.5,
-          maxWidthOrHeight: 1600,
+          maxSizeMB: 0.4,
+          maxWidthOrHeight: 1200,
           useWebWorker: true,
+          initialQuality: 0.7,
         });
 
-        updateItem(item.id, { durum: 'yükleniyor' });
+        updateItem(item.id, { durum: 'yükleniyor', uploadPct: 0 });
 
         const fd = new FormData();
         fd.append('foto', compressed, item.file.name);
-        if (ocrPlaka) fd.append('plaka', ocrPlaka);
         const { data } = await api.post('/kontroller/foto-upload', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
+          onUploadProgress: (e) => {
+            if (e.total) {
+              const pct = Math.round((e.loaded / e.total) * 100);
+              updateItem(item.id, { uploadPct: pct });
+            }
+          },
         });
-        updateItem(item.id, { durum: 'kontrol bekliyor', kontrolId: data.kontrol.id });
+
+        const ocr = data.ocr || {};
+        const plaka = data.kontrol?.plaka || ocr.plate || '';
+
+        updateItem(item.id, {
+          durum: 'kontrol bekliyor',
+          plaka,
+          ocrConfidence: ocr.confidence,
+          ocrStrategy: ocr.strategy,
+          ocrRawText: ocr.raw_text,
+          ocrError: ocr.error,
+          ocrMatched: ocr.matched_to_registered,
+          ocrElapsedMs: ocr.elapsed_ms,
+          kontrolId: data.kontrol?.id || null,
+        });
       } catch (err) {
         updateItem(item.id, { durum: 'hata', hata: apiError(err) });
       }
     }
+
+    const workers = Array.from({ length: Math.min(MAX_CONCURRENT, yeni.length) }, () => worker());
+    await Promise.all(workers);
+
     setBusy(false);
     loadBugun();
   }
@@ -201,9 +170,9 @@ export default function Kontrol() {
     <div className="p-4 max-w-3xl mx-auto flex flex-col gap-4">
       {/* Header */}
       <div>
-        <h1 className="text-2xl font-bold text-slate-900">Akşam Kontrolü</h1>
-        <p className="text-sm text-slate-600 mt-1">
-          Plakaya odaklanan net foto çek. OCR sonucunu kontrol et, yanlışsa düzelt ve onayla.
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Akşam Kontrolü</h1>
+        <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+          Plakaya odaklanan net foto çek. Sunucu OCR'ı çalışır, sonucu kontrol et ve onayla.
         </p>
       </div>
 
@@ -255,44 +224,21 @@ export default function Kontrol() {
         </Link>
       </div>
 
-      <label className="flex items-center gap-2 text-sm bg-white rounded-xl p-3 border border-slate-200">
-        <input
-          type="checkbox"
-          checked={usePlateDetector}
-          onChange={(e) => toggleDetector(e.target.checked)}
-          className="w-5 h-5"
-        />
-        <span>
-          <strong>Plaka tespit modu</strong> — açıkken foto'da önce plaka bandı bulunur ve sadece
-          o bölge OCR'a verilir (saf JS, ek download yok). Kapalıyken OCR tüm fotoğrafa uygulanır.
-        </span>
-      </label>
-
-      <label className="flex items-center gap-2 text-sm bg-white rounded-xl p-3 border border-slate-200">
-        <input
-          type="checkbox"
-          checked={ocrDebug}
-          onChange={(e) => toggleOcrDebug(e.target.checked)}
-          className="w-5 h-5"
-        />
-        <span>
-          <strong>OCR debug</strong> — ham OCR çıktısı, aday listesi, kaynak/PSM bilgisi görünür.
-          Geçici kullanım içindir.
-        </span>
-      </label>
-
       {/* Session Uploads */}
       {items.length > 0 && (
         <div className="flex flex-col gap-3">
-          <h2 className="text-lg font-bold text-slate-900 flex items-center gap-2">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
             <span className="w-2 h-2 bg-brand-500 rounded-full animate-pulse" />
             Bu oturumda yüklenenler ({items.length})
           </h2>
           <div className="grid gap-3">
             {items.map((it) => {
               const durumInfo = DURUM_MAP[it.durum] || DURUM_MAP['kontrol bekliyor'];
+              const confPct = typeof it.ocrConfidence === 'number'
+                ? Math.round(it.ocrConfidence * 100)
+                : null;
               return (
-                <div key={it.id} className="bg-white rounded-2xl shadow-sm border border-slate-100 p-4 flex gap-4 hover:shadow-md transition-shadow">
+                <div key={it.id} className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-4 flex gap-4 hover:shadow-md transition-shadow">
                   <button
                     type="button"
                     onClick={() => setZoomImage({ url: it.previewUrl, plaka: it.plaka })}
@@ -306,119 +252,56 @@ export default function Kontrol() {
                     />
                   </button>
                   <div className="flex-1 flex flex-col gap-3">
-                    {/* Status Badge */}
-                    <div className="flex items-center gap-2">
+                    <div className="flex items-center flex-wrap gap-2">
                       <span className={`inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium ${durumInfo.bg} ${durumInfo.color}`}>
                         {it.durum === 'yükleniyor' && <LoadingSpinner className="w-3 h-3" />}
                         {it.durum === 'OCR yapılıyor' && <ArrowPathIcon className="w-3 h-3 animate-spin" />}
                         {it.durum === 'onaylandı' && <CheckIcon className="w-3 h-3" />}
                         {it.durum === 'hata' && <XMarkIcon className="w-3 h-3" />}
                         {durumInfo.label}
+                        {it.durum === 'yükleniyor' && typeof it.uploadPct === 'number' && (
+                          <span className="ml-1 tabular-nums">%{it.uploadPct}</span>
+                        )}
                       </span>
-                      {it.ocrConfidence != null && (
-                        <span className="text-xs text-slate-400">
-                          OCR: %{Math.round(it.ocrConfidence)}
+                      {confPct != null && (
+                        <span className={`text-xs px-1.5 py-0.5 rounded ${
+                          confPct >= 70 ? 'bg-green-50 text-green-700 dark:bg-green-900/40 dark:text-green-300' :
+                          confPct >= 40 ? 'bg-amber-50 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300' :
+                          'bg-red-50 text-red-700 dark:bg-red-900/40 dark:text-red-300'
+                        }`}>
+                          OCR güven: %{confPct}
                         </span>
                       )}
-                      {it.ocrSource && (
-                        <span className={`text-xs px-1.5 py-0.5 rounded ${
-                          it.ocrSource === 'detector' ? 'bg-emerald-50 text-emerald-700' :
-                          it.ocrSource === 'fallback' ? 'bg-slate-100 text-slate-500' :
-                          'bg-amber-50 text-amber-700'
-                        }`}>
-                          {it.ocrSource === 'detector' ? '🎯 Plaka tespit' :
-                           it.ocrSource === 'fallback' ? 'tüm foto' : 'detector hata'}
+                      {it.ocrMatched && (
+                        <span className="text-xs px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 dark:bg-blue-900/40 dark:text-blue-300">
+                          Kayıtlı plakaya eşlendi
+                        </span>
+                      )}
+                      {it.ocrStrategy && (
+                        <span className="text-xs text-slate-400 dark:text-slate-500" title={`Strateji: ${it.ocrStrategy}`}>
+                          {it.ocrStrategy.split('/')[0]}
                         </span>
                       )}
                     </div>
 
-                    {it.durum === 'OCR yapılıyor' && it.ocrProgress && (
-                      <div className="text-xs text-slate-500 italic">→ {it.ocrProgress}</div>
-                    )}
-                    
-                    {/* OCR Debug */}
-                    {ocrDebug && (
-                      <details className="text-xs bg-slate-50 rounded-lg p-2 border border-slate-200">
-                        <summary className="cursor-pointer text-slate-600 font-medium">
-                          OCR debug (raw / candidates)
-                        </summary>
-                        <div className="mt-2 grid gap-2">
-                          <div className="flex flex-wrap gap-2 text-[11px]">
-                            {it.ocrMatched != null && (
-                              <span className={`px-2 py-0.5 rounded-full ${it.ocrMatched ? 'bg-emerald-50 text-emerald-700' : 'bg-amber-50 text-amber-800'}`}>
-                                matched: {String(it.ocrMatched)}
-                              </span>
-                            )}
-                            {it.ocrPsm && (
-                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                                PSM: {it.ocrPsm}
-                              </span>
-                            )}
-                            {it.ocrVariant && (
-                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                                variant: {it.ocrVariant}
-                              </span>
-                            )}
-                            {it.ocrSource && (
-                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                                source: {it.ocrSource}
-                              </span>
-                            )}
-                            {typeof it.ocrConfidence === 'number' && (
-                              <span className="px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                                conf: %{Math.round(it.ocrConfidence)}
-                              </span>
-                            )}
-                          </div>
-
-                          {it.ocrOriginal && (
-                            <div className="text-[11px] text-slate-600">
-                              original: <span className="font-mono">{it.ocrOriginal}</span>
-                            </div>
-                          )}
-
-                          <div>
-                            <div className="text-[11px] text-slate-600 font-medium">raw</div>
-                            <pre className="whitespace-pre-wrap break-all mt-1 text-slate-500 max-h-40 overflow-auto">
-{it.ocrRaw || '—'}
-                            </pre>
-                          </div>
-
-                          <div>
-                            <div className="text-[11px] text-slate-600 font-medium">candidates (top 5)</div>
-                            {Array.isArray(it.ocrCandidates) && it.ocrCandidates.length > 0 ? (
-                              <div className="mt-1 grid gap-1">
-                                {it.ocrCandidates.map((c, idx) => (
-                                  <div key={idx} className="font-mono text-[11px] text-slate-600 flex flex-wrap gap-2">
-                                    <span className="px-1.5 py-0.5 rounded bg-white border border-slate-200">{c.plate}</span>
-                                    <span className="text-slate-400">kind={c.kind}</span>
-                                    <span className="text-slate-400">src={c.source}</span>
-                                    <span className="text-slate-400">len={c.length}</span>
-                                    <span className="text-slate-400">extra={c.extraChars}</span>
-                                  </div>
-                                ))}
-                              </div>
-                            ) : (
-                              <div className="mt-1 text-[11px] text-slate-400">—</div>
-                            )}
-                          </div>
-                        </div>
-                      </details>
-                    )}
-                    
                     {it.ocrError && (
-                      <div className="text-xs text-amber-600 bg-amber-50 rounded-lg px-2 py-1">
-                        ⚠️ OCR hata: {it.ocrError}
+                      <div className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 rounded-lg px-2 py-1">
+                        ⚠️ {it.ocrError}
                       </div>
                     )}
-                    
+
+                    {it.ocrRawText && !it.plaka && (
+                      <div className="text-xs text-slate-500 dark:text-slate-400">
+                        Ham OCR: <span className="font-mono">{it.ocrRawText}</span>
+                      </div>
+                    )}
+
                     {it.hata && (
-                      <div className="text-sm text-red-600 bg-red-50 rounded-lg px-3 py-2">
+                      <div className="text-sm text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-900/30 rounded-lg px-3 py-2">
                         {it.hata}
                       </div>
                     )}
-                    
-                    {/* Actions */}
+
                     <div className="flex gap-2 items-end mt-auto">
                       <Input
                         value={it.plaka}
@@ -452,22 +335,22 @@ export default function Kontrol() {
 
       {/* Today's Uploads */}
       <div className="flex flex-col gap-3 mt-2">
-        <h2 className="text-lg font-bold text-slate-900">
+        <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
           Bugünün tüm yüklemeleri ({bugun.length})
         </h2>
-        <div className="bg-white rounded-2xl shadow-sm border border-slate-100 overflow-hidden">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
           <table className="w-full text-base">
             <thead>
-              <tr className="bg-gradient-to-r from-slate-50 to-slate-100 text-left">
-                <th className="p-4 font-semibold text-slate-700 w-20">Foto</th>
-                <th className="p-4 font-semibold text-slate-700">Plaka</th>
-                <th className="p-4 font-semibold text-slate-700 hidden sm:table-cell">Zaman</th>
+              <tr className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800 text-left">
+                <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 w-20">Foto</th>
+                <th className="p-4 font-semibold text-slate-700 dark:text-slate-200">Plaka</th>
+                <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 hidden sm:table-cell">Zaman</th>
                 <th className="p-4"></th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-slate-100">
+            <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {bugun.map((k) => (
-                <tr key={k.id} className="hover:bg-slate-50 transition-colors">
+                <tr key={k.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                   <td className="p-2">
                     {k.foto_url ? (
                       <button
@@ -483,17 +366,17 @@ export default function Kontrol() {
                         />
                       </button>
                     ) : (
-                      <div className="w-16 h-16 rounded-lg bg-slate-100 flex items-center justify-center text-slate-300">
+                      <div className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-300 dark:text-slate-600">
                         <CameraIcon className="w-5 h-5" />
                       </div>
                     )}
                   </td>
                   <td className="p-4">
-                    <span className={`font-mono font-semibold ${k.plaka ? 'text-brand-700' : 'text-slate-400'}`}>
+                    <span className={`font-mono font-semibold ${k.plaka ? 'text-brand-700 dark:text-brand-300' : 'text-slate-400 dark:text-slate-500'}`}>
                       {k.plaka || '—'}
                     </span>
                   </td>
-                  <td className="p-4 hidden sm:table-cell text-xs text-slate-500">
+                  <td className="p-4 hidden sm:table-cell text-xs text-slate-500 dark:text-slate-400">
                     {new Date(k.yukleme_zamani).toLocaleTimeString('tr-TR')}
                   </td>
                   <td className="p-4 text-right">
@@ -506,7 +389,7 @@ export default function Kontrol() {
               {bugun.length === 0 && (
                 <tr>
                   <td colSpan={4} className="p-8 text-center">
-                    <div className="flex flex-col items-center gap-2 text-slate-400">
+                    <div className="flex flex-col items-center gap-2 text-slate-400 dark:text-slate-500">
                       <CameraIcon className="w-8 h-8" />
                       <p>Henüz yükleme yok.</p>
                     </div>
@@ -518,11 +401,10 @@ export default function Kontrol() {
         </div>
       </div>
 
-      {/* Loading Overlay */}
       {busy && (
         <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-900/90 backdrop-blur-sm text-white text-sm px-5 py-3 rounded-full shadow-xl flex items-center gap-2 animate-fade-in">
           <LoadingSpinner className="w-5 h-5" />
-          Yükleniyor…
+          OCR çalışıyor…
         </div>
       )}
 

@@ -1,5 +1,14 @@
-flask==3.0.0
-opencv-python-headless==4.9.0.80
-pytesseract==0.3.10
-numpy==1.26.3
-Werkzeug==3.0.1
+fastapi>=0.115
+uvicorn[standard]>=0.32
+python-multipart>=0.0.20
+opencv-python-headless>=4.10
+numpy>=1.26
+# python-bidi 0.5/0.6 versions need Rust to build from source. 0.6.7 has
+# prebuilt wheels for CPython 3.13/3.14; pin to it. 0.4.2 is pure-Python but
+# uses an older API that easyocr 1.7.2+ no longer supports.
+python-bidi==0.6.7
+easyocr>=1.7.2
+# torch is required by easyocr. We let pip pick the latest version compatible
+# with the active Python (older pins broke on 3.14).
+torch
+torchvision

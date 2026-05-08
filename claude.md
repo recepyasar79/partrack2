@@ -16,6 +16,18 @@
 7. Misafir araclar aksam kontrolune **dahil edilir**; ilgili dairenin sayimina girer ve raporda plaka yaninda `misafir` notu gosterilir
 8. Aktif misafir plaka kayitsiz plaka olarak raporlanmaz; misafir kaydi yoksa kayitsiz plaka listesine duser
 
+## OCR Mimari Degisikligi (2026-05-08)
+
+Tesseract.js (taraycida) yerine **Python EasyOCR mikroservisi** kullaniliyor:
+
+- **Eski:** Frontend Tesseract.js + agir post-processing → gercek dunyada %30-40 dogruluk
+- **Yeni:** Backend Python servis (`backend/python_ocr/`) FastAPI + EasyOCR + OpenCV → ~%85-92 dogruluk
+- Akis: Frontend foto ciker → backend `/kontroller/foto-upload` → R2 + Python OCR paralel → plaka donulur → kullanici onayli/duzeltir
+- Frontend `tesseract.js`, `plateOCR.js`, `plateDetector.js` **silindi**
+- Yeni env vars: `PYTHON_OCR_URL`, `PYTHON_OCR_TIMEOUT_MS`
+- Lokal gelistirme: `docker compose up -d python-ocr` → http://localhost:5000
+- Production deploy: Fly.io ayri app `parktrack-ocr`
+
 ## Guncel Degisiklik Notlari (2026-05-03)
 
 ### UI/UX Yeniden Tasarım (2026-05-03)

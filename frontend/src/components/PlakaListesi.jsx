@@ -38,12 +38,12 @@ export default function PlakaListesi({ daireId, araclar, onChanged, canEdit }) {
   }
 
   return (
-    <div className="bg-white rounded-2xl shadow p-4 flex flex-col gap-3">
-      <h3 className="font-semibold">Tanımlı Araçlar</h3>
+    <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-4 flex flex-col gap-3">
+      <h3 className="font-semibold text-slate-900 dark:text-slate-100">Tanımlı Araçlar</h3>
       {araclar?.length ? (
-        <ul className="divide-y divide-slate-100">
+        <ul className="divide-y divide-slate-100 dark:divide-slate-800">
           {araclar.map((a) => (
-            <li key={a.id} className="flex items-center justify-between py-2">
+            <li key={a.id} className="flex items-center justify-between py-2 text-slate-800 dark:text-slate-200">
               <span className="font-mono">{a.plaka}</span>
               {canEdit && (
                 <Button size="sm" variant="danger" onClick={() => sil(a.id)}>Sil</Button>
@@ -52,7 +52,7 @@ export default function PlakaListesi({ daireId, araclar, onChanged, canEdit }) {
           ))}
         </ul>
       ) : (
-        <p className="text-sm text-slate-500">Henüz araç tanımlanmamış.</p>
+        <p className="text-sm text-slate-500 dark:text-slate-400">Henüz araç tanımlanmamış.</p>
       )}
       {canEdit && (
         <div className="flex gap-2">

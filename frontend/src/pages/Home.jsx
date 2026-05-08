@@ -73,15 +73,15 @@ export default function Home() {
             <span className="text-2xl">🅿️</span>
           </div>
           <div>
-            <h1 className="text-2xl font-bold text-slate-900">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
               Hoş geldiniz
             </h1>
-            <p className="text-sm text-slate-600">
+            <p className="text-sm text-slate-600 dark:text-slate-400">
               {user?.kullanici_adi} · {user?.rol === 'yonetici' ? 'Yönetici' : 'Güvenlik'}
             </p>
           </div>
         </div>
-        <p className="text-slate-500 text-sm">
+        <p className="text-slate-500 dark:text-slate-400 text-sm">
           Site otopark yönetim sistemine hoş geldiniz. Yukarıdaki kartlardan işlem yapabilirsiniz.
         </p>
       </div>
@@ -92,21 +92,21 @@ export default function Home() {
           <Link
             key={card.to}
             to={card.to}
-            className="group bg-white rounded-2xl shadow-sm border border-slate-100 p-5 hover:shadow-xl hover:-translate-y-1 transition-all duration-300 animate-slide-up"
+            className="group bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-5 hover:shadow-xl dark:hover:shadow-black/40 hover:-translate-y-1 transition-all duration-300 animate-slide-up"
             style={{ animationDelay: `${index * 50}ms` }}
           >
             <div className="flex items-start gap-4">
-              <div className={`${card.iconBg} ${card.iconColor} w-14 h-14 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
+              <div className={`${card.iconBg} ${card.iconColor} dark:bg-opacity-20 w-14 h-14 rounded-2xl flex items-center justify-center group-hover:scale-110 transition-transform duration-300`}>
                 <card.Icon className="w-7 h-7" />
               </div>
               <div className="flex-1 min-w-0">
                 <div className="flex items-center gap-2">
-                  <h3 className="font-bold text-lg text-slate-900 group-hover:text-brand-600 transition-colors">
+                  <h3 className="font-bold text-lg text-slate-900 dark:text-slate-100 group-hover:text-brand-600 dark:group-hover:text-brand-400 transition-colors">
                     {card.title}
                   </h3>
-                  <ArrowRightIcon className="w-4 h-4 text-slate-300 group-hover:text-brand-500 group-hover:translate-x-1 transition-all" />
+                  <ArrowRightIcon className="w-4 h-4 text-slate-300 dark:text-slate-600 group-hover:text-brand-500 group-hover:translate-x-1 transition-all" />
                 </div>
-                <p className="text-sm text-slate-500 mt-0.5">{card.desc}</p>
+                <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{card.desc}</p>
               </div>
             </div>
             
@@ -118,13 +118,13 @@ export default function Home() {
 
       {/* Info Cards */}
       <div className="mt-6 grid grid-cols-2 gap-3">
-        <div className="bg-gradient-to-br from-brand-50 to-brand-100 rounded-xl p-4 border border-brand-100">
-          <div className="text-2xl font-bold text-brand-700">136</div>
-          <div className="text-xs text-brand-600">Toplam Daire</div>
+        <div className="bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-900/40 dark:to-brand-800/40 rounded-xl p-4 border border-brand-100 dark:border-brand-800">
+          <div className="text-2xl font-bold text-brand-700 dark:text-brand-300">136</div>
+          <div className="text-xs text-brand-600 dark:text-brand-400">Toplam Daire</div>
         </div>
-        <div className="bg-gradient-to-br from-accent-50 to-accent-100 rounded-xl p-4 border border-accent-100">
-          <div className="text-2xl font-bold text-accent-700">4</div>
-          <div className="text-xs text-accent-600">Blok Sayısı</div>
+        <div className="bg-gradient-to-br from-accent-50 to-accent-100 dark:from-accent-900/40 dark:to-accent-800/40 rounded-xl p-4 border border-accent-100 dark:border-accent-800">
+          <div className="text-2xl font-bold text-accent-700 dark:text-accent-300">4</div>
+          <div className="text-xs text-accent-600 dark:text-accent-400">Blok Sayısı</div>
         </div>
       </div>
     </div>

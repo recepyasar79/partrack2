@@ -8,7 +8,7 @@ const { buildUpload, isR2Configured } = require('../services/storage');
 const { todayTR } = require('../utils/timezone');
 const { normalizePlaka } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
-const axios = require('axios');
+const { recognizePlate } = require('../services/pythonOcr');
 
 const router = express.Router();
 const storage = buildUpload();
@@ -88,39 +88,38 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
     if (err) return next(err);
     if (!req.file) return res.status(400).json({ error: 'Dosya alınamadı.' });
 
-    let plaka = '';
-    
-    // Python OCR servisine istek at
-    try {
-      const FormData = require('form-data');
-      const form = new FormData();
-      
-      // multer disk storage kullanıyorsa dosyayı oku
-      if (req.file.buffer) {
-        form.append('file', req.file.buffer, req.file.originalname || 'plate.jpg');
-      } else {
-        const fs = require('fs');
-        form.append('file', fs.createReadStream(req.file.path), req.file.originalname || 'plate.jpg');
-      }
-      
-      const ocrResponse = await axios.post(
-        `${process.env.PYTHON_OCR_URL || 'http://python-ocr:5000'}/ocr`,
-        form,
-        { headers: { ...form.getHeaders(), 'Content-Type': 'multipart/form-data' } }
-      );
-      
-      if (ocrResponse.data?.plate) {
-        plaka = normalizePlaka(ocrResponse.data.plate);
-        console.log(`Python OCR result: ${ocrResponse.data.plate} → normalized: ${plaka}`);
-      }
-    } catch (e) {
-      console.warn('Python OCR failed, falling back to Tesseract.js:', e.message);
-      // Fallback: use frontend OCR result
-      const rawOcrPlaka = (req.body.plaka || '').trim();
-      plaka = normalizePlaka(rawOcrPlaka);
+    const buffer = req.file.buffer;
+    const originalName = req.file.originalname || 'plate.jpg';
+    const mimeType = req.file.mimetype || 'image/jpeg';
+
+    // Run OCR and storage upload in parallel — they don't depend on each other
+    // and combined network time is dominated by the slower of the two.
+    const [ocrResult, savedFile] = await Promise.allSettled([
+      recognizePlate(buffer, { filename: originalName, mimeType }),
+      storage.save(buffer, originalName, mimeType),
+    ]);
+
+    if (savedFile.status !== 'fulfilled') {
+      console.error('[kontroller] storage save failed:', savedFile.reason);
+      return res.status(500).json({ error: 'Dosya kaydedilemedi.' });
     }
 
-    // OCR çıktısını veritabanındaki plakalarla otomatik eşleştir
+    let plaka = '';
+    let ocrInfo = { ok: false, error: 'OCR not run' };
+
+    if (ocrResult.status === 'fulfilled') {
+      ocrInfo = ocrResult.value;
+      if (ocrInfo.ok && ocrInfo.plate) {
+        plaka = normalizePlaka(ocrInfo.plate);
+      } else if (!ocrInfo.ok) {
+        console.warn('[kontroller] OCR failed:', ocrInfo.error);
+      }
+    } else {
+      console.warn('[kontroller] OCR threw:', ocrResult.reason);
+      ocrInfo = { ok: false, error: String(ocrResult.reason?.message || ocrResult.reason) };
+    }
+
+    // Fuzzy-match against registered plates to fix character confusions.
     let matchResult = null;
     if (plaka && plaka.length >= 5) {
       try {
@@ -129,27 +128,36 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
           plaka = matchResult.corrected;
         }
       } catch (e) {
-        console.warn('OCR correction failed:', e.message);
+        console.warn('[kontroller] OCR correction failed:', e.message);
       }
     }
 
-    let foto_url;
-    if (storage.mode === 'r2') {
-      foto_url = storage.publicUrl(req.file.key);
-    } else {
-      foto_url = storage.publicUrl(req.file.filename);
+    try {
+      const [row] = await db('gunluk_kontroller')
+        .insert({
+          kontrol_tarihi: todayTR(),
+          plaka: plaka || '',
+          foto_url: savedFile.value.url,
+          yukleyen_user_id: req.user?.id || null,
+        })
+        .returning('*');
+      res.status(201).json({
+        kontrol: row,
+        ocr: {
+          plate: ocrInfo.plate || '',
+          confidence: ocrInfo.confidence ?? null,
+          strategy: ocrInfo.strategy || null,
+          elapsed_ms: ocrInfo.elapsedMs ?? null,
+          raw_text: ocrInfo.rawText || '',
+          ok: ocrInfo.ok,
+          error: ocrInfo.error || null,
+          matched_to_registered: matchResult?.corrected ? matchResult.corrected : null,
+          match_score: matchResult?.score ?? null,
+        },
+      });
+    } catch (insertErr) {
+      next(insertErr);
     }
-
-    db('gunluk_kontroller')
-      .insert({
-        kontrol_tarihi: todayTR(),
-        plaka: plaka || '',
-        foto_url,
-        yukleyen_user_id: req.user?.id || null,
-      })
-      .returning('*')
-      .then(([row]) => res.status(201).json({ kontrol: row }))
-      .catch(next);
   });
 });
 
@@ -160,7 +168,8 @@ router.patch('/:id/plaka', authRequired, async (req, res) => {
   const eski = await db('gunluk_kontroller').where({ id }).first();
   if (!eski) return res.status(404).json({ error: 'Kontrol bulunamadı.' });
 
-  // Eski plaka ile yeni plaka farklıysa öğren
+  // When the user manually corrects the plate, remember the correction so
+  // the next photo with similar OCR output gets fixed automatically.
   if (eski.plaka && eski.plaka !== newPlaka) {
     try {
       await recordLearning(eski.plaka, newPlaka);

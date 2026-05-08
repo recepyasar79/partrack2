@@ -63,12 +63,12 @@ export default function Kullanicilar() {
   return (
     <div className="p-4 max-w-3xl mx-auto flex flex-col gap-4">
       <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Kullanıcılar</h1>
+        <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Kullanıcılar</h1>
         <Button onClick={() => setShowForm((s) => !s)}>{showForm ? 'Kapat' : '+ Yeni'}</Button>
       </div>
 
       {showForm && (
-        <div className="bg-white rounded-2xl shadow p-4 flex flex-col gap-3">
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-4 flex flex-col gap-3">
           <Input
             label="Kullanıcı adı"
             value={form.kullanici_adi}
@@ -81,11 +81,11 @@ export default function Kullanicilar() {
             onChange={(e) => setForm({ ...form, sifre: e.target.value })}
           />
           <div className="flex flex-col gap-1">
-            <label className="text-sm font-medium">Rol</label>
+            <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Rol</label>
             <select
               value={form.rol}
               onChange={(e) => setForm({ ...form, rol: e.target.value })}
-              className="min-h-[44px] rounded-lg border border-slate-300 px-3"
+              className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-3"
             >
               <option value="guvenlik">Güvenlik</option>
               <option value="yonetici">Yönetici</option>
@@ -95,22 +95,22 @@ export default function Kullanicilar() {
         </div>
       )}
 
-      <div className="bg-white rounded-2xl shadow overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 overflow-hidden border border-transparent dark:border-slate-800">
         <table className="w-full text-base">
-          <thead className="bg-slate-100 text-left">
+          <thead className="bg-slate-100 dark:bg-slate-800 text-left">
             <tr>
-              <th className="p-3">Kullanıcı</th>
-              <th className="p-3">Rol</th>
-              <th className="p-3 hidden sm:table-cell">Son giriş</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200">Kullanıcı</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200">Rol</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200 hidden sm:table-cell">Son giriş</th>
               <th className="p-3"></th>
             </tr>
           </thead>
           <tbody>
             {list.map((u) => (
-              <tr key={u.id} className={`border-t border-slate-100 ${!u.aktif ? 'opacity-50' : ''}`}>
+              <tr key={u.id} className={`border-t border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200 ${!u.aktif ? 'opacity-50' : ''}`}>
                 <td className="p-3 font-medium">{u.kullanici_adi}</td>
                 <td className="p-3">{u.rol === 'yonetici' ? 'Yönetici' : 'Güvenlik'}</td>
-                <td className="p-3 hidden sm:table-cell text-slate-600 text-xs">
+                <td className="p-3 hidden sm:table-cell text-slate-600 dark:text-slate-400 text-xs">
                   {u.son_giris ? new Date(u.son_giris).toLocaleString('tr-TR') : '—'}
                 </td>
                 <td className="p-3 text-right flex flex-wrap gap-2 justify-end">
@@ -127,8 +127,8 @@ export default function Kullanicilar() {
 
       {resetTarget && (
         <div className="fixed inset-0 z-50 bg-black/50 flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl shadow-xl w-full max-w-md p-5 flex flex-col gap-3">
-            <h2 className="text-lg font-bold">{resetTarget.kullanici_adi} — Şifre Sıfırla</h2>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md p-5 flex flex-col gap-3 border border-transparent dark:border-slate-800">
+            <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">{resetTarget.kullanici_adi} — Şifre Sıfırla</h2>
             <Input label="Yeni şifre" type="password" value={resetSifre} onChange={(e) => setResetSifre(e.target.value)} />
             <div className="flex gap-2 justify-end">
               <Button variant="secondary" onClick={() => { setResetTarget(null); setResetSifre(''); }}>İptal</Button>

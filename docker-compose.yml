@@ -1,0 +1,28 @@
+# Local development: run the Python OCR microservice in Docker so you don't
+# need a Python toolchain on your laptop. The Node.js backend stays on the host
+# (npm run dev) and reaches the OCR service at http://localhost:5000.
+#
+#   docker compose up -d python-ocr     # start OCR service in background
+#   docker compose logs -f python-ocr   # tail logs
+#   docker compose down                 # stop
+#
+# First start downloads ~70MB of EasyOCR model weights and builds a ~1.2GB
+# image. Subsequent starts are fast.
+
+services:
+  python-ocr:
+    build:
+      context: ./backend/python_ocr
+      dockerfile: Dockerfile
+    container_name: parktrack-ocr
+    ports:
+      - "5000:5000"
+    environment:
+      LOG_LEVEL: INFO
+      EASYOCR_GPU: "0"
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

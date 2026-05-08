@@ -38,21 +38,21 @@ export default function DaireForm({ initial = {}, onSubmit, busy }) {
   }
 
   return (
-    <form onSubmit={handle} className="flex flex-col gap-3 bg-white rounded-2xl shadow p-4">
+    <form onSubmit={handle} className="flex flex-col gap-3 bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-4">
       {!isEdit && (
         <div className="flex flex-col gap-1">
-          <label className="text-sm font-medium text-slate-700">Daire</label>
+          <label className="text-sm font-medium text-slate-700 dark:text-slate-200">Daire</label>
           <select
             value={daire_no}
             onChange={(e) => setDaireNo(e.target.value)}
-            className="min-h-[44px] rounded-lg border border-slate-300 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200"
+            className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800"
           >
             <option value="">Daire seçin…</option>
             {tumDaireler().map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>
-          {errors.daire_no && <span className="text-sm text-red-600">{errors.daire_no}</span>}
+          {errors.daire_no && <span className="text-sm text-red-600 dark:text-red-400">{errors.daire_no}</span>}
         </div>
       )}
       <Input
@@ -70,7 +70,7 @@ export default function DaireForm({ initial = {}, onSubmit, busy }) {
         error={errors.sahip_tel}
       />
 
-      <div className="flex flex-col gap-2 bg-slate-50 rounded-lg p-3 border border-slate-200">
+      <div className="flex flex-col gap-2 bg-slate-50 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
         <label className="flex items-start gap-2 text-sm">
           <input
             type="checkbox"
@@ -84,22 +84,22 @@ export default function DaireForm({ initial = {}, onSubmit, busy }) {
             <button
               type="button"
               onClick={() => setShowKvkkText((s) => !s)}
-              className="text-blue-600 underline"
+              className="text-blue-600 dark:text-blue-400 underline"
             >
               {showKvkkText ? 'gizle' : 'metni göster'}
             </button>
           </span>
         </label>
         {showKvkkText && (
-          <p className="text-xs text-slate-600 whitespace-pre-line">
+          <p className="text-xs text-slate-600 dark:text-slate-300 whitespace-pre-line">
             {KVKK_METNI}
             {' '}
-            <a href="/kvkk" target="_blank" rel="noreferrer" className="text-blue-600 underline">
+            <a href="/kvkk" target="_blank" rel="noreferrer" className="text-blue-600 dark:text-blue-400 underline">
               Tam metni okuyun →
             </a>
           </p>
         )}
-        {errors.kvkk_riza && <span className="text-sm text-red-600">{errors.kvkk_riza}</span>}
+        {errors.kvkk_riza && <span className="text-sm text-red-600 dark:text-red-400">{errors.kvkk_riza}</span>}
       </div>
 
       <label className="flex items-start gap-2 text-sm bg-slate-50 rounded-lg p-3 border border-slate-200">
