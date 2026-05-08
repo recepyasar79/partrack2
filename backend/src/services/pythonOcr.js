@@ -59,7 +59,28 @@ async function recognizePlate(buffer, { filename = 'plate.jpg', mimeType = 'imag
     };
   } catch (err) {
     const status = err.response?.status;
-    const detail = err.response?.data?.detail || err.response?.data?.error || err.message;
+    const detail =
+      err.response?.data?.detail ||
+      err.response?.data?.error ||
+      err.message ||
+      err.code ||
+      err.cause?.message ||
+      err.cause?.code ||
+      err.name ||
+      'unknown';
+    // Surface the real error in server logs so we don't end up debugging
+    // "Python OCR unreachable:" with no detail. Includes axios error code
+    // (ECONNREFUSED, ENOTFOUND, ETIMEDOUT) which axios sometimes puts on
+    // err.code rather than err.message.
+    console.error('[pythonOcr] request failed:', {
+      status,
+      code: err.code,
+      cause_code: err.cause?.code,
+      cause_message: err.cause?.message,
+      message: err.message,
+      name: err.name,
+      url,
+    });
     return {
       ok: false,
       plate: '',
