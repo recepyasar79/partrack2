@@ -63,9 +63,12 @@ export default function Kontrol() {
     setItems((prev) => [...yeni, ...prev]);
     setBusy(true);
 
-    // Limit concurrent uploads — too many in flight on a slow mobile link
-    // saturates bandwidth and tail latency gets worse for everyone.
-    const MAX_CONCURRENT = 3;
+    // Serial upload. Python OCR runs as a single uvicorn worker so multiple
+    // in-flight requests just queue server-side — and the queued ones can
+    // exceed the per-request timeout when the cold-started machine is also
+    // loading model weights. Sending one at a time keeps each request inside
+    // its timeout budget; the user still sees progress per file.
+    const MAX_CONCURRENT = 1;
     let cursor = 0;
     async function worker() {
       while (cursor < yeni.length) {
