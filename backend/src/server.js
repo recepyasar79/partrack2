@@ -20,6 +20,7 @@ const auditRoutes = require('./routes/auditLog');
 const kontrolRoutes = require('./routes/kontroller');
 const { router: analizRoutes } = require('./routes/analiz');
 const bildirimRoutes = require('./routes/bildirimler');
+const ocrStatsRoutes = require('./routes/ocrStats');
 const { isR2Configured } = require('./services/storage');
 
 const { notFound, errorHandler } = require('./middleware/errorHandler');
@@ -73,6 +74,7 @@ app.use('/api/audit-log', auditRoutes);
 app.use('/api/kontroller', kontrolRoutes);
 app.use('/api/kontroller', analizRoutes);
 app.use('/api/bildirimler', bildirimRoutes);
+app.use('/api/ocr-stats', ocrStatsRoutes);
 
 if (!isR2Configured()) {
   const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads'));

@@ -1,0 +1,153 @@
+const {
+  levenshteinDistance,
+  similarityScore,
+  charDiffs,
+  substitutionBonus,
+} = require('../src/services/plateMatcher');
+
+describe('plateMatcher pure helpers', () => {
+  test('levenshteinDistance temel', () => {
+    expect(levenshteinDistance('', '')).toBe(0);
+    expect(levenshteinDistance('abc', 'abc')).toBe(0);
+    expect(levenshteinDistance('abc', 'abd')).toBe(1);
+    expect(levenshteinDistance('abc', 'abcd')).toBe(1);
+    expect(levenshteinDistance('kitten', 'sitting')).toBe(3);
+  });
+
+  test('similarityScore yüzde', () => {
+    expect(similarityScore('34ABC123', '34ABC123')).toBe(100);
+    expect(similarityScore('', 'foo')).toBe(0);
+    expect(similarityScore('34ABC123', '34ABC124')).toBe(88); // 1/8 fark
+  });
+
+  test('charDiffs aynı uzunluk pozisyon başına farklar', () => {
+    expect(charDiffs('34MN1089', '34MNL089')).toEqual([
+      { from: '1', to: 'L', pos: 4 },
+    ]);
+    expect(charDiffs('34ABC123', '34ABC123')).toEqual([]);
+    expect(charDiffs('AB', 'ABC')).toEqual([]); // farklı uzunluk → boş
+    expect(charDiffs('', 'X')).toEqual([]);
+  });
+
+  describe('substitutionBonus', () => {
+    test('boş map → 0', () => {
+      expect(substitutionBonus('34A', '34B', new Map())).toBe(0);
+      expect(substitutionBonus('34A', '34B', null)).toBe(0);
+    });
+
+    test('aynı plaka → 0 (diff yok)', () => {
+      const map = new Map([['1>L', 100]]);
+      expect(substitutionBonus('34ABC123', '34ABC123', map)).toBe(0);
+    });
+
+    test('uygun substitution bonus üretir', () => {
+      const map = new Map([['1>L', 50]]);
+      const bonus = substitutionBonus('34MN1089', '34MNL089', map);
+      expect(bonus).toBeGreaterThan(0);
+      expect(bonus).toBeLessThanOrEqual(8); // SUBSTITUTION_MAX_BONUS
+    });
+
+    test('birden fazla diff toplam ağırlık', () => {
+      // Yön önemli: '1>L' = OCR "1" okudu kullanıcı "L" düzeltti.
+      // Test case '341S' → '34L5' iki diff üretir: 1→L ve S→5.
+      const map = new Map([
+        ['1>L', 100],
+        ['S>5', 100],
+      ]);
+      const single = substitutionBonus('34A1', '34AL', map);
+      const double = substitutionBonus('341S', '34L5', map);
+      // log10(101)*1.5 ≈ 3.0 single; 2 diff → ~6.0; cap 8 → ~6.0
+      expect(double).toBeGreaterThan(single);
+      expect(double).toBeCloseTo(2 * single, 1);
+    });
+
+    test('cap çalışıyor', () => {
+      const map = new Map();
+      for (const ch of 'ABCDEFGH') map.set(`${ch}>X`, 1_000_000);
+      const bonus = substitutionBonus('ABCDEFGH', 'XXXXXXXX', map);
+      expect(bonus).toBe(8); // SUBSTITUTION_MAX_BONUS
+    });
+
+    test('düşük count → düşük bonus', () => {
+      const low = new Map([['1>L', 1]]);
+      const high = new Map([['1>L', 100]]);
+      const bLow = substitutionBonus('34A1', '34AL', low);
+      const bHigh = substitutionBonus('34A1', '34AL', high);
+      expect(bHigh).toBeGreaterThan(bLow);
+    });
+  });
+});
+
+const DB_AVAILABLE = !!(process.env.DATABASE_URL_TEST || process.env.DATABASE_URL);
+const describeIfDb = DB_AVAILABLE ? describe : describe.skip;
+
+describeIfDb('plateMatcher DB integration', () => {
+  const db = require('../src/db');
+  const {
+    recordLearning,
+    recordSubstitutions,
+    getSubstitutionMap,
+    clearSubstitutionCache,
+    findBestMatch,
+  } = require('../src/services/plateMatcher');
+  const { createTestDaire, createTestArac } = require('./helpers');
+
+  beforeEach(async () => {
+    clearSubstitutionCache();
+    await db('plate_char_substitutions').del();
+    await db('plate_learnings').del();
+    await db('araclar').del();
+    await db('daireler').del();
+  });
+
+  afterAll(async () => {
+    await db.destroy();
+  });
+
+  test('recordLearning hem learnings hem substitutions yazar', async () => {
+    await recordLearning('34MN1089', '34MNL089');
+
+    const learn = await db('plate_learnings').where({ ocr_raw: '34MN1089' }).first();
+    expect(learn.correct_plaka).toBe('34MNL089');
+
+    const sub = await db('plate_char_substitutions')
+      .where({ from_char: '1', to_char: 'L' })
+      .first();
+    expect(sub).toBeTruthy();
+    expect(sub.count).toBe(1);
+  });
+
+  test('aynı substitution tekrarı count++', async () => {
+    await recordSubstitutions('34A1', '34AL');
+    await recordSubstitutions('34X1Y', '34XLY');
+    const sub = await db('plate_char_substitutions')
+      .where({ from_char: '1', to_char: 'L' })
+      .first();
+    expect(sub.count).toBe(2);
+  });
+
+  test('farklı uzunluk → substitution yazılmaz', async () => {
+    await recordSubstitutions('34AB', '34ABC');
+    const subs = await db('plate_char_substitutions').select('*');
+    expect(subs).toHaveLength(0);
+  });
+
+  test('findBestMatch substitution bonus ile zayıf fuzzy match\'i öne çıkarır', async () => {
+    const daire = await createTestDaire({ daire_no: 'A1' });
+    await createTestArac({ daire_id: daire.id, plaka: '34MNL089' });
+    await createTestArac({ daire_id: daire.id, plaka: '34MNT089' });
+
+    // Histograma 1↔L pattern'ini güçlü yaz
+    for (let i = 0; i < 10; i++) {
+      await recordSubstitutions('34A1', '34AL');
+    }
+    clearSubstitutionCache();
+
+    // OCR "34MN1089" okudu — hem L hem T tek karakter farklı
+    // Histogram olmadan iki seçenek tie; histogramla L kazanmalı
+    const match = await findBestMatch('34MN1089');
+    expect(match).toBeTruthy();
+    expect(match.plaka).toBe('34MNL089');
+    expect(match.substitutionBonus).toBeGreaterThan(0);
+  });
+});

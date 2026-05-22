@@ -25,6 +25,8 @@ primary_region = 'fra'
   min_machines_running = 1
 
 [[vm]]
-  memory = '2gb'
+  # 2 worker × ~800MB EasyOCR + Python + OS ≈ 2.2GB. 3GB güvenli üst sınır;
+  # Fly.io 3GB shared makinesi ~$8/ay (vs 2GB ~$5).
+  memory = '3gb'
   cpus = 2
-  memory_mb = 2048
+  memory_mb = 3072

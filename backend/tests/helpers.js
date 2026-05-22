@@ -56,9 +56,12 @@ async function cleanupTables(preserveUsers = []) {
   await db('bildirimler').del();
   await db('ihlaller').del();
   await db('misafir_araclar').del();
+  await db('ocr_metrics').del();
   await db('gunluk_kontroller').del();
   await db('daire_sahip_tarihce').del();
   await db('audit_log').del();
+  await db('plate_char_substitutions').del();
+  await db('plate_learnings').del();
   await db('araclar').del();
   await db('daireler').del();
   // Only delete users not in preserve list

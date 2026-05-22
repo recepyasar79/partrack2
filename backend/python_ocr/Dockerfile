@@ -32,4 +32,8 @@ RUN python -c "import easyocr; easyocr.Reader(['en'], gpu=False, verbose=False)"
 COPY app.py .
 
 EXPOSE 5000
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "1"]
+# 2 worker: tek worker'da EasyOCR sync olduğu için ikinci foto'nun serbest
+# beklemesi gerekiyordu (frontend MAX_CONCURRENT=1 olmak zorundaydı).
+# 2 worker + 3GB RAM ile iki paralel OCR + güvenlik marjı.
+# Her worker EasyOCR weights'i RAM'e yüklediği için baseline ~800MB/worker.
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "2"]

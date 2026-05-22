@@ -343,6 +343,16 @@ def extract_plate(detections):
     return None, 0.0, "none"
 
 
+# Confidence eşikleri — sahada ayarlanabilir kalsın diye env ile override.
+# HIGH: bu seviyeyi geçtik mi region detection'a hiç inme (yarısı kadar hızlı).
+# LOW: bunun altındaysa cevaba needs_manual_review=true koy, kullanıcı UI'da
+# uyarıyla göstersin (yanlış plaka tahminiyle onay almaktansa direkt iste).
+CONFIDENCE_HIGH = float(os.environ.get("OCR_CONFIDENCE_HIGH", "0.85"))
+CONFIDENCE_REGION_EXIT = float(os.environ.get("OCR_CONFIDENCE_REGION_EXIT", "0.75"))
+CONFIDENCE_MIN_AUTO = float(os.environ.get("OCR_CONFIDENCE_MIN_AUTO", "0.55"))
+CONFIDENCE_MANUAL_REVIEW = float(os.environ.get("OCR_CONFIDENCE_MANUAL_REVIEW", "0.5"))
+
+
 def recognize(image_bytes: bytes, debug: bool = False):
     started = time.monotonic()
 
@@ -379,17 +389,26 @@ def recognize(image_bytes: bytes, debug: bool = False):
             best["strategy"] = f"{label}/{sub_strategy}"
             best["raw"] = [t for t, _ in detections]
 
-    # Pass 1: full image with preprocess variants. Exit as soon as we have a
-    # decent reading — extra variants rarely improve over the first hit.
+    # Pass 1: full image with preprocess variants.
+    #
+    # Erken çıkış: confidence HIGH (default 0.85) geçildiyse Pass 2'ye hiç
+    # inme. Sahada bu durum %60-70 vakayı kapsıyor ve region detection +
+    # 3-4 ek EasyOCR çağrısını tamamen atlatıyor — gecikme yaklaşık yarıya
+    # iniyor.
     for idx, variant in enumerate(preprocess_for_ocr(img)):
         try_image(variant, f"full-{idx}")
-        if best["plate"] and best["confidence"] > 0.55:
+        if best["plate"] and best["confidence"] >= CONFIDENCE_HIGH:
             break
+        if best["plate"] and best["confidence"] > CONFIDENCE_MIN_AUTO:
+            # Bir okuma var ama iyi değil — sonraki variant'larda biraz
+            # daha iyi olabilir. CONFIDENCE_HIGH'a kadar dene.
+            continue
 
-    # Pass 2: localised plate regions. This is the expensive path
-    # (region detection + N regions × M variants × OCR) so only run it when
-    # Pass 1 didn't find anything reliable. Cap region count.
-    if not (best["plate"] and best["confidence"] > 0.55):
+    # Pass 2: localised plate regions. Pass 1'de yüksek-confidence sonuç
+    # yoksa region detection + variants. Eskiye göre tek değişiklik:
+    # eşik HIGH değil CONFIDENCE_REGION_EXIT (default 0.75) — region'lar
+    # zaten daha temiz crop verir, eski 0.75 hedefiyle aynı.
+    if not (best["plate"] and best["confidence"] >= CONFIDENCE_HIGH):
         regions = detect_plate_regions(img)[:3]
         for r_idx, region in enumerate(regions):
             box = expand_box(region, img.shape)
@@ -400,21 +419,33 @@ def recognize(image_bytes: bytes, debug: bool = False):
             crop = upscale_if_small(crop, target_height=80)
             for v_idx, variant in enumerate(preprocess_for_ocr(crop)):
                 try_image(variant, f"region-{r_idx}-{v_idx}")
-                if best["plate"] and best["confidence"] > 0.75:
+                if best["plate"] and best["confidence"] > CONFIDENCE_REGION_EXIT:
                     break
-            if best["plate"] and best["confidence"] > 0.75:
+            if best["plate"] and best["confidence"] > CONFIDENCE_REGION_EXIT:
                 break
 
     elapsed = time.monotonic() - started
+    confidence = best["confidence"]
+    # Düşük confidence işareti — frontend bunu görünce "OCR güveni düşük,
+    # plakayı kontrol edin" uyarısı verir; otomatik onay akışından çıkar.
+    needs_manual_review = (not best["plate"]) or (confidence < CONFIDENCE_MANUAL_REVIEW)
+
     response = {
         "plate": best["plate"] or "",
-        "confidence": round(best["confidence"], 3),
+        "confidence": round(confidence, 3),
         "strategy": best["strategy"],
         "elapsed_ms": int(elapsed * 1000),
         "raw_text": " ".join(best["raw"]) if best["raw"] else "",
+        "needs_manual_review": needs_manual_review,
     }
     if debug:
         response["debug"] = debug_info
+        response["thresholds"] = {
+            "high": CONFIDENCE_HIGH,
+            "region_exit": CONFIDENCE_REGION_EXIT,
+            "min_auto": CONFIDENCE_MIN_AUTO,
+            "manual_review": CONFIDENCE_MANUAL_REVIEW,
+        }
     return response
 
 

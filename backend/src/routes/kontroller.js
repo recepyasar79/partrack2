@@ -9,6 +9,7 @@ const { todayTR } = require('../utils/timezone');
 const { normalizePlaka } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
 const { recognizePlate } = require('../services/pythonOcr');
+const { recordOcrCall, markCorrected } = require('../services/ocrMetrics');
 
 const router = express.Router();
 const storage = buildUpload();
@@ -148,6 +149,11 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
           yukleyen_user_id: req.user?.id || null,
         })
         .returning('*');
+
+      // OCR metric'i async olarak yaz; cevabı bekletme. recordOcrCall
+      // kendi hatalarını yutar, kullanıcı akışı etkilenmez.
+      recordOcrCall({ gunlukKontrolId: row.id, engine: 'easyocr', ocrResult: ocrInfo });
+
       res.status(201).json({
         kontrol: row,
         ocr: {
@@ -158,6 +164,9 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
           raw_text: ocrInfo.rawText || '',
           ok: ocrInfo.ok,
           error: ocrInfo.error || null,
+          // Eğer kullanıcı düzeltirse fuzzy match plakayı override eder, ama
+          // düzeltmedi → düşük confidence varsa frontend manuel onaya çeker.
+          needs_manual_review: !!ocrInfo.needsManualReview && !matchResult?.corrected,
           matched_to_registered: matchResult?.corrected ? matchResult.corrected : null,
           match_score: matchResult?.score ?? null,
         },
@@ -183,6 +192,12 @@ router.patch('/:id/plaka', authRequired, async (req, res) => {
     } catch (e) {
       console.warn('Learning record failed:', e.message);
     }
+  }
+
+  // OCR metric'inde "kullanıcı düzeltti" işareti — sahip olduğumuz tek
+  // ground-truth sinyali. Doğruluk hesabı buna dayanıyor.
+  if (eski.plaka !== newPlaka) {
+    markCorrected(id, newPlaka);
   }
 
   const [updated] = await db('gunluk_kontroller')

@@ -18,6 +18,7 @@ import Kontrol from './pages/Kontrol';
 import AksamKontrolu from './pages/AksamKontrolu';
 import Raporlar from './pages/Raporlar';
 import Kvkk from './pages/Kvkk';
+import OcrIstatistik from './pages/OcrIstatistik';
 
 export default function App() {
   return (
@@ -75,6 +76,14 @@ export default function App() {
             element={
               <RoleRoute roller={['yonetici']}>
                 <Layout><AuditLog /></Layout>
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/ocr-istatistik"
+            element={
+              <RoleRoute roller={['yonetici']}>
+                <Layout><OcrIstatistik /></Layout>
               </RoleRoute>
             }
           />

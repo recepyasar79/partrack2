@@ -9,6 +9,16 @@
 
 const db = require('../db');
 
+// Substitution istatistiği bias hesabı için sabitler.
+// 60 gün → yarı ağırlık (exponential decay). Sahada karakter karışıklığı
+// pattern'i kamera/aydınlatma değişince eskirse otomatik silinmesin diye
+// silmek yerine ağırlığını azaltıyoruz.
+const SUBSTITUTION_DECAY_HALF_LIFE_DAYS = 60;
+// Bir substitution pattern'i (örn. 1↔L) en fazla bu kadar bonus puan
+// verebilir — yoksa hatalı bir öğrenme tek başına yanlış plakaya snap
+// edebilir. Levenshtein skoru 100 üzerinden, max 8 bonus güvenli orta yol.
+const SUBSTITUTION_MAX_BONUS = 8;
+
 // Levenshtein mesafesi hesapla
 function levenshteinDistance(a, b) {
   if (a.length === 0) return b.length;
@@ -53,6 +63,84 @@ function similarityScore(a, b) {
 }
 
 /**
+ * Aynı uzunluktaki iki plaka arasındaki karakter farklarını döner.
+ * Farklı uzunluksa boş dizi — substitution değil ekleme/silme olur.
+ * @returns {Array<{from: string, to: string, pos: number}>}
+ */
+function charDiffs(ocrRaw, correct) {
+  const a = (ocrRaw || '').toUpperCase();
+  const b = (correct || '').toUpperCase();
+  if (!a || !b || a.length !== b.length) return [];
+  const diffs = [];
+  for (let i = 0; i < a.length; i++) {
+    if (a[i] !== b[i]) diffs.push({ from: a[i], to: b[i], pos: i });
+  }
+  return diffs;
+}
+
+/**
+ * Substitution kayıtlarını cache'le (her fuzzy match için DB'yi yormamak için).
+ * 60 saniyelik TTL — yeni öğrenme yakında etkili olsun ama her çağrıda
+ * select yapmayalım.
+ */
+let _substitutionCache = null;
+let _substitutionCacheAt = 0;
+const SUBSTITUTION_CACHE_MS = 60_000;
+
+function clearSubstitutionCache() {
+  _substitutionCache = null;
+  _substitutionCacheAt = 0;
+}
+
+async function getSubstitutionMap() {
+  const now = Date.now();
+  if (_substitutionCache && now - _substitutionCacheAt < SUBSTITUTION_CACHE_MS) {
+    return _substitutionCache;
+  }
+  let rows = [];
+  try {
+    rows = await db('plate_char_substitutions').select(
+      'from_char', 'to_char', 'count', 'last_seen_at'
+    );
+  } catch (e) {
+    // Tablo henüz migration olmamış olabilir — sessizce devam et
+    return new Map();
+  }
+  const map = new Map();
+  for (const r of rows) {
+    const key = `${r.from_char}>${r.to_char}`;
+    const ageDays = (now - new Date(r.last_seen_at).getTime()) / (24 * 3600 * 1000);
+    const decayFactor = Math.pow(0.5, ageDays / SUBSTITUTION_DECAY_HALF_LIFE_DAYS);
+    map.set(key, r.count * decayFactor);
+  }
+  _substitutionCache = map;
+  _substitutionCacheAt = now;
+  return map;
+}
+
+/**
+ * Bir fuzzy match adayı için substitution bonusu hesapla.
+ * Diffler tutarsa (örn. ocr "1" → registered "L" ve sitede 1↔L sık) bonus.
+ *
+ * @param {string} ocrRaw   OCR çıktısı (normalized)
+ * @param {string} candidate Aday plaka (registered)
+ * @param {Map<string,number>} subMap getSubstitutionMap'ten
+ * @returns {number} 0..SUBSTITUTION_MAX_BONUS
+ */
+function substitutionBonus(ocrRaw, candidate, subMap) {
+  if (!subMap || subMap.size === 0) return 0;
+  const diffs = charDiffs(ocrRaw, candidate);
+  if (!diffs.length) return 0;
+  let totalWeight = 0;
+  for (const d of diffs) {
+    const w = subMap.get(`${d.from}>${d.to}`) || 0;
+    // log-ölçek: 10 confirm → ~3 puan, 100 confirm → ~5 puan
+    if (w > 0) totalWeight += Math.log10(1 + w) * 1.5;
+  }
+  return Math.min(SUBSTITUTION_MAX_BONUS, totalWeight);
+}
+
+/**
  * OCR çıktısına en yakın kayıtlı plakayı bul
  * ÖNCELİK: 1. Fuzzy match (registered plates) → 2. Learned corrections
  * NEDEN: Gerçek plaka 34YF957 ise fuzzy match bulur, öğrenme tablosu karışmaz
@@ -84,29 +172,61 @@ async function findBestMatch(ocrGuess, minScore = 60) {
   // part of the "known good" pool for future variants of the same OCR
   // output (e.g. 34MN1089 / 34MNI089 / 34MNT089 all snap to 34MNL089).
   const registeredPlates = await getAllRegisteredPlates();
-  const learnedPlates = await db('plate_learnings').select('correct_plaka', 'confirm_count');
+  const learnedPlates = await db('plate_learnings').select(
+    'correct_plaka', 'confirm_count', 'last_confirmed_at'
+  );
+  const subMap = await getSubstitutionMap();
 
   let bestMatch = null;
   let bestScore = 0;
+  let bestRawScore = 0; // bonus'suz orijinal skor — debug/log için
 
   for (const plate of registeredPlates) {
     const score = similarityScore(ocrNormalized, plate);
-    if (score > bestScore && score >= minScore) {
-      bestScore = score;
-      bestMatch = { plaka: plate, score, source: 'fuzzy-registered' };
+    if (score < minScore) continue;
+    // Substitution bonus: site'de sık görülen karakter karışıklığı
+    // (örn. 1↔L) bu adayda varsa bonus puan.
+    const bonus = substitutionBonus(ocrNormalized, plate, subMap);
+    const adjusted = score + bonus;
+    if (adjusted > bestScore) {
+      bestScore = adjusted;
+      bestRawScore = score;
+      bestMatch = {
+        plaka: plate,
+        score: adjusted,
+        rawScore: score,
+        substitutionBonus: bonus,
+        source: 'fuzzy-registered',
+      };
     }
   }
 
+  const nowMs = Date.now();
   for (const row of learnedPlates) {
     const score = similarityScore(ocrNormalized, row.correct_plaka);
-    // Boost score by a small amount per confirmation so well-validated
-    // learnings beat ties; cap the boost so a single learned plate can't
-    // override a strictly more similar registered match.
-    const boost = Math.min(5, row.confirm_count - 1);
-    const adjusted = score + boost;
-    if (adjusted > bestScore && score >= minScore) {
+    if (score < minScore) continue;
+    // Confirm bonus: defalarca onaylanmış öğrenmeler tie'larda kazanır.
+    // Eski (30+ gün) onayların ağırlığı yarıya iner — kamera değişimi
+    // gibi durumlarda eski pattern'ler birden bire belirleyici olmasın.
+    const ageDays = row.last_confirmed_at
+      ? (nowMs - new Date(row.last_confirmed_at).getTime()) / (24 * 3600 * 1000)
+      : 0;
+    const decay = Math.pow(0.5, ageDays / 30);
+    const confirmBonus = Math.min(5, (row.confirm_count - 1) * decay);
+    const subBonus = substitutionBonus(ocrNormalized, row.correct_plaka, subMap);
+    const adjusted = score + confirmBonus + subBonus;
+    if (adjusted > bestScore) {
       bestScore = adjusted;
-      bestMatch = { plaka: row.correct_plaka, score, source: 'fuzzy-learned', confirmCount: row.confirm_count };
+      bestRawScore = score;
+      bestMatch = {
+        plaka: row.correct_plaka,
+        score: adjusted,
+        rawScore: score,
+        substitutionBonus: subBonus,
+        confirmBonus,
+        source: 'fuzzy-learned',
+        confirmCount: row.confirm_count,
+      };
     }
   }
 
@@ -160,6 +280,47 @@ async function correctOCRGuess(ocrGuess) {
 }
 
 /**
+ * Substitution histogramına diffleri yaz. recordLearning'in alt katmanı.
+ * UPSERT pattern: yoksa ekle, varsa count++ ve last_seen_at güncelle.
+ *
+ * Aynı uzunlukta olmayan plakalarda diff yok — Levenshtein insert/delete
+ * substitution değil, histograma karıştırmıyoruz.
+ */
+async function recordSubstitutions(ocrRaw, correct) {
+  const diffs = charDiffs(ocrRaw, correct);
+  if (!diffs.length) return;
+
+  for (const d of diffs) {
+    // Tek karakter ASCII alfanumerik dışında (boşluk, simge) ise atla
+    if (!/^[A-Z0-9]$/.test(d.from) || !/^[A-Z0-9]$/.test(d.to)) continue;
+    try {
+      const existing = await db('plate_char_substitutions')
+        .where({ from_char: d.from, to_char: d.to })
+        .first();
+      if (existing) {
+        await db('plate_char_substitutions')
+          .where({ id: existing.id })
+          .update({
+            count: existing.count + 1,
+            last_seen_at: db.fn.now(),
+          });
+      } else {
+        await db('plate_char_substitutions').insert({
+          from_char: d.from,
+          to_char: d.to,
+          count: 1,
+        });
+      }
+    } catch (e) {
+      // Tablo migration olmamış olabilir — sessizce devam
+      console.warn('[plateMatcher] substitution kaydı başarısız:', e.message);
+      return;
+    }
+  }
+  clearSubstitutionCache();
+}
+
+/**
  * Kullanıcı plaka düzelttiğinde kaydet (öğrenme)
  * @param {string} ocrRaw - OCR'ın okuduğu ham plaka
  * @param {string} correctPlaka - Kullanıcının onayladığı doğru plaka
@@ -205,6 +366,10 @@ async function recordLearning(ocrRaw, correctPlaka) {
         confirm_count: 1
       });
   }
+
+  // Karakter pattern'ini de histograma yaz — bir sonraki hiç görülmemiş
+  // plakada da bu pattern (örn. 1↔L) etkili olabilsin.
+  await recordSubstitutions(ocrNormalized, correctNormalized);
 }
 
 /**
@@ -274,5 +439,11 @@ module.exports = {
   correctBatchOCR,
   getLearningStats,
   isLearned,
-  getAllLearnings
+  getAllLearnings,
+  // Substitution histogram API
+  charDiffs,
+  recordSubstitutions,
+  substitutionBonus,
+  getSubstitutionMap,
+  clearSubstitutionCache,
 };

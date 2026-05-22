@@ -26,6 +26,7 @@ const navItems = [
 const adminItems = [
   { to: '/kullanicilar', label: 'Kullanıcılar', Icon: UsersIcon },
   { to: '/audit', label: 'Audit Log', Icon: ShieldIcon },
+  { to: '/ocr-istatistik', label: 'OCR İstatistik', Icon: ChartIcon },
 ];
 
 function ThemeToggle() {

@@ -55,6 +55,7 @@ async function recognizePlate(buffer, { filename = 'plate.jpg', mimeType = 'imag
       strategy: data.strategy || null,
       elapsedMs: data.elapsed_ms || null,
       rawText: data.raw_text || '',
+      needsManualReview: !!data.needs_manual_review,
       debug: data.debug || null,
     };
   } catch (err) {

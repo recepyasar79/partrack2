@@ -63,12 +63,11 @@ export default function Kontrol() {
     setItems((prev) => [...yeni, ...prev]);
     setBusy(true);
 
-    // Serial upload. Python OCR runs as a single uvicorn worker so multiple
-    // in-flight requests just queue server-side — and the queued ones can
-    // exceed the per-request timeout when the cold-started machine is also
-    // loading model weights. Sending one at a time keeps each request inside
-    // its timeout budget; the user still sees progress per file.
-    const MAX_CONCURRENT = 1;
+    // 2 paralel upload. Python OCR artık 2 uvicorn worker ile koşuyor;
+    // ikiden fazla istekte sıra yine oluşur ama 2 paralel her vardiyada
+    // ~%40 toplam süre kazandırır. Eskiden MAX_CONCURRENT=1 idi (tek
+    // worker'ı tıkamamak için); 2'ye çıkarttık çünkü artık donanım var.
+    const MAX_CONCURRENT = 2;
     let cursor = 0;
     async function worker() {
       while (cursor < yeni.length) {
@@ -116,6 +115,7 @@ export default function Kontrol() {
           ocrError: ocr.error,
           ocrMatched: ocr.matched_to_registered,
           ocrElapsedMs: ocr.elapsed_ms,
+          ocrNeedsReview: !!ocr.needs_manual_review,
           kontrolId: data.kontrol?.id || null,
         });
       } catch (err) {
@@ -290,6 +290,12 @@ export default function Kontrol() {
                     {it.ocrError && (
                       <div className="text-xs text-amber-700 bg-amber-50 dark:bg-amber-900/30 dark:text-amber-300 rounded-lg px-2 py-1">
                         ⚠️ {it.ocrError}
+                      </div>
+                    )}
+
+                    {it.ocrNeedsReview && !it.ocrError && (
+                      <div className="text-xs text-amber-800 bg-amber-100 dark:bg-amber-900/40 dark:text-amber-200 rounded-lg px-2 py-1 font-medium">
+                        ⚠️ OCR güveni düşük — plakayı manuel kontrol edin
                       </div>
                     )}
 

@@ -78,6 +78,85 @@ describe('PATCH /api/kontroller/:id/plaka', () => {
   });
 });
 
+describe('OCR metrics', () => {
+  test('foto-upload sonrası ocr_metrics satırı oluşur', async () => {
+    const before = await db('ocr_metrics').count('* as c').first();
+    const beforeCount = parseInt(before.c, 10);
+    const buffer = Buffer.alloc(1024);
+    const res = await request(app)
+      .post('/api/kontroller/foto-upload')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('foto', buffer, 'metric.jpg');
+    expect(res.status).toBe(201);
+    const kontrolId = res.body.kontrol.id;
+
+    // recordOcrCall fire-and-forget; bekleyelim
+    await new Promise((r) => setTimeout(r, 100));
+    const row = await db('ocr_metrics').where({ gunluk_kontrol_id: kontrolId }).first();
+    expect(row).toBeTruthy();
+    expect(row.ocr_engine).toBe('easyocr');
+    // Test ortamında Python OCR yok → ok=false beklenir
+    expect(row.ocr_ok).toBe(false);
+
+    const after = await db('ocr_metrics').count('* as c').first();
+    expect(parseInt(after.c, 10)).toBe(beforeCount + 1);
+  });
+
+  test('PATCH /plaka düzeltmesi metric satırını işaretler', async () => {
+    const [kontrol] = await db('gunluk_kontroller')
+      .insert({
+        kontrol_tarihi: new Date().toISOString().slice(0, 10),
+        plaka: '34WRONG1',
+        foto_url: '/uploads/m.jpg',
+      })
+      .returning('*');
+    // Bağlı metric satırı oluştur (foto upload yapmadığımız için elle)
+    const [m] = await db('ocr_metrics')
+      .insert({
+        gunluk_kontrol_id: kontrol.id,
+        ocr_engine: 'easyocr',
+        plate_returned: '34WRONG1',
+        confidence: 0.5,
+      })
+      .returning('id');
+
+    const res = await request(app)
+      .patch(`/api/kontroller/${kontrol.id}/plaka`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ plaka: '34RIGHT1' });
+    expect(res.status).toBe(200);
+
+    await new Promise((r) => setTimeout(r, 100));
+    const metricId = m.id ?? m;
+    const updated = await db('ocr_metrics').where({ id: metricId }).first();
+    expect(updated.was_corrected_by_user).toBe(true);
+    expect(updated.corrected_to).toBe('34RIGHT1');
+    expect(updated.corrected_at).toBeTruthy();
+  });
+});
+
+describe('GET /api/ocr-stats/summary', () => {
+  test('yönetici doğruluk özetini görür', async () => {
+    const res = await request(app)
+      .get('/api/ocr-stats/summary?days=7')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body).toHaveProperty('total');
+    expect(res.body).toHaveProperty('accuracy');
+    expect(res.body).toHaveProperty('p95_ms');
+    expect(Array.isArray(res.body.by_engine)).toBe(true);
+  });
+
+  test('güvenlik rolü 403 alır', async () => {
+    const guard = await createTestUser({ kullanici_adi: 'ocr_guard', rol: 'guvenlik' });
+    const guardToken = makeToken({ id: guard.id, kullanici_adi: 'ocr_guard', rol: 'guvenlik' });
+    const res = await request(app)
+      .get('/api/ocr-stats/summary')
+      .set('Authorization', `Bearer ${guardToken}`);
+    expect(res.status).toBe(403);
+  });
+});
+
 describe('DELETE /api/kontroller/:id', () => {
   test('kontrol kaydi silinir', async () => {
     const [kontrol] = await db('gunluk_kontroller')
