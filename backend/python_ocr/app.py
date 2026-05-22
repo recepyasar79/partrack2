@@ -35,6 +35,46 @@ _reader = easyocr.Reader(["en"], gpu=USE_GPU, verbose=False)
 log.info("EasyOCR ready.")
 
 # ---------------------------------------------------------------------------
+# Plate detector (PaddleOCR, optional)
+# ---------------------------------------------------------------------------
+# PaddleOCR PP-OCRv4_mobile_det — Apache 2.0 lisanslı; ticari kapalı kaynak
+# SaaS'a uygun. YOLOv8 (AGPL-3.0) yerine bu kullanılıyor — YOLOv8 lisansı
+# tüm projeyi public açmaya zorluyordu.
+#
+# Sobel-based fallback (detect_plate_regions) korunuyor: PaddleOCR yüklenemezse
+# veya PADDLE_DETECTION=0 ile kapatılırsa otomatik o yola düşer.
+PADDLE_ENABLED = os.environ.get("PADDLE_DETECTION", "1") == "1"
+_paddle_detector = None
+_paddle_load_error = None
+
+
+def _load_paddle():
+    """Lazy-init PaddleOCR'ın yalnız detection modülü.
+    Recognition için EasyOCR'ı tutuyoruz — Paddle recognition'a geçiş ayrı bir
+    iş. Hata olursa Sobel fallback'i devreye girer; service yine ayakta kalır.
+    """
+    global _paddle_detector, _paddle_load_error
+    if _paddle_detector is not None or _paddle_load_error is not None:
+        return _paddle_detector
+    if not PADDLE_ENABLED:
+        _paddle_load_error = "PADDLE_DETECTION=0"
+        return None
+    try:
+        from paddleocr import TextDetection  # type: ignore
+        model_name = os.environ.get("PADDLE_DET_MODEL", "PP-OCRv4_mobile_det")
+        log.info("PaddleOCR detector yükleniyor: %s", model_name)
+        _paddle_detector = TextDetection(model_name=model_name)
+        log.info("PaddleOCR detector hazır.")
+    except Exception as exc:
+        _paddle_load_error = str(exc)
+        log.warning("PaddleOCR yüklenemedi (%s) — Sobel fallback kullanılacak.", exc)
+    return _paddle_detector
+
+
+# Startup'ta yüklemeyi tetikle ki ilk fotograf cold-start cezası ödemesin.
+_load_paddle()
+
+# ---------------------------------------------------------------------------
 # Turkish plate validation
 # ---------------------------------------------------------------------------
 TR_CITY_CODES = {f"{i:02d}" for i in range(1, 82)}
@@ -267,6 +307,68 @@ def detect_plate_regions(image: np.ndarray) -> List[Tuple[int, int, int, int]]:
     return [(x, y, cw, ch) for x, y, cw, ch, _ in regions[:6]]
 
 
+def paddle_detect_regions(image: np.ndarray) -> List[Tuple[int, int, int, int]]:
+    """
+    PaddleOCR detection ile metin region'ları bul, aspect ratio'su plaka
+    benzeri olanları filtrele, (x, y, w, h) listesi döner.
+    Detector yüklü değilse boş liste — caller Sobel fallback'e gitsin.
+
+    PaddleOCR'ın TextDetection.predict çıktısı framework'ün sürümüne göre
+    değişiyor: kimi sürümlerde dict listesi ('dt_polys'), kimi sürümlerde
+    Result objesi. Her ikisini de tolere ediyoruz.
+    """
+    det = _load_paddle()
+    if det is None:
+        return []
+    h, w = image.shape[:2]
+    img_area = h * w
+    try:
+        out = det.predict(input=image, batch_size=1)
+    except Exception as exc:
+        log.warning("PaddleOCR predict hatası: %s", exc)
+        return []
+
+    polys: List[np.ndarray] = []
+    for item in out or []:
+        if isinstance(item, dict):
+            polys.extend(item.get("dt_polys", []) or [])
+        else:
+            # Result objesi varsa attr olarak dt_polys saklar
+            dp = getattr(item, "dt_polys", None)
+            if dp is not None:
+                polys.extend(dp)
+            else:
+                # Generic mapping access
+                try:
+                    polys.extend(item["dt_polys"])
+                except Exception:
+                    continue
+
+    regions = []
+    for poly in polys:
+        arr = np.array(poly).reshape(-1, 2)
+        if arr.size == 0:
+            continue
+        x0, y0 = arr.min(axis=0)
+        x1, y1 = arr.max(axis=0)
+        x, y = int(max(0, x0)), int(max(0, y0))
+        cw, ch = int(x1 - x0), int(y1 - y0)
+        if cw <= 0 or ch <= 0:
+            continue
+        aspect = cw / ch
+        area = cw * ch
+        # TR plaka aspect 3-5:1 — detection text region olduğu için biraz
+        # daha gevşek tut, 2-7 aralığı sıkça plakayı yakalıyor.
+        if not (2.0 <= aspect <= 7.0):
+            continue
+        if area < img_area * 0.0008 or area > img_area * 0.30:
+            continue
+        regions.append((x, y, cw, ch, area))
+
+    regions.sort(key=lambda r: -r[4])
+    return [(x, y, cw, ch) for x, y, cw, ch, _ in regions[:6]]
+
+
 def expand_box(box: Tuple[int, int, int, int], img_shape, pad_x=0.05, pad_y=0.25):
     """Pad a plate box so OCR has a bit of background around the characters."""
     x, y, w, h = box
@@ -408,8 +510,17 @@ def recognize(image_bytes: bytes, debug: bool = False):
     # yoksa region detection + variants. Eskiye göre tek değişiklik:
     # eşik HIGH değil CONFIDENCE_REGION_EXIT (default 0.75) — region'lar
     # zaten daha temiz crop verir, eski 0.75 hedefiyle aynı.
+    used_paddle = False
     if not (best["plate"] and best["confidence"] >= CONFIDENCE_HIGH):
-        regions = detect_plate_regions(img)[:3]
+        # Önce PaddleOCR detection (Apache 2.0). Boş dönerse veya yüklü
+        # değilse Sobel fallback. Engine etiketi metric'te buradan ayarlanır.
+        regions = paddle_detect_regions(img)[:3]
+        if regions:
+            used_paddle = True
+            debug_info["detector"] = "paddle"
+        else:
+            regions = detect_plate_regions(img)[:3]
+            debug_info["detector"] = "sobel"
         for r_idx, region in enumerate(regions):
             box = expand_box(region, img.shape)
             x, y, bw, bh = box
@@ -430,10 +541,23 @@ def recognize(image_bytes: bytes, debug: bool = False):
     # plakayı kontrol edin" uyarısı verir; otomatik onay akışından çıkar.
     needs_manual_review = (not best["plate"]) or (confidence < CONFIDENCE_MANUAL_REVIEW)
 
+    # Engine etiketi: Node tarafı bunu ocr_metrics.ocr_engine'a yazıyor.
+    # A/B kıyaslamasında "paddle_det+easyocr" vs "easyocr" doğruluğu
+    # OCR İstatistik sayfasında karşılaştırılır.
+    if used_paddle:
+        engine = "paddle_det+easyocr"
+    elif _paddle_detector is not None:
+        # Paddle yüklü ama bu fotoğrafta region bulamadı; pass 1'de erken
+        # çıkış olduysa region detection hiç çalışmamış olabilir.
+        engine = "easyocr+paddle_available"
+    else:
+        engine = "easyocr"
+
     response = {
         "plate": best["plate"] or "",
         "confidence": round(confidence, 3),
         "strategy": best["strategy"],
+        "engine": engine,
         "elapsed_ms": int(elapsed * 1000),
         "raw_text": " ".join(best["raw"]) if best["raw"] else "",
         "needs_manual_review": needs_manual_review,
@@ -446,6 +570,7 @@ def recognize(image_bytes: bytes, debug: bool = False):
             "min_auto": CONFIDENCE_MIN_AUTO,
             "manual_review": CONFIDENCE_MANUAL_REVIEW,
         }
+        response["paddle_load_error"] = _paddle_load_error
     return response
 
 
@@ -457,7 +582,13 @@ app = FastAPI(title="ParkTrack OCR", version="2.0.0")
 
 @app.get("/health")
 def health():
-    return {"status": "ok", "engine": "easyocr", "version": "2.0.0"}
+    return {
+        "status": "ok",
+        "engine": "easyocr",
+        "version": "2.1.0",
+        "paddle_loaded": _paddle_detector is not None,
+        "paddle_error": _paddle_load_error,
+    }
 
 
 @app.post("/ocr")

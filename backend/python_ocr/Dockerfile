@@ -17,6 +17,11 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
  && rm -rf /var/lib/apt/lists/*
 
+# PaddlePaddle CPU wheel: official PyPI'da yok, Baidu kendi index'inde
+# yayınlıyor. Bu wheel'i ayrı bir adımda çekiyoruz ki torch/easyocr resolution'a
+# karışmasın (PaddlePaddle protobuf/numpy çakışmaları sevmiyor).
+RUN pip install paddlepaddle==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+
 # Install Python deps in a single resolution pass so pip can pick mutually
 # compatible versions of torch/numpy/easyocr. Pinning torch==2.2.2 here while
 # requirements.txt asked for numpy>=1.26 caused torch to load against numpy 2.x
@@ -28,6 +33,13 @@ RUN pip install --extra-index-url https://download.pytorch.org/whl/cpu -r requir
 # Pre-download EasyOCR weights so the first request doesn't pay the cold start
 # cost. ~70MB total; baked into the image.
 RUN python -c "import easyocr; easyocr.Reader(['en'], gpu=False, verbose=False)"
+
+# Pre-download PaddleOCR PP-OCRv4 detection model (~5MB). PaddleOCR ilk
+# TextDetection çağrısında model dosyasını indirip ~/.paddlex/ altına atıyor;
+# build sırasında bunu tetikliyoruz ki runtime cold start temiz olsun. Hata
+# olursa devam et — runtime'da Sobel fallback'i devreye girer.
+RUN python -c "from paddleocr import TextDetection; TextDetection(model_name='PP-OCRv4_mobile_det')" || \
+    echo "[build] PaddleOCR model pre-download başarısız, runtime'da Sobel fallback kullanılacak"
 
 COPY app.py .
 

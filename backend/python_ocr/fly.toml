@@ -25,8 +25,10 @@ primary_region = 'fra'
   min_machines_running = 1
 
 [[vm]]
-  # 2 worker × ~800MB EasyOCR + Python + OS ≈ 2.2GB. 3GB güvenli üst sınır;
-  # Fly.io 3GB shared makinesi ~$8/ay (vs 2GB ~$5).
-  memory = '3gb'
+  # 2 worker × (EasyOCR ~800MB + PaddleOCR detection ~300MB) + Python + OS
+  # ≈ 2.6GB. 4GB güvenli marj; Fly.io 4GB shared ~$11/ay (vs 3GB ~$8, 2GB ~$5).
+  # PaddleOCR detection AGPL-YOLOv8'in yerini aldığı için bu artış zorunlu —
+  # ticari lisans uyumsuzluğunun bedeli ayda ~$6 fazla VM, hesap kabul edilebilir.
+  memory = '4gb'
   cpus = 2
-  memory_mb = 3072
+  memory_mb = 4096

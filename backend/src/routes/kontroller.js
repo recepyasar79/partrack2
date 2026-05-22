@@ -151,8 +151,13 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
         .returning('*');
 
       // OCR metric'i async olarak yaz; cevabı bekletme. recordOcrCall
-      // kendi hatalarını yutar, kullanıcı akışı etkilenmez.
-      recordOcrCall({ gunlukKontrolId: row.id, engine: 'easyocr', ocrResult: ocrInfo });
+      // kendi hatalarını yutar, kullanıcı akışı etkilenmez. Engine etiketi
+      // Python servisinden geliyor (paddle_det+easyocr / easyocr / …).
+      recordOcrCall({
+        gunlukKontrolId: row.id,
+        engine: ocrInfo.engine || 'easyocr',
+        ocrResult: ocrInfo,
+      });
 
       res.status(201).json({
         kontrol: row,

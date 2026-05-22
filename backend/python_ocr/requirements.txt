@@ -12,3 +12,9 @@ easyocr>=1.7.2
 # with the active Python (older pins broke on 3.14).
 torch
 torchvision
+# PaddleOCR (Apache 2.0) — sadece text detection için kullanıyoruz, YOLOv8
+# (AGPL) yerine. paddlepaddle CPU wheel ayrı index'ten geliyor (Dockerfile
+# içinde -i ile veriliyor); pip burada paddleocr Python paketini çekiyor.
+# Recognition'ı yine EasyOCR yapıyor; PaddleOCR'ın recognition modülü ileride
+# fine-tune edilebilir ama şimdilik detection-only.
+paddleocr>=2.9

@@ -53,6 +53,10 @@ async function recognizePlate(buffer, { filename = 'plate.jpg', mimeType = 'imag
       plate: (data.plate || '').toUpperCase(),
       confidence: typeof data.confidence === 'number' ? data.confidence : null,
       strategy: data.strategy || null,
+      // Python servisinden gelen motor etiketi: 'easyocr',
+      // 'paddle_det+easyocr', 'easyocr+paddle_available'. Eski sürümler
+      // göndermiyorsa fallback 'easyocr'.
+      engine: data.engine || 'easyocr',
       elapsedMs: data.elapsed_ms || null,
       rawText: data.raw_text || '',
       needsManualReview: !!data.needs_manual_review,
