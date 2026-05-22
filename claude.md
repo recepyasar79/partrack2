@@ -28,6 +28,65 @@ Tesseract.js (taraycida) yerine **Python EasyOCR mikroservisi** kullaniliyor:
 - Lokal gelistirme: `docker compose up -d python-ocr` → http://localhost:5000
 - Production deploy: Fly.io ayri app `parktrack-ocr`
 
+## Son Durum (2026-05-08, gun sonu)
+
+Production calisir halde. Asagidakilerin hepsi gercek site fotograflariyla test edildi.
+
+### Calisan Production Konfigurasyonu
+
+**Backend (Fly.io: `parktrack-backend`)**
+- `PYTHON_OCR_URL=https://parktrack-ocr.fly.dev` (public URL — `.flycast`/`.internal` Node DNS'inde cozulmedi)
+- `PYTHON_OCR_TIMEOUT_MS=180000` (cold-start + ilk OCR tamponlu)
+- `backend/src/services/pythonOcr.js`: HTTP keep-alive **kapali** (`keepAlive: false`).
+  - **Neden:** OCR makinesi restart olunca backend olu TCP soketleri yeniden kullanip 180s sessizce takiliyordu. Handshake basina 50-200ms kayip, guvenilirlik kazanci yaninda kabul edilebilir.
+- Axios hata loglari `err.code`/`err.cause.code`/`err.cause.message` ile detayli (ECONNREFUSED, ENOTFOUND, ETIMEDOUT goruluyor).
+
+**Python OCR (Fly.io: `parktrack-ocr`)**
+- `min_machines_running = 1`, `auto_stop_machines = 'off'` → **always-on**.
+  - **Neden:** Cold start = 35s makine boot + 35s EasyOCR yukleme = 70s. Aksam kontrolunde guvenlik gorevlisinin ilk fotosu icin kabul edilemez. Maliyet ~$5-7/ay, vardiya basina 1 takilan upload'dan ucuz.
+- 2GB RAM, 2 CPU, `fra` region, single uvicorn worker.
+- Dockerfile: torch + numpy + easyocr **tek pip resolution pass** ile yukleniyor (`--extra-index-url https://download.pytorch.org/whl/cpu`).
+  - **Neden:** Onceden torch==2.2.2 ayri pin edilmisti, ardindan numpy 2.x kuruldu → torch numpy 1.x'e karsi build edildigi icin runtime'da "Numpy is not available". Tek pass pip'in uyumlu surumleri secmesini sagliyor.
+- EasyOCR weights image build sirasinda pre-download (`~/.EasyOCR`) → ilk request cold-start cezasini odemiyor.
+
+**Foto Servisi (R2)**
+- `GET /api/kontroller/:id/foto` artik **S3 SDK kullanmiyor**, R2 public URL'den `fetch` edip stream ediyor.
+  - **Neden:** S3 SDK `GetObjectCommand` public erisilebilir dosyalar icin bile `NoSuchKey` doneruyordu (bucket policy / SDK auth tutarsizligi). Public URL fetch hem basit hem guvenilir.
+
+### Plaka Eslestirme + Ogrenme (`backend/src/services/plateMatcher.js`)
+
+Iki katmanli birlesik fuzzy match:
+
+1. **Exact learned match** — Daha once gorulen ham OCR ciktisi varsa, ogrenilen duzeltmeyi anlik dondur (en hizli yol).
+2. **Fuzzy match** — Levenshtein benzerlik skoru. Kaynaklar:
+   - `araclar` (aktif kayitli plakalar)
+   - `misafir_araclar` (bugun gecerli olanlar — `aktif` sutunu **yok**, sadece `baslangic_tarihi <= today <= bitis_tarihi`)
+   - `plate_learnings.correct_plaka` (gecmiste onaylanmis plakalar)
+
+`confirm_count` artiyorsa kucuk bir boost (max +5) — cok onaylanmis ogrenmeler tie'larda kazaniyor ama daha iyi bir registered match'i ezemiyor.
+
+**Sonuc:** Bir plaka bir kez duzeltilince, OCR'in ayni plakayi farkli okumalari (orn. `34MN1089` / `34MNI089` / `34MNT089` → `34MNL089`) hepsi otomatik snap oluyor. Sahada dogrulandi.
+
+### Frontend Akis (`frontend/src/pages/Kontrol.jsx`)
+- Sunucu tarafli OCR (client-side OCR yok).
+- `MAX_CONCURRENT = 1` (seri yukleme) — single uvicorn worker'i tikamamak icin.
+- Agresiv compression: 0.4MB hedef, 1200px max, 0.7 quality.
+- Upload progress yuzdesi.
+
+### Tema (Dark/Light)
+- `frontend/src/theme/ThemeContext.jsx` — localStorage `parktrack-tema` + system preference fallback.
+- Tailwind `darkMode: 'class'`.
+- `index.html`'de inline FOUC-prevention scripti.
+- Tum sayfa/component'lerde `dark:` variant'lari.
+
+### Bilinen Davranislar (Bug Degil)
+- `/api/kontroller/:id/foto` browser'dan dogrudan acilirsa 401 doner — JWT gerektiriyor, beklenen davranis.
+- Service Worker eski cache'i 500 hatasi taklit edebilir → DevTools → Clear site data veya incognito ile dogrulayin.
+
+### Acik Konular
+- Mobil hucresel sebekede yavaslik halen olabilir; seri upload ve agresif compression yardimci ama tek tek fotograf 5-15s arasi degisiyor. Toplu upload UX'i (background queue + retry) ileride dusunulebilir.
+- Production'da fotograf yukleme akisi gercek site plakalariyla test ediliyor; ogrenme tablosu zamanla site-spesifik OCR pattern'lerine sekilleniyor.
+
 ## Guncel Degisiklik Notlari (2026-05-03)
 
 ### UI/UX Yeniden Tasarım (2026-05-03)
