@@ -2,7 +2,7 @@ const express = require('express');
 const rateLimit = require('express-rate-limit');
 const db = require('../db');
 const { hashPassword, verifyPassword, signToken } = require('../utils/auth');
-const { authRequired, requireRole, requireSiteAdmin, requireSuperadmin } = require('../middleware/auth');
+const { authRequired, requireRole, requireSiteAdmin, requireSuperadmin, resolveScopedSiteId } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 
 const router = express.Router();
@@ -64,13 +64,18 @@ router.get('/me', authRequired, async (req, res) => {
 
 router.post('/register', authRequired, requireSiteAdmin, async (req, res) => {
   const { kullanici_adi, sifre, rol } = req.body || {};
-  // site_yonetici sadece kendi sitesine ekleyebilir; superadmin başka bir
-  // site_id verebilir (body.site_id). Eksikse req.user.site_id'ye düşer.
+  // site_yonetici sadece kendi sitesine ekleyebilir; superadmin için
+  // site_id sırasıyla: body.site_id → query ?siteId (interceptor enjekte
+  // eder, ACTIVE_SITE_KEY'den) → resolveScopedSiteId helper.
   let site_id;
   if (req.user.rol === 'superadmin') {
-    site_id = req.body?.site_id != null ? parseInt(req.body.site_id, 10) : null;
+    if (req.body?.site_id != null) {
+      site_id = parseInt(req.body.site_id, 10);
+    } else {
+      site_id = resolveScopedSiteId(req);
+    }
     if (!site_id) {
-      return res.status(400).json({ error: 'Superadmin kullanıcı eklerken site_id zorunlu.' });
+      return res.status(400).json({ error: 'Superadmin kullanıcı eklerken site_id zorunlu (body.site_id veya ?siteId).' });
     }
   } else {
     site_id = req.user.site_id;
