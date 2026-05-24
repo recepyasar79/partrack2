@@ -77,7 +77,7 @@ export default function Home() {
               Hoş geldiniz
             </h1>
             <p className="text-sm text-slate-600 dark:text-slate-400">
-              {user?.kullanici_adi} · {user?.rol === 'yonetici' ? 'Yönetici' : 'Güvenlik'}
+              {user?.kullanici_adi} · {user?.rol === 'superadmin' ? 'Platform Yöneticisi' : user?.rol === 'site_yonetici' ? 'Site Yöneticisi' : 'Güvenlik'}
             </p>
           </div>
         </div>

@@ -14,6 +14,9 @@ export function tumDaireler() {
 
 export const TOKEN_KEY = 'parktrack_token';
 export const USER_KEY = 'parktrack_user';
+// Superadmin'in aktif çalıştığı site_id'si — diğer endpoint'lerde otomatik
+// ?siteId param'ına eklenir. Site-bağlı user'lar için yoksayılır.
+export const ACTIVE_SITE_KEY = 'parktrack_active_site';
 
 export const KVKK_METNI = `Site otopark yönetim sistemi (ParkTrack), site sakinlerinin araç plakaları ve iletişim
 bilgilerini, gece konaklama kuralının (her dairenin tek aracının site otoparkında gece

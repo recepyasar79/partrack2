@@ -29,6 +29,17 @@ const adminItems = [
   { to: '/ocr-istatistik', label: 'OCR İstatistik', Icon: ChartIcon },
 ];
 
+// Sadece superadmin (platform sahibi) için ek menü
+const superadminItems = [
+  { to: '/sites', label: 'Siteler', Icon: BuildingIcon },
+];
+
+const ROL_LABEL = {
+  superadmin: 'Platform Yöneticisi',
+  site_yonetici: 'Site Yöneticisi',
+  guvenlik: 'Güvenlik',
+};
+
 function ThemeToggle() {
   const { isDark, toggleTheme } = useTheme();
   return (
@@ -46,7 +57,8 @@ function ThemeToggle() {
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
-  const isYonetici = user?.rol === 'yonetici';
+  const isSiteAdmin = user?.rol === 'site_yonetici' || user?.rol === 'superadmin';
+  const isSuperadmin = user?.rol === 'superadmin';
 
   return (
     <div className="min-h-full pb-20 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
@@ -66,13 +78,13 @@ export default function Layout({ children }) {
               <div className="flex flex-col">
                 <span className="font-medium text-white">{user.kullanici_adi}</span>
                 <span className="text-xs text-white/60">
-                  {user.rol === 'yonetici' ? 'Yönetici' : 'Güvenlik'}
+                  {ROL_LABEL[user.rol] || user.rol}
                 </span>
               </div>
             </span>
-            {isYonetici && (
+            {isSiteAdmin && (
               <div className="hidden md:flex gap-1">
-                {adminItems.map((item) => (
+                {[...adminItems, ...(isSuperadmin ? superadminItems : [])].map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}

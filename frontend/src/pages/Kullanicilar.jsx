@@ -88,7 +88,7 @@ export default function Kullanicilar() {
               className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-3"
             >
               <option value="guvenlik">Güvenlik</option>
-              <option value="yonetici">Yönetici</option>
+              <option value="site_yonetici">Site Yöneticisi</option>
             </select>
           </div>
           <Button onClick={ekle} disabled={busy}>{busy ? 'Kaydediliyor…' : 'Kaydet'}</Button>
@@ -109,7 +109,7 @@ export default function Kullanicilar() {
             {list.map((u) => (
               <tr key={u.id} className={`border-t border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200 ${!u.aktif ? 'opacity-50' : ''}`}>
                 <td className="p-3 font-medium">{u.kullanici_adi}</td>
-                <td className="p-3">{u.rol === 'yonetici' ? 'Yönetici' : 'Güvenlik'}</td>
+                <td className="p-3">{u.rol === 'superadmin' ? 'Platform Yöneticisi' : u.rol === 'site_yonetici' ? 'Site Yöneticisi' : 'Güvenlik'}</td>
                 <td className="p-3 hidden sm:table-cell text-slate-600 dark:text-slate-400 text-xs">
                   {u.son_giris ? new Date(u.son_giris).toLocaleString('tr-TR') : '—'}
                 </td>

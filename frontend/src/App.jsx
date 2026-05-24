@@ -19,6 +19,7 @@ import AksamKontrolu from './pages/AksamKontrolu';
 import Raporlar from './pages/Raporlar';
 import Kvkk from './pages/Kvkk';
 import OcrIstatistik from './pages/OcrIstatistik';
+import SuperadminSiteler from './pages/SuperadminSiteler';
 
 export default function App() {
   return (
@@ -66,7 +67,7 @@ export default function App() {
           <Route
             path="/kullanicilar"
             element={
-              <RoleRoute roller={['yonetici']}>
+              <RoleRoute roller={['site_yonetici', 'superadmin']}>
                 <Layout><Kullanicilar /></Layout>
               </RoleRoute>
             }
@@ -74,7 +75,7 @@ export default function App() {
           <Route
             path="/audit"
             element={
-              <RoleRoute roller={['yonetici']}>
+              <RoleRoute roller={['site_yonetici', 'superadmin']}>
                 <Layout><AuditLog /></Layout>
               </RoleRoute>
             }
@@ -82,8 +83,16 @@ export default function App() {
           <Route
             path="/ocr-istatistik"
             element={
-              <RoleRoute roller={['yonetici']}>
+              <RoleRoute roller={['site_yonetici', 'superadmin']}>
                 <Layout><OcrIstatistik /></Layout>
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/sites"
+            element={
+              <RoleRoute roller={['superadmin']}>
+                <Layout><SuperadminSiteler /></Layout>
               </RoleRoute>
             }
           />

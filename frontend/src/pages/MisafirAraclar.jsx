@@ -23,7 +23,7 @@ function formatTarihSaat(iso) {
 export default function MisafirAraclar() {
   const toast = useToast();
   const { user } = useAuth();
-  const isYonetici = user?.rol === 'yonetici';
+  const isYonetici = user?.rol === 'site_yonetici' || user?.rol === 'superadmin';
   const [list, setList] = useState([]);
   const [daireler, setDaireler] = useState([]);
   const [showForm, setShowForm] = useState(false);

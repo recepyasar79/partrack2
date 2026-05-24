@@ -7,13 +7,36 @@ function makeToken(payload) {
   return signToken(payload);
 }
 
+/**
+ * Yeni test sitesi oluştur. ID alınır, slug unique.
+ * Default site (id=1) Ü1.1 migration'ında otomatik var.
+ */
+async function createTestSite(overrides = {}) {
+  const slug = overrides.slug || `test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  const [site] = await db('sites')
+    .insert({
+      ad: overrides.ad || 'Test Site',
+      slug,
+      plan: overrides.plan || 'baslangic',
+      aktif: overrides.aktif !== undefined ? overrides.aktif : true,
+    })
+    .returning('*');
+  return site;
+}
+
 async function createTestUser(overrides = {}) {
   const hash = await hashPassword(overrides.sifre || 'TestPass123!');
+  // Superadmin user'lar için site_id=NULL; aksi halde default site (id=1).
+  const rol = overrides.rol || 'guvenlik';
+  const site_id = overrides.site_id !== undefined
+    ? overrides.site_id
+    : (rol === 'superadmin' ? null : 1);
   const [user] = await db('users')
     .insert({
       kullanici_adi: overrides.kullanici_adi || 'testuser',
       sifre_hash: hash,
-      rol: overrides.rol || 'guvenlik',
+      rol,
+      site_id,
       aktif: overrides.aktif !== undefined ? overrides.aktif : true,
     })
     .returning('*');
@@ -35,6 +58,7 @@ async function createTestDaire(overrides = {}) {
       kvkk_riza_tarihi: db.fn.now(),
       bildirim_opt_in: overrides.bildirim_opt_in !== undefined ? overrides.bildirim_opt_in : true,
       aktif: true,
+      site_id: overrides.site_id || 1,
     })
     .returning('*');
   return daire;
@@ -46,6 +70,7 @@ async function createTestArac(overrides = {}) {
       daire_id: overrides.daire_id,
       plaka: overrides.plaka || '34ABC123',
       aktif: true,
+      site_id: overrides.site_id || 1,
     })
     .returning('*');
   return arac;
@@ -71,6 +96,8 @@ async function cleanupTables(preserveUsers = []) {
   } else {
     await db('users').del();
   }
+  // Sites: default site (id=1) hariç hepsini sil
+  await db('sites').whereNot('id', 1).del();
 }
 
 module.exports = {
@@ -78,6 +105,7 @@ module.exports = {
   request,
   db,
   makeToken,
+  createTestSite,
   createTestUser,
   createTestDaire,
   createTestArac,

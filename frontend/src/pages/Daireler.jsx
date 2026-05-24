@@ -13,7 +13,7 @@ import { MagnifyingGlassIcon, PlusIcon, DocumentArrowUpIcon, XMarkIcon, ChevronD
 export default function Daireler() {
   const toast = useToast();
   const { user } = useAuth();
-  const isYonetici = user?.rol === 'yonetici';
+  const isYonetici = user?.rol === 'site_yonetici' || user?.rol === 'superadmin';
   const [daireler, setDaireler] = useState([]);
   const [q, setQ] = useState('');
   const [blok, setBlok] = useState('');
