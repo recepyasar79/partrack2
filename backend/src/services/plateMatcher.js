@@ -8,6 +8,7 @@
  */
 
 const db = require('../db');
+const { normalizeSignature } = require('../utils/plateNormalize');
 
 // Substitution istatistiği bias hesabı için sabitler.
 // 60 gün → yarı ağırlık (exponential decay). Sahada karakter karışıklığı
@@ -167,7 +168,28 @@ async function findBestMatch(ocrGuess, minScore = 60) {
     };
   }
 
-  // 2. Fuzzy match against the union of registered plates and previously
+  // 2. Signature match — ham OCR aynen tutmadı ama karakter karışıklık
+  // sınıflarına (O/0, I/L/1, T/7 vb.) indirgenmiş hali daha önce
+  // görüldüyse onu kullan. Bu Plate Recognizer'a gitmeden önceki son
+  // local hamle; cache hit rate'ini ciddi artırıyor.
+  const signature = normalizeSignature(ocrNormalized);
+  if (signature) {
+    const signatureMatch = await db('plate_learnings')
+      .where('normalize_signature', signature)
+      .orderBy('confirm_count', 'desc')
+      .orderBy('last_confirmed_at', 'desc')
+      .first();
+    if (signatureMatch) {
+      return {
+        plaka: signatureMatch.correct_plaka,
+        score: 95, // exact'in altında ama fuzzy'nin üzerinde — net cache hit
+        source: 'learned-signature',
+        confirmCount: signatureMatch.confirm_count,
+      };
+    }
+  }
+
+  // 3. Fuzzy match against the union of registered plates and previously
   // learned correct plates. A plate that has been confirmed once becomes
   // part of the "known good" pool for future variants of the same OCR
   // output (e.g. 34MN1089 / 34MNI089 / 34MNT089 all snap to 34MNL089).
@@ -334,6 +356,8 @@ async function recordLearning(ocrRaw, correctPlaka) {
   // Zaten aynıysa kaydetmeye gerek yok
   if (ocrNormalized === correctNormalized) return;
 
+  const signature = normalizeSignature(ocrNormalized);
+
   const existing = await db('plate_learnings')
     .where('ocr_raw', ocrNormalized)
     .first();
@@ -346,7 +370,8 @@ async function recordLearning(ocrRaw, correctPlaka) {
         .update({
           correct_plaka: correctNormalized,
           confirm_count: existing.confirm_count + 1,
-          last_confirmed_at: db.fn.now()
+          last_confirmed_at: db.fn.now(),
+          normalize_signature: signature,
         });
     } else {
       // Aynı düzeltme tekrarlandı, sadece sayaç artır
@@ -354,7 +379,8 @@ async function recordLearning(ocrRaw, correctPlaka) {
         .where('ocr_raw', ocrNormalized)
         .update({
           confirm_count: existing.confirm_count + 1,
-          last_confirmed_at: db.fn.now()
+          last_confirmed_at: db.fn.now(),
+          normalize_signature: signature,
         });
     }
   } else {
@@ -363,7 +389,8 @@ async function recordLearning(ocrRaw, correctPlaka) {
       .insert({
         ocr_raw: ocrNormalized,
         correct_plaka: correctNormalized,
-        confirm_count: 1
+        confirm_count: 1,
+        normalize_signature: signature,
       });
   }
 

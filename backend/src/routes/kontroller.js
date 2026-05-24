@@ -9,7 +9,14 @@ const { todayTR } = require('../utils/timezone');
 const { normalizePlaka } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
 const { recognizePlate } = require('../services/pythonOcr');
+const plateRecognizer = require('../services/plateRecognizer');
 const { recordOcrCall, markCorrected } = require('../services/ocrMetrics');
+
+// Cache-first OCR akışı: bu skor ve üzeri match'lere güvenip Plate
+// Recognizer'a gitmiyoruz (API maliyetini tüketmemek için). 95 eşiği
+// learned-exact (100) ve learned-signature (95) cache hit'lerini kapsar;
+// fuzzy match (60-90 arası) cache miss sayılır.
+const CACHE_TRUST_THRESHOLD = 95;
 
 const router = express.Router();
 const storage = buildUpload();
@@ -127,17 +134,66 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
       ocrInfo = { ok: false, error: String(ocrResult.reason?.message || ocrResult.reason) };
     }
 
-    // Fuzzy-match against registered plates to fix character confusions.
+    // Cache-first 4-katmanlı akış:
+    //  [1] plate_learnings ham OCR exact match → learned-exact (skor 100)
+    //  [2] plate_learnings signature match     → learned-signature (skor 95)
+    //  [3] fuzzy match araclar/misafir/learned → fuzzy-* (skor 60-90)
+    //  [4] Plate Recognizer cloud API          → cache miss fallback
+    //
+    // 1+2 yüksek güven → Plate Recognizer'a gitmiyoruz (API maliyeti).
+    // 3 ya da hiç match yok → Plate Recognizer'ı dene; başarılı olursa
+    // sonucu otomatik plate_learnings'e yaz (bir sonraki sefer cache hit).
     let matchResult = null;
+    let usedEngine = ocrInfo.engine || 'easyocr';
+    const rawOcrPlate = plaka;
+
     if (plaka && plaka.length >= 5) {
       try {
         matchResult = await correctOCRGuess(plaka);
-        if (matchResult?.corrected && matchResult.corrected !== plaka) {
-          plaka = matchResult.corrected;
-        }
       } catch (e) {
         console.warn('[kontroller] OCR correction failed:', e.message);
       }
+    }
+
+    const cacheTrusted = matchResult?.corrected
+      && (matchResult.score ?? 0) >= CACHE_TRUST_THRESHOLD;
+
+    if (cacheTrusted) {
+      // [1] veya [2] — high-confidence cache hit, Plate Recognizer'a gitme
+      plaka = matchResult.corrected;
+    } else if (plateRecognizer.isConfigured()) {
+      // [3] zayıf fuzzy ya da hiç match yok → Plate Recognizer dene
+      const prResult = await plateRecognizer.recognizePlate(buffer, {
+        filename: originalName,
+        mimeType,
+      });
+      if (prResult.ok && prResult.plate) {
+        const prPlate = normalizePlaka(prResult.plate);
+        usedEngine = 'plate_recognizer';
+        plaka = prPlate;
+        matchResult = {
+          original: rawOcrPlate,
+          corrected: prPlate,
+          source: 'plate-recognizer',
+          score: Math.round((prResult.score || 0) * 100),
+        };
+        // Otomatik öğrenme: ham OCR çıktısı varsa ve Plate Recognizer
+        // farklı bir sonuç döndüyse plate_learnings'e yaz. Bir sonraki
+        // aynı ham OCR çıktısında cache hit alacağız → API çağrısı yok.
+        if (rawOcrPlate && rawOcrPlate !== prPlate) {
+          try {
+            await recordLearning(rawOcrPlate, prPlate);
+          } catch (e) {
+            console.warn('[kontroller] auto-learning failed:', e.message);
+          }
+        }
+      } else if (matchResult?.corrected) {
+        // Plate Recognizer fail oldu — elimizdeki zayıf fuzzy match'i kullan
+        plaka = matchResult.corrected;
+      }
+    } else if (matchResult?.corrected) {
+      // Plate Recognizer konfigüre değil — fuzzy match'i kullan
+      plaka = matchResult.corrected;
     }
 
     try {
@@ -151,11 +207,12 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
         .returning('*');
 
       // OCR metric'i async olarak yaz; cevabı bekletme. recordOcrCall
-      // kendi hatalarını yutar, kullanıcı akışı etkilenmez. Engine etiketi
-      // Python servisinden geliyor (paddle_det+easyocr / easyocr / …).
+      // kendi hatalarını yutar, kullanıcı akışı etkilenmez. Engine etiketi:
+      // Plate Recognizer çağrılıp başarılı olursa 'plate_recognizer',
+      // değilse Python servisinden gelen etiket (paddle_det+easyocr / …).
       recordOcrCall({
         gunlukKontrolId: row.id,
-        engine: ocrInfo.engine || 'easyocr',
+        engine: usedEngine,
         ocrResult: ocrInfo,
       });
 

@@ -11,6 +11,15 @@ const DAY_OPTIONS = [
   { value: 90, label: 'Son 90 gün' },
 ];
 
+// Backend dinamik engine etiketi gönderir; tabloyu okunabilir yapmak için
+// label haritası. Bilinmeyen değer olduğu gibi gösterilir.
+const ENGINE_LABELS = {
+  easyocr: 'EasyOCR',
+  'paddle_det+easyocr': 'PaddleOCR det + EasyOCR',
+  'easyocr+paddle_available': 'EasyOCR (paddle hazır)',
+  plate_recognizer: 'Plate Recognizer (API)',
+};
+
 function Metric({ label, value, hint, accent = 'brand' }) {
   const colorMap = {
     brand: 'text-brand-700 dark:text-brand-300',
@@ -150,7 +159,11 @@ export default function OcrIstatistik() {
                       'text-red-700 dark:text-red-300';
                     return (
                       <tr key={row.engine} className="hover:bg-slate-50 dark:hover:bg-slate-800/40">
-                        <td className="p-3 font-mono text-slate-800 dark:text-slate-200">{row.engine}</td>
+                        <td className="p-3 text-slate-800 dark:text-slate-200">
+                          {ENGINE_LABELS[row.engine] || (
+                            <span className="font-mono">{row.engine}</span>
+                          )}
+                        </td>
                         <td className="p-3 text-right tabular-nums">{row.total}</td>
                         <td className="p-3 text-right tabular-nums">{row.untouched}</td>
                         <td className={`p-3 text-right font-semibold tabular-nums ${accClass}`}>
