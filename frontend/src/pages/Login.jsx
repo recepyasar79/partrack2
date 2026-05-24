@@ -79,12 +79,12 @@ export default function Login() {
 
           <Input
             label="Site Adresi"
-            icon={<BuildingIcon className="w-5 h-5" />}
+            icon={BuildingIcon}
             autoComplete="organization"
             value={site_slug}
             onChange={(e) => setSiteSlug(e.target.value)}
             placeholder="k7fm2qx9bn"
-            helper="Site yöneticinizden aldığınız adres. Platform yöneticileri boş bırakır."
+            helperText="Site yöneticinizden aldığınız adres. Platform yöneticileri boş bırakır."
           />
 
           <Input

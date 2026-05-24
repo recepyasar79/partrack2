@@ -106,7 +106,7 @@ function NewSiteForm({ onCreated, onCancel }) {
             max={26}
             value={form.blok_sayisi}
             onChange={(e) => setForm({ ...form, blok_sayisi: e.target.value })}
-            helper="1-26 (A, B, C, ...)"
+            helperText="1-26 (A, B, C, ...)"
           />
           <Input
             label="Her Blokta Daire"
@@ -115,7 +115,7 @@ function NewSiteForm({ onCreated, onCancel }) {
             max={200}
             value={form.daire_per_blok}
             onChange={(e) => setForm({ ...form, daire_per_blok: e.target.value })}
-            helper="1-200"
+            helperText="1-200"
           />
           <div className="bg-brand-50 dark:bg-brand-900/30 rounded-xl p-3 text-sm">
             <div className="text-xs text-brand-700 dark:text-brand-300 uppercase tracking-wide">Toplam Daire</div>
