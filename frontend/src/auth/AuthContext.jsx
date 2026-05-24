@@ -15,10 +15,12 @@ export function AuthProvider({ children }) {
   });
   const [loading, setLoading] = useState(false);
 
-  const login = useCallback(async (kullanici_adi, sifre) => {
+  const login = useCallback(async (kullanici_adi, sifre, site_slug) => {
     setLoading(true);
     try {
-      const { data } = await api.post('/auth/login', { kullanici_adi, sifre });
+      const body = { kullanici_adi, sifre };
+      if (site_slug) body.site_slug = site_slug;
+      const { data } = await api.post('/auth/login', body);
       localStorage.setItem(TOKEN_KEY, data.token);
       localStorage.setItem(USER_KEY, JSON.stringify(data.kullanici));
       setUser(data.kullanici);

@@ -10,6 +10,8 @@ import {
   ChartIcon,
   CameraIcon,
   XMarkIcon,
+  ClipboardDocumentIcon,
+  InformationCircleIcon,
 } from '../components/ui/Icons';
 
 const PLAN_LABELS = {
@@ -21,16 +23,34 @@ const PLAN_LABELS = {
 
 function NewSiteForm({ onCreated, onCancel }) {
   const toast = useToast();
-  const [form, setForm] = useState({ ad: '', slug: '', plan: 'baslangic' });
+  const [form, setForm] = useState({
+    ad: '',
+    plan: 'baslangic',
+    blok_sayisi: 4,
+    daire_per_blok: 34,
+  });
   const [busy, setBusy] = useState(false);
 
   async function submit() {
-    if (!form.ad || !form.slug) {
-      return toast.error('Site adı ve slug zorunlu.');
+    if (!form.ad) {
+      return toast.error('Site adı zorunlu.');
+    }
+    const blokSayisi = parseInt(form.blok_sayisi, 10);
+    const dairePerBlok = parseInt(form.daire_per_blok, 10);
+    if (!Number.isInteger(blokSayisi) || blokSayisi < 1 || blokSayisi > 26) {
+      return toast.error('Blok sayısı 1-26 arası olmalı.');
+    }
+    if (!Number.isInteger(dairePerBlok) || dairePerBlok < 1 || dairePerBlok > 200) {
+      return toast.error('Daire sayısı 1-200 arası olmalı.');
     }
     setBusy(true);
     try {
-      const { data } = await api.post('/sites', form);
+      const { data } = await api.post('/sites', {
+        ad: form.ad,
+        plan: form.plan,
+        blok_sayisi: blokSayisi,
+        daire_per_blok: dairePerBlok,
+      });
       toast.success(`${data.site.ad} oluşturuldu.`);
       onCreated(data.site);
     } catch (e) {
@@ -40,6 +60,8 @@ function NewSiteForm({ onCreated, onCancel }) {
     }
   }
 
+  const toplamDaire = (parseInt(form.blok_sayisi, 10) || 0) * (parseInt(form.daire_per_blok, 10) || 0);
+
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl p-5 shadow-sm">
       <div className="flex items-center justify-between mb-4">
@@ -48,20 +70,13 @@ function NewSiteForm({ onCreated, onCancel }) {
           <XMarkIcon className="w-5 h-5" />
         </button>
       </div>
-      <div className="grid sm:grid-cols-3 gap-3">
+
+      <div className="grid sm:grid-cols-2 gap-3">
         <Input
           label="Site Adı"
           placeholder="Akasya Evleri"
           value={form.ad}
           onChange={(e) => setForm({ ...form, ad: e.target.value })}
-          required
-        />
-        <Input
-          label="Slug"
-          placeholder="akasya-evleri"
-          value={form.slug}
-          onChange={(e) => setForm({ ...form, slug: e.target.value.toLowerCase() })}
-          helper="URL-safe: küçük harf, rakam, tire"
           required
         />
         <div className="flex flex-col gap-1">
@@ -77,9 +92,88 @@ function NewSiteForm({ onCreated, onCancel }) {
           </select>
         </div>
       </div>
+
+      <div className="mt-4">
+        <div className="flex items-center gap-2 mb-2">
+          <BuildingIcon className="w-4 h-4 text-slate-500" />
+          <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Blok Yapısı</span>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 items-end">
+          <Input
+            label="Blok Sayısı"
+            type="number"
+            min={1}
+            max={26}
+            value={form.blok_sayisi}
+            onChange={(e) => setForm({ ...form, blok_sayisi: e.target.value })}
+            helper="1-26 (A, B, C, ...)"
+          />
+          <Input
+            label="Her Blokta Daire"
+            type="number"
+            min={1}
+            max={200}
+            value={form.daire_per_blok}
+            onChange={(e) => setForm({ ...form, daire_per_blok: e.target.value })}
+            helper="1-200"
+          />
+          <div className="bg-brand-50 dark:bg-brand-900/30 rounded-xl p-3 text-sm">
+            <div className="text-xs text-brand-700 dark:text-brand-300 uppercase tracking-wide">Toplam Daire</div>
+            <div className="text-2xl font-bold text-brand-700 dark:text-brand-200 tabular-nums">{toplamDaire}</div>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 flex items-start gap-1.5">
+          <InformationCircleIcon className="w-4 h-4 mt-0.5 flex-shrink-0" />
+          <span>
+            Bloklar otomatik olarak A, B, C... şeklinde adlandırılır. Site oluşturulduktan sonra
+            blok yapısı değiştirilebilir.
+          </span>
+        </p>
+      </div>
+
       <div className="mt-4 flex gap-2 justify-end">
         <Button variant="ghost" onClick={onCancel}>İptal</Button>
         <Button onClick={submit} disabled={busy}>{busy ? 'Oluşturuluyor…' : 'Oluştur'}</Button>
+      </div>
+    </div>
+  );
+}
+
+function SlugDisplay({ slug }) {
+  const toast = useToast();
+  function copy() {
+    try {
+      navigator.clipboard?.writeText(slug);
+      toast.success('Site adresi kopyalandı.');
+    } catch {
+      toast.error('Kopyalanamadı.');
+    }
+  }
+  return (
+    <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 m-4">
+      <div className="flex items-start gap-3">
+        <InformationCircleIcon className="w-5 h-5 text-amber-700 dark:text-amber-300 mt-0.5 flex-shrink-0" />
+        <div className="flex-1">
+          <div className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-1">
+            Site Giriş Adresi
+          </div>
+          <p className="text-xs text-amber-800 dark:text-amber-300/80 mb-3">
+            Site sakinleri bu adresi login ekranındaki "Site Adresi" alanına yazarak giriş yapar.
+            Tahmin edilemez — başka sitelerin sakinleri bu adresi bilmediği sürece sitenize erişemez.
+          </p>
+          <div className="flex items-center gap-2">
+            <code className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 rounded-lg font-mono text-lg font-bold tracking-wider text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 select-all">
+              {slug}
+            </code>
+            <button
+              onClick={copy}
+              className="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
+              title="Kopyala"
+            >
+              <ClipboardDocumentIcon className="w-5 h-5" />
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
@@ -135,7 +229,7 @@ function SiteDetail({ siteId, onClose, onChanged }) {
         <div>
           <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{site.ad}</h2>
           <p className="text-xs text-slate-500 dark:text-slate-400">
-            <code>{site.slug}</code> · {PLAN_LABELS[site.plan] || site.plan} ·{' '}
+            {PLAN_LABELS[site.plan] || site.plan} ·{' '}
             <span className={site.aktif ? 'text-green-600' : 'text-red-600'}>
               {site.aktif ? 'Aktif' : 'Pasif'}
             </span>
@@ -145,6 +239,8 @@ function SiteDetail({ siteId, onClose, onChanged }) {
           <XMarkIcon className="w-5 h-5" />
         </button>
       </div>
+
+      <SlugDisplay slug={site.slug} />
 
       <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Metric Icon={BuildingIcon} label="Daire" value={metrikler.daire_sayisi} />

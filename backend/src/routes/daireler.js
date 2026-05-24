@@ -2,7 +2,8 @@ const express = require('express');
 const db = require('../db');
 const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
-const { isValidDaireNo, isValidTelefon, parseDaireNo } = require('../utils/validators');
+const { isValidTelefon } = require('../utils/validators');
+const { isValidDaireInSite, parseDaireNoFlexible } = require('../utils/siteYapisi');
 
 const router = express.Router();
 
@@ -38,10 +39,23 @@ router.get('/:id', async (req, res) => {
 
 router.post('/', requireSiteAdmin, async (req, res) => {
   const { daire_no, sahip_ad, sahip_tel, kvkk_riza, bildirim_opt_in } = req.body || {};
-  if (!isValidDaireNo(daire_no)) return res.status(400).json({ error: 'Geçersiz daire numarası.' });
   if (!sahip_ad || sahip_ad.length < 2) return res.status(400).json({ error: 'Sahip adı zorunlu.' });
   if (!isValidTelefon(sahip_tel)) return res.status(400).json({ error: 'Telefon formatı geçersiz (05XXXXXXXXX).' });
   if (!kvkk_riza) return res.status(400).json({ error: 'KVKK rızası zorunlu.' });
+
+  // Site'nin blok_yapisi'na göre daire_no'yu doğrula. Mevcut hardcoded
+  // A-D × 34 yerine, her site kendi blok/daire sayısını sites.blok_yapisi
+  // JSONB kolonunda tutar (Ü1.11).
+  const site = await db('sites').where({ id: req.scopedSiteId }).first();
+  if (!site) return res.status(404).json({ error: 'Site bulunamadı.' });
+  const blokYapisi = site.blok_yapisi || [];
+  const parsed = parseDaireNoFlexible(daire_no);
+  if (!parsed || !isValidDaireInSite(parsed, blokYapisi)) {
+    return res.status(400).json({
+      error: 'Geçersiz daire numarası — site blok yapısına uygun değil.',
+    });
+  }
+  const { blok, sira_no } = parsed;
 
   // UNIQUE artık (site_id, daire_no) composite — aynı daire_no farklı site'de OK
   const existing = await db('daireler')
@@ -50,7 +64,6 @@ router.post('/', requireSiteAdmin, async (req, res) => {
   if (existing && existing.aktif) {
     return res.status(409).json({ error: 'Bu daire numarası zaten kayıtlı.' });
   }
-  const { blok, sira_no } = parseDaireNo(daire_no);
 
   let created;
   if (existing && !existing.aktif) {
@@ -199,13 +212,20 @@ router.post('/bulk-import', requireSiteAdmin, async (req, res) => {
   const eklenenler = [];
   const hatalar = [];
 
+  // Bulk-import için site'nin blok_yapisi'sını tek seferde çek
+  const site = await db('sites').where({ id: req.scopedSiteId }).first();
+  const blokYapisi = site?.blok_yapisi || [];
+
   for (let i = 0; i < satirlar.length; i++) {
     const s = satirlar[i];
     try {
-      if (!isValidDaireNo(s.daire_no)) throw new Error('Geçersiz daire_no');
+      const parsed = parseDaireNoFlexible(s.daire_no);
+      if (!parsed || !isValidDaireInSite(parsed, blokYapisi)) {
+        throw new Error('Geçersiz daire_no (site yapısına uymuyor)');
+      }
+      const { blok, sira_no } = parsed;
       if (!s.sahip_ad) throw new Error('sahip_ad eksik');
       if (!isValidTelefon(s.sahip_tel)) throw new Error('Geçersiz telefon');
-      const { blok, sira_no } = parseDaireNo(s.daire_no);
       const exist = await db('daireler')
         .where({ daire_no: s.daire_no, site_id: req.scopedSiteId, aktif: true })
         .first();

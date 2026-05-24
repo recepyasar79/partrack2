@@ -3,10 +3,11 @@ import { api, apiError } from '../services/api';
 import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { BLOKLAR } from '../utils/constants';
+import { useAuth } from '../auth/AuthContext';
 import { toCSV, downloadCSV } from '../utils/csv';
 
 export default function AracListesi() {
+  const { user } = useAuth();
   const toast = useToast();
   const [araclar, setAraclar] = useState([]);
   const [q, setQ] = useState('');
@@ -72,7 +73,9 @@ export default function AracListesi() {
           className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-3"
         >
           <option value="">Tüm bloklar</option>
-          {BLOKLAR.map((b) => <option key={b} value={b}>{b}</option>)}
+          {(user?.site?.blok_yapisi || []).map((b) => (
+            <option key={b.ad} value={b.ad}>{b.ad}</option>
+          ))}
         </select>
       </div>
 

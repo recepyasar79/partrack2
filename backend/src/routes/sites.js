@@ -19,12 +19,15 @@ const db = require('../db');
 const { authRequired, requireSuperadmin } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { hashPassword } = require('../utils/auth');
+const { generateSiteSlug } = require('../utils/slug');
+const { validateBlokYapisi, buildUniformBlokYapisi } = require('../utils/siteYapisi');
 
 const router = express.Router();
 
 router.use(authRequired, requireSuperadmin);
 
-// Slug formatı: küçük harf, rakam, tire. URL-safe.
+// Slug formatı: 10 karakter güvenli alfabe — tahmin edilemez.
+// Sahip değiştirme PATCH ile de slug'ı manuel set edemez (güvenlik için).
 const SLUG_REGEX = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
 
 router.get('/', async (_req, res, next) => {
@@ -56,24 +59,58 @@ router.get('/', async (_req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { ad, slug, plan = 'baslangic' } = req.body || {};
+    const { ad, plan = 'baslangic' } = req.body || {};
     if (!ad || ad.length < 2) {
       return res.status(400).json({ error: 'Site adı zorunlu.' });
-    }
-    if (!slug || !SLUG_REGEX.test(slug)) {
-      return res.status(400).json({
-        error: 'Slug küçük harf, rakam ve tire içermelidir (örn: "akasya-evleri").',
-      });
     }
     if (!['baslangic', 'standart', 'pro', 'kurumsal'].includes(plan)) {
       return res.status(400).json({ error: 'Geçersiz plan.' });
     }
-    const existing = await db('sites').where({ slug }).first();
-    if (existing) {
-      return res.status(409).json({ error: 'Bu slug zaten kullanımda.' });
+
+    // Blok yapısı: ya tam yapı (blok_yapisi array) ya da hızlı form
+    // (blok_sayisi + daire_per_blok). Her ikisi de yoksa boş başlat
+    // (sahip sonra PATCH ile ekleyebilir).
+    let blokYapisi = [];
+    if (Array.isArray(req.body?.blok_yapisi)) {
+      const v = validateBlokYapisi(req.body.blok_yapisi);
+      if (!v.ok) return res.status(400).json({ error: v.error });
+      blokYapisi = v.normalized;
+    } else if (req.body?.blok_sayisi != null && req.body?.daire_per_blok != null) {
+      const blokSayisi = parseInt(req.body.blok_sayisi, 10);
+      const dairePerBlok = parseInt(req.body.daire_per_blok, 10);
+      if (!Number.isInteger(blokSayisi) || blokSayisi < 1 || blokSayisi > 26) {
+        return res.status(400).json({ error: 'blok_sayisi 1-26 arası olmalı.' });
+      }
+      if (!Number.isInteger(dairePerBlok) || dairePerBlok < 1 || dairePerBlok > 200) {
+        return res.status(400).json({ error: 'daire_per_blok 1-200 arası olmalı.' });
+      }
+      blokYapisi = buildUniformBlokYapisi(blokSayisi, dairePerBlok);
     }
+
+    // Slug otomatik üretilir — tahmin edilemez (10 karakter). Body'de
+    // slug verilse bile YOK SAYILIR (güvenlik: sahip tahmin edilebilir
+    // bir slug yazamasın). Çakışma çok düşük ihtimal, retry ile çöz.
+    let slug = null;
+    for (let attempt = 0; attempt < 5; attempt++) {
+      const candidate = generateSiteSlug();
+      const conflict = await db('sites').where({ slug: candidate }).first();
+      if (!conflict) {
+        slug = candidate;
+        break;
+      }
+    }
+    if (!slug) {
+      return res.status(500).json({ error: 'Slug üretimi başarısız (5 deneme).' });
+    }
+
     const [created] = await db('sites')
-      .insert({ ad, slug, plan, aktif: true })
+      .insert({
+        ad,
+        slug,
+        plan,
+        aktif: true,
+        blok_yapisi: JSON.stringify(blokYapisi),
+      })
       .returning('*');
     await writeAudit({
       user_id: req.user.id,
@@ -148,18 +185,15 @@ router.patch('/:id', async (req, res, next) => {
     const eski = await db('sites').where({ id }).first();
     if (!eski) return res.status(404).json({ error: 'Site bulunamadı.' });
 
-    const { ad, slug, plan, aktif } = req.body || {};
+    const { ad, plan, aktif, blok_yapisi } = req.body || {};
     const update = {};
     if (ad !== undefined) {
       if (!ad || ad.length < 2) return res.status(400).json({ error: 'Site adı geçersiz.' });
       update.ad = ad;
     }
-    if (slug !== undefined) {
-      if (!SLUG_REGEX.test(slug)) return res.status(400).json({ error: 'Geçersiz slug.' });
-      const conflict = await db('sites').where({ slug }).whereNot({ id }).first();
-      if (conflict) return res.status(409).json({ error: 'Bu slug başka bir sitede kullanılıyor.' });
-      update.slug = slug;
-    }
+    // Slug PATCH üzerinden değiştirilemez — sahip slug'ı sabit tutmalı
+    // (login url'i değişmesin). Yeniden generate gerektiğinde superadmin
+    // ayrı bir POST /sites/:id/rotate-slug akışıyla yapar (ileride).
     if (plan !== undefined) {
       if (!['baslangic', 'standart', 'pro', 'kurumsal'].includes(plan)) {
         return res.status(400).json({ error: 'Geçersiz plan.' });
@@ -167,6 +201,11 @@ router.patch('/:id', async (req, res, next) => {
       update.plan = plan;
     }
     if (aktif !== undefined) update.aktif = !!aktif;
+    if (blok_yapisi !== undefined) {
+      const v = validateBlokYapisi(blok_yapisi);
+      if (!v.ok) return res.status(400).json({ error: v.error });
+      update.blok_yapisi = JSON.stringify(v.normalized);
+    }
     if (!Object.keys(update).length) {
       return res.status(400).json({ error: 'Güncellenecek alan yok.' });
     }

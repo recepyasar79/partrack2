@@ -5,7 +5,7 @@ import { Input } from '../components/ui/Input';
 import { Button } from '../components/ui/Button';
 import { apiError } from '../services/api';
 import { useToast } from '../components/ui/Toast';
-import { LockClosedIcon, ParkingIcon, SunIcon, MoonIcon } from '../components/ui/Icons';
+import { LockClosedIcon, ParkingIcon, SunIcon, MoonIcon, BuildingIcon } from '../components/ui/Icons';
 import { useTheme } from '../theme/ThemeContext';
 
 export default function Login() {
@@ -14,6 +14,7 @@ export default function Login() {
   const nav = useNavigate();
   const loc = useLocation();
   const { isDark, toggleTheme } = useTheme();
+  const [site_slug, setSiteSlug] = useState('');
   const [kullanici_adi, setKAdi] = useState('');
   const [sifre, setSifre] = useState('');
   const [err, setErr] = useState('');
@@ -22,9 +23,15 @@ export default function Login() {
     e.preventDefault();
     setErr('');
     try {
-      await login(kullanici_adi.trim(), sifre);
+      // site_slug boş → backend superadmin pool'una bakar
+      const kullanici = await login(
+        kullanici_adi.trim(),
+        sifre,
+        site_slug.trim().toLowerCase() || undefined
+      );
       toast.success('Hoş geldiniz.');
-      const dest = loc.state?.from || '/';
+      // Superadmin /sites'a, diğerleri /'a
+      const dest = kullanici.rol === 'superadmin' ? '/sites' : (loc.state?.from || '/');
       nav(dest, { replace: true });
     } catch (e2) {
       setErr(apiError(e2));
@@ -71,14 +78,23 @@ export default function Login() {
           </div>
 
           <Input
+            label="Site Adresi"
+            icon={<BuildingIcon className="w-5 h-5" />}
+            autoComplete="organization"
+            value={site_slug}
+            onChange={(e) => setSiteSlug(e.target.value)}
+            placeholder="k7fm2qx9bn"
+            helper="Site yöneticinizden aldığınız adres. Platform yöneticileri boş bırakır."
+          />
+
+          <Input
             label="Kullanıcı Adı"
             autoComplete="username"
-            autoFocus
             value={kullanici_adi}
             onChange={(e) => setKAdi(e.target.value)}
             placeholder="kullanici_adi"
           />
-          
+
           <Input
             label="Şifre"
             type="password"
@@ -97,8 +113,8 @@ export default function Login() {
             </div>
           )}
 
-          <Button 
-            type="submit" 
+          <Button
+            type="submit"
             disabled={loading || !kullanici_adi || !sifre}
             size="lg"
             className="w-full mt-2"

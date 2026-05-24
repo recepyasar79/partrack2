@@ -1,10 +1,27 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import { Input } from './ui/Input';
 import { Button } from './ui/Button';
-import { isValidDaireNo, isValidTelefon, formatTelefon, unformatTelefon } from '../utils/validation';
-import { tumDaireler, KVKK_METNI } from '../utils/constants';
+import { isValidTelefon, formatTelefon, unformatTelefon } from '../utils/validation';
+import { KVKK_METNI } from '../utils/constants';
+import { useAuth } from '../auth/AuthContext';
+
+// Site'nin blok_yapisi'sından daire_no listesi üretir.
+// Örn: [{ad: "A", daire_sayisi: 34}] → ["A1", "A2", ..., "A34"]
+function buildDaireList(blokYapisi) {
+  if (!Array.isArray(blokYapisi)) return [];
+  const out = [];
+  for (const b of blokYapisi) {
+    const ad = String(b.ad || '').trim();
+    const n = parseInt(b.daire_sayisi, 10);
+    if (!ad || !Number.isInteger(n)) continue;
+    for (let i = 1; i <= n; i++) out.push(`${ad}${i}`);
+  }
+  return out;
+}
 
 export default function DaireForm({ initial = {}, onSubmit, busy }) {
+  const { user } = useAuth();
+  const daireList = useMemo(() => buildDaireList(user?.site?.blok_yapisi), [user?.site?.blok_yapisi]);
   const [daire_no, setDaireNo] = useState(initial.daire_no || '');
   const [sahip_ad, setSahipAd] = useState(initial.sahip_ad || '');
   const [sahip_tel, setSahipTel] = useState(formatTelefon(initial.sahip_tel || ''));
@@ -17,7 +34,7 @@ export default function DaireForm({ initial = {}, onSubmit, busy }) {
 
   function validate() {
     const e = {};
-    if (!isEdit && !isValidDaireNo(daire_no)) e.daire_no = 'Daire numarası seçin.';
+    if (!isEdit && !daireList.includes(daire_no)) e.daire_no = 'Daire numarası seçin.';
     if (!sahip_ad || sahip_ad.trim().length < 2) e.sahip_ad = 'Ad-soyad en az 2 karakter.';
     if (!isValidTelefon(unformatTelefon(sahip_tel))) e.sahip_tel = 'Telefon 05XXXXXXXXX formatında olmalı.';
     if (!isEdit && !kvkk_riza) e.kvkk_riza = 'KVKK rızası zorunludur.';
@@ -48,7 +65,7 @@ export default function DaireForm({ initial = {}, onSubmit, busy }) {
             className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-3 py-2 text-base focus:border-blue-500 focus:outline-none focus:ring-2 focus:ring-blue-200 dark:focus:ring-blue-800"
           >
             <option value="">Daire seçin…</option>
-            {tumDaireler().map((d) => (
+            {daireList.map((d) => (
               <option key={d} value={d}>{d}</option>
             ))}
           </select>

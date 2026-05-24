@@ -7,7 +7,7 @@ import PlakaListesi from '../components/PlakaListesi';
 import SahipDegistirModal from '../components/SahipDegistirModal';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
-import { BLOKLAR } from '../utils/constants';
+// BLOKLAR artık site'nin blok_yapisi'sından dinamik gelir (Ü1.11).
 import { MagnifyingGlassIcon, PlusIcon, DocumentArrowUpIcon, XMarkIcon, ChevronDownIcon } from '../components/ui/Icons';
 
 export default function Daireler() {
@@ -136,7 +136,9 @@ export default function Daireler() {
           containerClassName="sm:w-40"
         >
           <option value="">Tüm bloklar</option>
-          {BLOKLAR.map((b) => <option key={b} value={b}>{b} Blok</option>)}
+          {(user?.site?.blok_yapisi || []).map((b) => (
+            <option key={b.ad} value={b.ad}>{b.ad} Blok</option>
+          ))}
         </Select>
       </div>
 

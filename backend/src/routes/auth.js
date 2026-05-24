@@ -22,18 +22,42 @@ async function constantTimeFail() {
 }
 
 router.post('/login', loginLimiter, async (req, res) => {
-  const { kullanici_adi, sifre } = req.body || {};
+  const { kullanici_adi, sifre, site_slug } = req.body || {};
   if (!kullanici_adi || !sifre) {
     return res.status(400).json({ error: 'Kullanıcı adı ve şifre zorunlu.' });
   }
-  const user = await db('users').where({ kullanici_adi }).first();
+
+  // 3 alanlı login: site_slug varsa o site'nin user'ını ara (site-bağlı
+  // kullanıcılar). Yoksa superadmin pool'una bak (site_id IS NULL).
+  // Aynı kullanici_adi farklı sitelerde olabilir → composite unique
+  // (site_id, kullanici_adi) ile çakışma yok.
+  let user;
+  if (site_slug) {
+    const site = await db('sites')
+      .where({ slug: String(site_slug).trim().toLowerCase() })
+      .first();
+    if (!site || !site.aktif) {
+      await constantTimeFail();
+      return res.status(401).json({ error: 'Site adı veya kullanıcı bilgileri hatalı.' });
+    }
+    user = await db('users')
+      .where({ kullanici_adi, site_id: site.id })
+      .first();
+  } else {
+    // site_slug yoksa: yalnız superadmin pool'una bak
+    user = await db('users')
+      .where({ kullanici_adi, rol: 'superadmin' })
+      .whereNull('site_id')
+      .first();
+  }
+
   if (!user || !user.aktif) {
     await constantTimeFail();
-    return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı.' });
+    return res.status(401).json({ error: 'Site adı veya kullanıcı bilgileri hatalı.' });
   }
   const ok = await verifyPassword(sifre, user.sifre_hash);
   if (!ok) {
-    return res.status(401).json({ error: 'Kullanıcı adı veya şifre hatalı.' });
+    return res.status(401).json({ error: 'Site adı veya kullanıcı bilgileri hatalı.' });
   }
   await db('users').where({ id: user.id }).update({ son_giris: db.fn.now() });
   const token = signToken({
@@ -42,6 +66,15 @@ router.post('/login', loginLimiter, async (req, res) => {
     rol: user.rol,
     site_id: user.site_id ?? null,
   });
+  // site bilgisini de cevaba ekle — frontend daire formu vs. site.blok_yapisi'na göre
+  // dinamik dropdown üretir. Superadmin için site = null.
+  let site = null;
+  if (user.site_id) {
+    site = await db('sites')
+      .where({ id: user.site_id })
+      .select('id', 'ad', 'slug', 'plan', 'aktif', 'blok_yapisi')
+      .first();
+  }
   res.json({
     token,
     kullanici: {
@@ -49,6 +82,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       kullanici_adi: user.kullanici_adi,
       rol: user.rol,
       site_id: user.site_id ?? null,
+      site,
     },
   });
 });
@@ -59,7 +93,14 @@ router.get('/me', authRequired, async (req, res) => {
     .select('id', 'kullanici_adi', 'rol', 'site_id', 'aktif', 'son_giris')
     .first();
   if (!user) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
-  res.json({ kullanici: user });
+  let site = null;
+  if (user.site_id) {
+    site = await db('sites')
+      .where({ id: user.site_id })
+      .select('id', 'ad', 'slug', 'plan', 'aktif', 'blok_yapisi')
+      .first();
+  }
+  res.json({ kullanici: { ...user, site } });
 });
 
 router.post('/register', authRequired, requireSiteAdmin, async (req, res) => {
