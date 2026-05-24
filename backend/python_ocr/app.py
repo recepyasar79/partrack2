@@ -329,20 +329,27 @@ def paddle_detect_regions(image: np.ndarray) -> List[Tuple[int, int, int, int]]:
         return []
 
     polys: List[np.ndarray] = []
-    for item in out or []:
+    items = out if out is not None else []
+    for item in items:
         if isinstance(item, dict):
-            polys.extend(item.get("dt_polys", []) or [])
+            dp = item.get("dt_polys")
         else:
-            # Result objesi varsa attr olarak dt_polys saklar
             dp = getattr(item, "dt_polys", None)
-            if dp is not None:
-                polys.extend(dp)
-            else:
-                # Generic mapping access
+            if dp is None:
                 try:
-                    polys.extend(item["dt_polys"])
+                    dp = item["dt_polys"]
                 except Exception:
                     continue
+        # dt_polys numpy array veya liste olabilir; truthiness yerine
+        # None / boş-uzunluk kontrolü yap (bool(np.ndarray) ValueError atar).
+        if dp is None:
+            continue
+        try:
+            if len(dp) == 0:
+                continue
+        except TypeError:
+            continue
+        polys.extend(dp)
 
     regions = []
     for poly in polys:
