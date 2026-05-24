@@ -7,6 +7,11 @@ export function ProtectedRoute({ children }) {
   if (!user) {
     return <Navigate to="/login" replace state={{ from: location.pathname }} />;
   }
+  // Superadmin sadece /sites altında çalışır — başka sayfaya gelirse
+  // (örn. /, /daireler, /araclar) doğrudan /sites'a yönlendir.
+  if (user.rol === 'superadmin' && !location.pathname.startsWith('/sites')) {
+    return <Navigate to="/sites" replace />;
+  }
   return children;
 }
 

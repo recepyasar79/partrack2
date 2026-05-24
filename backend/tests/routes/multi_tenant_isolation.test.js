@@ -227,30 +227,39 @@ describe('Multi-tenant izolasyon', () => {
     });
   });
 
-  // ---------- SUPERADMIN SCOPE GEÇİŞİ ----------
+  // ---------- SUPERADMIN PLATFORM İZOLASYONU ----------
+  //
+  // Superadmin müşteri sitelerinin domain verisine (daire/araç/foto/sahip)
+  // erişemez — platform katmanı izolasyonu, KVKK + müşteri güveni için.
+  // Yalnız /sites/* endpoint'leri (platform işleri) açıktır.
 
-  describe('superadmin scope geçişi', () => {
-    test('superadmin ?siteId yoksa → 400 (zorunlu)', async () => {
+  describe('superadmin platform izolasyonu', () => {
+    test('superadmin /daireler → 403 (domain verisi yasak)', async () => {
       const r = await request(app)
         .get('/api/daireler')
         .set('Authorization', `Bearer ${tokenSuper}`);
-      expect(r.status).toBe(400);
+      expect(r.status).toBe(403);
     });
 
-    test('superadmin ?siteId=A → A daireleri', async () => {
+    test('superadmin ?siteId=A bile olsa /daireler → 403', async () => {
       const r = await request(app)
         .get(`/api/daireler?siteId=${siteA.id}`)
         .set('Authorization', `Bearer ${tokenSuper}`);
-      expect(r.status).toBe(200);
-      expect(r.body.daireler.every((d) => d.site_id === siteA.id)).toBe(true);
+      expect(r.status).toBe(403);
     });
 
-    test('superadmin ?siteId=B → B daireleri', async () => {
+    test('superadmin /araclar → 403', async () => {
       const r = await request(app)
-        .get(`/api/daireler?siteId=${siteB.id}`)
+        .get('/api/araclar')
         .set('Authorization', `Bearer ${tokenSuper}`);
-      expect(r.status).toBe(200);
-      expect(r.body.daireler.every((d) => d.site_id === siteB.id)).toBe(true);
+      expect(r.status).toBe(403);
+    });
+
+    test('superadmin /kontroller → 403', async () => {
+      const r = await request(app)
+        .get('/api/kontroller')
+        .set('Authorization', `Bearer ${tokenSuper}`);
+      expect(r.status).toBe(403);
     });
   });
 

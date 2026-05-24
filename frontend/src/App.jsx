@@ -67,7 +67,7 @@ export default function App() {
           <Route
             path="/kullanicilar"
             element={
-              <RoleRoute roller={['site_yonetici', 'superadmin']}>
+              <RoleRoute roller={['site_yonetici']}>
                 <Layout><Kullanicilar /></Layout>
               </RoleRoute>
             }
@@ -75,7 +75,7 @@ export default function App() {
           <Route
             path="/audit"
             element={
-              <RoleRoute roller={['site_yonetici', 'superadmin']}>
+              <RoleRoute roller={['site_yonetici']}>
                 <Layout><AuditLog /></Layout>
               </RoleRoute>
             }
@@ -83,7 +83,7 @@ export default function App() {
           <Route
             path="/ocr-istatistik"
             element={
-              <RoleRoute roller={['site_yonetici', 'superadmin']}>
+              <RoleRoute roller={['site_yonetici']}>
                 <Layout><OcrIstatistik /></Layout>
               </RoleRoute>
             }

@@ -50,13 +50,18 @@ function requireSuperadmin(req, res, next) {
 }
 
 /**
- * Site yönetici veya superadmin. Sadece "yönetici işi" gereken yerler için.
- * Güvenlik kullanıcıları reddedilir.
+ * Site yöneticisi (sadece site_yonetici). Domain-içi mutating işlemler için.
+ *
+ * NOT: Superadmin BURAYA DAHİL DEĞİL — platform sahibi olarak müşteri
+ * sitelerinin domain verisini (daire/araç/foto/sahip bilgisi) görmemeli
+ * ve değiştirmemeli. KVKK + müşteri güveni açısından kritik. Süper-admin
+ * kullanıcı ekleme/site oluşturma gibi platform işlerini /sites/* üzerinden
+ * yapar.
  */
 function requireSiteAdmin(req, res, next) {
   if (!req.user) return res.status(401).json({ error: 'Yetkilendirme gerekli.' });
-  if (req.user.rol !== 'site_yonetici' && req.user.rol !== 'superadmin') {
-    return res.status(403).json({ error: 'Bu işlem için yönetici yetkisi gerekli.' });
+  if (req.user.rol !== 'site_yonetici') {
+    return res.status(403).json({ error: 'Bu işlem için site yöneticisi yetkisi gerekli.' });
   }
   next();
 }
@@ -77,24 +82,27 @@ function requireSiteAdmin(req, res, next) {
  */
 function resolveScopedSiteId(req) {
   if (!req.user) return null;
-  if (req.user.rol === 'superadmin') {
-    const q = req.query?.siteId ?? req.query?.site_id;
-    return q != null ? parseInt(q, 10) || null : null;
-  }
+  // Superadmin domain verisine erişemez (platform katmanı izolasyonu).
+  // /sites/* endpoint'leri kendi site_id'sini path'ten alır, scope helper'a
+  // ihtiyaç duymaz.
+  if (req.user.rol === 'superadmin') return null;
   return req.user.site_id ?? null;
 }
 
 /**
  * Domain route'larının çoğu için gerekli: bir site_id zorunlu olsun.
- * Site-bağlı user'lar için kendi site'sini koyar; superadmin'ın
- * ?siteId vermesini zorunlu kılar. req.scopedSiteId olarak yerleştirir.
+ * Yalnız site_yonetici ve guvenlik (site-bağlı user'lar) geçer.
+ * Superadmin domain verisine erişemez (platform katmanı izolasyonu) → 403.
  */
 function requireScopedSite(req, res, next) {
+  if (req.user?.rol === 'superadmin') {
+    return res.status(403).json({
+      error: 'Platform yöneticileri site verisine erişemez. Site yönetimi için /sites endpoint\'lerini kullanın.',
+    });
+  }
   const siteId = resolveScopedSiteId(req);
   if (siteId == null) {
-    return res.status(400).json({
-      error: 'site_id gerekli. Superadmin iseniz ?siteId query parametresi ekleyin.',
-    });
+    return res.status(400).json({ error: 'site_id gerekli.' });
   }
   req.scopedSiteId = siteId;
   next();

@@ -1,9 +1,6 @@
-import { useEffect, useState } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
-import { api } from '../services/api';
-import { ACTIVE_SITE_KEY } from '../utils/constants';
 import {
   BuildingIcon,
   CarIcon,
@@ -43,46 +40,6 @@ const ROL_LABEL = {
   guvenlik: 'Güvenlik',
 };
 
-// Superadmin için aktif site seçici. Diğer sayfalarda yapılan API
-// çağrıları bu site_id ile filtrelenir (api.js interceptor enjekte eder).
-function ActiveSiteSwitcher() {
-  const [sites, setSites] = useState([]);
-  const [active, setActive] = useState(() => localStorage.getItem(ACTIVE_SITE_KEY) || '1');
-
-  useEffect(() => {
-    api.get('/sites')
-      .then((r) => setSites(r.data.siteler || []))
-      .catch(() => setSites([]));
-  }, []);
-
-  function change(e) {
-    const v = e.target.value;
-    setActive(v);
-    localStorage.setItem(ACTIVE_SITE_KEY, v);
-    // Sayfa yenile — eski site'nin verisi cache'tedir, refresh temiz başlangıç
-    window.location.reload();
-  }
-
-  return (
-    <div className="flex items-center gap-2 text-xs">
-      <span className="text-white/60 hidden sm:inline">Aktif site:</span>
-      <select
-        value={active}
-        onChange={change}
-        className="bg-white/10 border border-white/20 text-white rounded-md px-2 py-1 text-xs hover:bg-white/20 focus:outline-none focus:ring-2 focus:ring-white/40"
-        title="Aktif site (superadmin)"
-      >
-        {sites.length === 0 && <option value={active}>#{active}</option>}
-        {sites.map((s) => (
-          <option key={s.id} value={s.id} className="text-slate-900">
-            {s.ad} ({s.slug})
-          </option>
-        ))}
-      </select>
-    </div>
-  );
-}
-
 function ThemeToggle() {
   const { isDark, toggleTheme } = useTheme();
   return (
@@ -100,7 +57,7 @@ function ThemeToggle() {
 
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
-  const isSiteAdmin = user?.rol === 'site_yonetici' || user?.rol === 'superadmin';
+  const isSiteAdmin = user?.rol === 'site_yonetici';
   const isSuperadmin = user?.rol === 'superadmin';
 
   return (
@@ -125,9 +82,9 @@ export default function Layout({ children }) {
                 </span>
               </div>
             </span>
-            {isSiteAdmin && (
+            {(isSiteAdmin || isSuperadmin) && (
               <div className="hidden md:flex gap-1">
-                {[...adminItems, ...(isSuperadmin ? superadminItems : [])].map((item) => (
+                {(isSuperadmin ? superadminItems : adminItems).map((item) => (
                   <NavLink
                     key={item.to}
                     to={item.to}
@@ -170,7 +127,7 @@ export default function Layout({ children }) {
 
       <main className="animate-fade-in">{children}</main>
 
-      {user && (
+      {user && !isSuperadmin && (
         <nav className="fixed bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-[0_-4px_6px_-1px_rgb(0_0_0_/_0.1)] z-20">
           <div className="max-w-3xl mx-auto flex">
             {navItems.map((item) => (
