@@ -11,3 +11,8 @@ frontend
 uploads
 coverage
 *.md
+backend/python_ocr
+**/.venv
+**/__pycache__
+.minimax
+.claude
