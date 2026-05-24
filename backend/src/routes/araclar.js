@@ -1,16 +1,19 @@
 const express = require('express');
 const db = require('../db');
-const { authRequired, requireRole } = require('../middleware/auth');
+const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { isValidPlaka, normalizePlaka } = require('../utils/validators');
 
 const router = express.Router();
 
-router.get('/', authRequired, async (req, res) => {
+router.use(authRequired, requireScopedSite);
+
+router.get('/', async (req, res) => {
   const { blok, q } = req.query;
   let qb = db('araclar')
     .join('daireler', 'araclar.daire_id', 'daireler.id')
-    .where('araclar.aktif', true)
+    .where('araclar.site_id', req.scopedSiteId)
+    .andWhere('araclar.aktif', true)
     .andWhere('daireler.aktif', true)
     .select(
       'araclar.id',
@@ -34,22 +37,29 @@ router.get('/', authRequired, async (req, res) => {
   res.json({ araclar });
 });
 
-router.get('/daire/:daire_id', authRequired, async (req, res) => {
+router.get('/daire/:daire_id', async (req, res) => {
   const daire_id = parseInt(req.params.daire_id, 10);
-  const araclar = await db('araclar').where({ daire_id, aktif: true }).orderBy('plaka');
+  const araclar = await db('araclar')
+    .where({ daire_id, site_id: req.scopedSiteId, aktif: true })
+    .orderBy('plaka');
   res.json({ araclar });
 });
 
-router.post('/', authRequired, requireRole('yonetici'), async (req, res) => {
+router.post('/', requireSiteAdmin, async (req, res) => {
   const { daire_id, plaka } = req.body || {};
   if (!daire_id) return res.status(400).json({ error: 'daire_id zorunlu.' });
   const p = normalizePlaka(plaka);
   if (!isValidPlaka(p)) return res.status(400).json({ error: 'Plaka formatı geçersiz.' });
 
-  const daire = await db('daireler').where({ id: daire_id, aktif: true }).first();
+  const daire = await db('daireler')
+    .where({ id: daire_id, site_id: req.scopedSiteId, aktif: true })
+    .first();
   if (!daire) return res.status(404).json({ error: 'Daire bulunamadı.' });
 
-  const conflict = await db('araclar').where({ plaka: p, aktif: true }).first();
+  // Plaka UNIQUE artık (site_id, plaka) — aynı plaka farklı site'de OK
+  const conflict = await db('araclar')
+    .where({ plaka: p, site_id: req.scopedSiteId, aktif: true })
+    .first();
   if (conflict) {
     return res.status(409).json({
       error: 'Bu plaka başka bir aktif daireye kayıtlı.',
@@ -58,10 +68,11 @@ router.post('/', authRequired, requireRole('yonetici'), async (req, res) => {
   }
 
   const [created] = await db('araclar')
-    .insert({ daire_id, plaka: p, aktif: true })
+    .insert({ daire_id, plaka: p, aktif: true, site_id: req.scopedSiteId })
     .returning('*');
   await writeAudit({
     user_id: req.user.id,
+    site_id: req.scopedSiteId,
     eylem: 'olustur',
     tablo_adi: 'araclar',
     kayit_id: created.id,
@@ -71,13 +82,16 @@ router.post('/', authRequired, requireRole('yonetici'), async (req, res) => {
   res.status(201).json({ arac: created });
 });
 
-router.delete('/:id', authRequired, requireRole('yonetici'), async (req, res) => {
+router.delete('/:id', requireSiteAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const eski = await db('araclar').where({ id }).first();
+  const eski = await db('araclar').where({ id, site_id: req.scopedSiteId }).first();
   if (!eski) return res.status(404).json({ error: 'Araç bulunamadı.' });
-  await db('araclar').where({ id }).update({ aktif: false, silinme_zamani: db.fn.now() });
+  await db('araclar')
+    .where({ id, site_id: req.scopedSiteId })
+    .update({ aktif: false, silinme_zamani: db.fn.now() });
   await writeAudit({
     user_id: req.user.id,
+    site_id: req.scopedSiteId,
     eylem: 'sil',
     tablo_adi: 'araclar',
     kayit_id: id,

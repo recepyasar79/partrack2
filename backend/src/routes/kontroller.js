@@ -2,7 +2,7 @@ const express = require('express');
 const path = require('path');
 const fs = require('fs');
 const db = require('../db');
-const { authRequired } = require('../middleware/auth');
+const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { buildUpload, isR2Configured } = require('../services/storage');
 const { todayTR } = require('../utils/timezone');
@@ -20,6 +20,9 @@ const CACHE_TRUST_THRESHOLD = 95;
 
 const router = express.Router();
 const storage = buildUpload();
+
+// Tüm endpoint'ler için site_id zorunlu
+router.use(authRequired, requireScopedSite);
 
 let s3ClientPromise = null;
 async function getS3() {
@@ -48,10 +51,10 @@ function extractR2Key(fotoUrl) {
   }
 }
 
-router.get('/', authRequired, async (req, res) => {
+router.get('/', async (req, res) => {
   const tarih = req.query.tarih || todayTR();
   const list = await db('gunluk_kontroller')
-    .where({ kontrol_tarihi: tarih })
+    .where({ kontrol_tarihi: tarih, site_id: req.scopedSiteId })
     .orderBy('yukleme_zamani', 'desc');
   const kontroller = list.map((k) => ({
     ...k,
@@ -61,10 +64,12 @@ router.get('/', authRequired, async (req, res) => {
   res.json({ tarih, kontroller });
 });
 
-router.get('/:id/foto', authRequired, async (req, res, next) => {
+router.get('/:id/foto', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
-    const k = await db('gunluk_kontroller').where({ id }).first();
+    const k = await db('gunluk_kontroller')
+      .where({ id, site_id: req.scopedSiteId })
+      .first();
     if (!k || !k.foto_url) return res.status(404).json({ error: 'Foto bulunamadı.' });
 
     // Local disk dev fallback.
@@ -98,7 +103,7 @@ router.get('/:id/foto', authRequired, async (req, res, next) => {
   }
 });
 
-router.post('/foto-upload', authRequired, (req, res, next) => {
+router.post('/foto-upload', (req, res, next) => {
   storage.upload.single('foto')(req, res, async (err) => {
     if (err) return next(err);
     if (!req.file) return res.status(400).json({ error: 'Dosya alınamadı.' });
@@ -106,12 +111,14 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
     const buffer = req.file.buffer;
     const originalName = req.file.originalname || 'plate.jpg';
     const mimeType = req.file.mimetype || 'image/jpeg';
+    const siteId = req.scopedSiteId;
 
     // Run OCR and storage upload in parallel — they don't depend on each other
     // and combined network time is dominated by the slower of the two.
+    // Storage'a siteId geçilir → R2 path: sites/{siteId}/kontroller/...
     const [ocrResult, savedFile] = await Promise.allSettled([
       recognizePlate(buffer, { filename: originalName, mimeType }),
-      storage.save(buffer, originalName, mimeType),
+      storage.save(buffer, originalName, mimeType, { siteId }),
     ]);
 
     if (savedFile.status !== 'fulfilled') {
@@ -149,7 +156,7 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
 
     if (plaka && plaka.length >= 5) {
       try {
-        matchResult = await correctOCRGuess(plaka);
+        matchResult = await correctOCRGuess(plaka, siteId);
       } catch (e) {
         console.warn('[kontroller] OCR correction failed:', e.message);
       }
@@ -182,7 +189,7 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
         // aynı ham OCR çıktısında cache hit alacağız → API çağrısı yok.
         if (rawOcrPlate && rawOcrPlate !== prPlate) {
           try {
-            await recordLearning(rawOcrPlate, prPlate);
+            await recordLearning(rawOcrPlate, prPlate, siteId);
           } catch (e) {
             console.warn('[kontroller] auto-learning failed:', e.message);
           }
@@ -203,6 +210,7 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
           plaka: plaka || '',
           foto_url: savedFile.value.url,
           yukleyen_user_id: req.user?.id || null,
+          site_id: siteId,
         })
         .returning('*');
 
@@ -214,6 +222,7 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
         gunlukKontrolId: row.id,
         engine: usedEngine,
         ocrResult: ocrInfo,
+        siteId,
       });
 
       res.status(201).json({
@@ -239,18 +248,20 @@ router.post('/foto-upload', authRequired, (req, res, next) => {
   });
 });
 
-router.patch('/:id/plaka', authRequired, async (req, res) => {
+router.patch('/:id/plaka', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const newPlaka = normalizePlaka(req.body.plaka || '');
   if (!newPlaka) return res.status(400).json({ error: 'Plaka zorunlu.' });
-  const eski = await db('gunluk_kontroller').where({ id }).first();
+  const eski = await db('gunluk_kontroller')
+    .where({ id, site_id: req.scopedSiteId })
+    .first();
   if (!eski) return res.status(404).json({ error: 'Kontrol bulunamadı.' });
 
   // When the user manually corrects the plate, remember the correction so
   // the next photo with similar OCR output gets fixed automatically.
   if (eski.plaka && eski.plaka !== newPlaka) {
     try {
-      await recordLearning(eski.plaka, newPlaka);
+      await recordLearning(eski.plaka, newPlaka, req.scopedSiteId);
     } catch (e) {
       console.warn('Learning record failed:', e.message);
     }
@@ -263,11 +274,12 @@ router.patch('/:id/plaka', authRequired, async (req, res) => {
   }
 
   const [updated] = await db('gunluk_kontroller')
-    .where({ id })
+    .where({ id, site_id: req.scopedSiteId })
     .update({ plaka: newPlaka })
     .returning('*');
   await writeAudit({
     user_id: req.user.id,
+    site_id: req.scopedSiteId,
     eylem: 'plaka_duzelt',
     tablo_adi: 'gunluk_kontroller',
     kayit_id: id,
@@ -278,13 +290,18 @@ router.patch('/:id/plaka', authRequired, async (req, res) => {
   res.json({ kontrol: updated });
 });
 
-router.delete('/:id', authRequired, async (req, res) => {
+router.delete('/:id', async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const eski = await db('gunluk_kontroller').where({ id }).first();
+  const eski = await db('gunluk_kontroller')
+    .where({ id, site_id: req.scopedSiteId })
+    .first();
   if (!eski) return res.status(404).json({ error: 'Kontrol bulunamadı.' });
-  await db('gunluk_kontroller').where({ id }).delete();
+  await db('gunluk_kontroller')
+    .where({ id, site_id: req.scopedSiteId })
+    .delete();
   await writeAudit({
     user_id: req.user.id,
+    site_id: req.scopedSiteId,
     eylem: 'sil',
     tablo_adi: 'gunluk_kontroller',
     kayit_id: id,

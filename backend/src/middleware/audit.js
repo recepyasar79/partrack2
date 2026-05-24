@@ -1,9 +1,14 @@
 const db = require('../db');
 
-async function writeAudit({ user_id, eylem, tablo_adi, kayit_id, eski_deger, yeni_deger, ip_adres }) {
+async function writeAudit({ user_id, site_id, eylem, tablo_adi, kayit_id, eski_deger, yeni_deger, ip_adres }) {
+  if (site_id == null) {
+    console.warn('[audit] site_id eksik, kayıt atlandı:', { eylem, tablo_adi });
+    return;
+  }
   try {
     await db('audit_log').insert({
       user_id: user_id || null,
+      site_id,
       eylem,
       tablo_adi,
       kayit_id: kayit_id || null,

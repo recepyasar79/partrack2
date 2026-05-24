@@ -1,22 +1,28 @@
 const express = require('express');
 const db = require('../db');
-const { authRequired } = require('../middleware/auth');
+const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { sendTemplate, buildMessage } = require('../services/whatsapp');
 
 const router = express.Router();
+router.use(authRequired, requireScopedSite);
 const MAX_DENEME = 3;
 
-async function gonderBirIhlal(ihlalId, userId, ip) {
-  const ihlal = await db('ihlaller')
+// siteId opsiyonel — Bu fonksiyon hem route'lardan (siteId zorunlu) hem de
+// arka plan retry cron'undan (tüm sitelere çalışabilir, siteId=null) çağrılır.
+async function gonderBirIhlal(ihlalId, userId, ip, siteId = null) {
+  let qb = db('ihlaller')
     .leftJoin('daireler', 'ihlaller.daire_id', 'daireler.id')
-    .where('ihlaller.id', ihlalId)
+    .where('ihlaller.id', ihlalId);
+  if (siteId != null) qb = qb.andWhere('ihlaller.site_id', siteId);
+  const ihlal = await qb
     .select(
       'ihlaller.id',
       'ihlaller.daire_id',
       'ihlaller.daire_no_snapshot',
       'ihlaller.plaka_listesi',
       'ihlaller.ihlal_tipi',
+      'ihlaller.site_id',
       'daireler.daire_no',
       'daireler.sahip_ad',
       'daireler.sahip_tel',
@@ -71,6 +77,8 @@ async function gonderBirIhlal(ihlalId, userId, ip) {
         mesaj,
         deneme_sayisi: 0,
         gonderim_durumu: 'beklemede',
+        // ihlal'in site_id'si — ihlal row'unu zaten getirdik, oradan al
+        site_id: ihlal.site_id ?? siteId,
       })
       .returning('*');
   }
@@ -99,6 +107,7 @@ async function gonderBirIhlal(ihlalId, userId, ip) {
 
   await writeAudit({
     user_id: userId,
+    site_id: ihlal.site_id ?? siteId,
     eylem: result.ok ? 'bildirim_gonder' : 'bildirim_basarisiz',
     tablo_adi: 'bildirimler',
     kayit_id: bildirim.id,
@@ -109,17 +118,17 @@ async function gonderBirIhlal(ihlalId, userId, ip) {
   return { ok: result.ok, bildirim, mock: !!result.mock };
 }
 
-router.post('/gonder', authRequired, async (req, res, next) => {
+router.post('/gonder', async (req, res, next) => {
   try {
     const { ihlal_id } = req.body || {};
     if (!ihlal_id) return res.status(400).json({ error: 'ihlal_id zorunlu.' });
-    const r = await gonderBirIhlal(ihlal_id, req.user.id, req.ip);
+    const r = await gonderBirIhlal(ihlal_id, req.user.id, req.ip, req.scopedSiteId);
     if (!r.ok && r.status) return res.status(r.status).json({ error: r.error, bildirim: r.bildirim });
     res.json(r);
   } catch (e) { next(e); }
 });
 
-router.post('/toplu-gonder', authRequired, async (req, res, next) => {
+router.post('/toplu-gonder', async (req, res, next) => {
   try {
     const { ihlal_idleri } = req.body || {};
     if (!Array.isArray(ihlal_idleri) || !ihlal_idleri.length) {
@@ -127,7 +136,7 @@ router.post('/toplu-gonder', authRequired, async (req, res, next) => {
     }
     const sonuclar = [];
     for (const id of ihlal_idleri) {
-      const r = await gonderBirIhlal(id, req.user.id, req.ip);
+      const r = await gonderBirIhlal(id, req.user.id, req.ip, req.scopedSiteId);
       sonuclar.push({ ihlal_id: id, ...r });
     }
     const basari = sonuclar.filter((s) => s.ok).length;
@@ -135,10 +144,12 @@ router.post('/toplu-gonder', authRequired, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get('/', authRequired, async (req, res, next) => {
+router.get('/', async (req, res, next) => {
   try {
     const { durum, baslangic, bitis } = req.query;
-    let qb = db('bildirimler').orderBy('olusturma_zamani', 'desc');
+    let qb = db('bildirimler')
+      .where({ site_id: req.scopedSiteId })
+      .orderBy('olusturma_zamani', 'desc');
     if (durum) qb = qb.where({ gonderim_durumu: durum });
     if (baslangic) qb = qb.where('olusturma_zamani', '>=', baslangic);
     if (bitis) qb = qb.where('olusturma_zamani', '<=', bitis);

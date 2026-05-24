@@ -1,13 +1,14 @@
 const express = require('express');
 const db = require('../db');
-const { authRequired, requireRole } = require('../middleware/auth');
+const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
 
 const router = express.Router();
 
-router.get('/', authRequired, requireRole('yonetici'), async (req, res) => {
+router.get('/', authRequired, requireScopedSite, requireSiteAdmin, async (req, res) => {
   const { user_id, tablo, baslangic, bitis, limit = 200 } = req.query;
   let qb = db('audit_log')
     .leftJoin('users', 'audit_log.user_id', 'users.id')
+    .where('audit_log.site_id', req.scopedSiteId)
     .select(
       'audit_log.*',
       'users.kullanici_adi'

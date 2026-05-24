@@ -1,16 +1,18 @@
 const express = require('express');
 const db = require('../db');
-const { authRequired, requireRole } = require('../middleware/auth');
+const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { isValidPlaka, normalizePlaka } = require('../utils/validators');
 const { normalizeMisafirZaman } = require('../utils/timezone');
 
 const router = express.Router();
+router.use(authRequired, requireScopedSite);
 
-router.get('/', authRequired, async (req, res) => {
+router.get('/', async (req, res) => {
   const { tarih } = req.query;
   let qb = db('misafir_araclar')
     .join('daireler', 'misafir_araclar.daire_id', 'daireler.id')
+    .where('misafir_araclar.site_id', req.scopedSiteId)
     .select(
       'misafir_araclar.*',
       'daireler.daire_no',
@@ -21,13 +23,13 @@ router.get('/', authRequired, async (req, res) => {
     //   baslangic_tarihi <= gün sonu  AND  bitis_tarihi >= gün başı
     const gunBasi = normalizeMisafirZaman(tarih, false);
     const gunSonu = normalizeMisafirZaman(tarih, true);
-    qb = qb.where('baslangic_tarihi', '<=', gunSonu).andWhere('bitis_tarihi', '>=', gunBasi);
+    qb = qb.andWhere('baslangic_tarihi', '<=', gunSonu).andWhere('bitis_tarihi', '>=', gunBasi);
   }
   const list = await qb.orderBy('baslangic_tarihi', 'desc');
   res.json({ misafir_araclar: list });
 });
 
-router.post('/', authRequired, async (req, res) => {
+router.post('/', async (req, res) => {
   const { daire_id, plaka, baslangic_tarihi, bitis_tarihi, aciklama } = req.body || {};
   if (!daire_id) return res.status(400).json({ error: 'daire_id zorunlu.' });
   const p = normalizePlaka(plaka);
@@ -43,17 +45,21 @@ router.post('/', authRequired, async (req, res) => {
   if (new Date(bitis) < new Date(baslangic)) {
     return res.status(400).json({ error: 'Bitiş başlangıçtan önce olamaz.' });
   }
-  const daire = await db('daireler').where({ id: daire_id, aktif: true }).first();
+  const daire = await db('daireler')
+    .where({ id: daire_id, site_id: req.scopedSiteId, aktif: true })
+    .first();
   if (!daire) return res.status(404).json({ error: 'Daire bulunamadı.' });
 
   const [created] = await db('misafir_araclar').insert({
     daire_id, plaka: p, baslangic_tarihi: baslangic, bitis_tarihi: bitis,
     aciklama: aciklama || null,
     ekleyen_user_id: req.user.id,
+    site_id: req.scopedSiteId,
   }).returning('*');
 
   await writeAudit({
     user_id: req.user.id,
+    site_id: req.scopedSiteId,
     eylem: 'olustur',
     tablo_adi: 'misafir_araclar',
     kayit_id: created.id,
@@ -63,13 +69,18 @@ router.post('/', authRequired, async (req, res) => {
   res.status(201).json({ misafir: created });
 });
 
-router.delete('/:id', authRequired, requireRole('yonetici'), async (req, res) => {
+router.delete('/:id', requireSiteAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
-  const eski = await db('misafir_araclar').where({ id }).first();
+  const eski = await db('misafir_araclar')
+    .where({ id, site_id: req.scopedSiteId })
+    .first();
   if (!eski) return res.status(404).json({ error: 'Misafir kayıt bulunamadı.' });
-  await db('misafir_araclar').where({ id }).delete();
+  await db('misafir_araclar')
+    .where({ id, site_id: req.scopedSiteId })
+    .delete();
   await writeAudit({
     user_id: req.user.id,
+    site_id: req.scopedSiteId,
     eylem: 'sil',
     tablo_adi: 'misafir_araclar',
     kayit_id: id,

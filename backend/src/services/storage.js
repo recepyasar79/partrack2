@@ -24,17 +24,29 @@ function fileFilter(_req, file, cb) {
   cb(null, true);
 }
 
-function r2KeyFor(originalName) {
+// Multi-tenant: site_id prefix R2 path'inde yer alır. Eski (single-tenant)
+// foto'ların foto_url'leri DB'de tam URL olarak saklı → migration yok,
+// yalnızca yeni upload'lar sites/{siteId}/... altına yazılır.
+function r2KeyFor(originalName, siteId) {
   const ext = path.extname(originalName || '').toLowerCase() || '.jpg';
   const ts = Date.now();
   const rand = crypto.randomBytes(3).toString('hex');
-  return `kontroller/${new Date().toISOString().slice(0, 10)}/${ts}_${rand}${ext}`;
+  const date = new Date().toISOString().slice(0, 10);
+  if (siteId != null) {
+    return `sites/${siteId}/kontroller/${date}/${ts}_${rand}${ext}`;
+  }
+  // Geriye uyumluluk: siteId yoksa eski path (yeni kullanım yok ama
+  // testler eskileri çağırabilir).
+  return `kontroller/${date}/${ts}_${rand}${ext}`;
 }
 
-function diskFilenameFor(originalName) {
+function diskFilenameFor(originalName, siteId) {
   const ext = path.extname(originalName || '').toLowerCase() || '.jpg';
   const ts = Date.now();
   const rand = crypto.randomBytes(3).toString('hex');
+  if (siteId != null) {
+    return `site${siteId}_${ts}_${rand}${ext}`;
+  }
   return `${ts}_${rand}${ext}`;
 }
 
@@ -77,9 +89,11 @@ function buildUpload() {
       mode: 'r2',
       upload,
       publicUrl: publicUrlForR2,
-      async save(buffer, originalName, mimeType) {
+      // save(buffer, name, mime, { siteId }) — siteId opsiyonel ama yeni
+      // upload'larda zorunlu. Eksikse legacy path kullanılır (test'ler için).
+      async save(buffer, originalName, mimeType, opts = {}) {
         const { PutObjectCommand } = require('@aws-sdk/client-s3');
-        const key = r2KeyFor(originalName);
+        const key = r2KeyFor(originalName, opts.siteId);
         await getS3().send(
           new PutObjectCommand({
             Bucket: process.env.R2_BUCKET,
@@ -100,8 +114,8 @@ function buildUpload() {
     uploadDir,
     upload,
     publicUrl: publicUrlForDisk,
-    async save(buffer, originalName) {
-      const filename = diskFilenameFor(originalName);
+    async save(buffer, originalName, _mimeType, opts = {}) {
+      const filename = diskFilenameFor(originalName, opts.siteId);
       const filepath = path.join(uploadDir, filename);
       await fs.promises.writeFile(filepath, buffer);
       return { key: filename, url: publicUrlForDisk(filename) };

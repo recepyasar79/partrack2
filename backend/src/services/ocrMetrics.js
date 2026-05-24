@@ -20,12 +20,17 @@ const db = require('../db');
  * @param {object} params.ocrResult             pythonOcr.recognizePlate'in cevabı
  * @returns {Promise<number|null>} oluşturulan metric id (yoksa null)
  */
-async function recordOcrCall({ gunlukKontrolId = null, engine = 'easyocr', ocrResult }) {
+async function recordOcrCall({ gunlukKontrolId = null, engine = 'easyocr', ocrResult, siteId }) {
   if (!ocrResult) return null;
+  if (siteId == null) {
+    console.warn('[ocrMetrics] siteId eksik — kayıt atlandı');
+    return null;
+  }
   try {
     const [row] = await db('ocr_metrics')
       .insert({
         gunluk_kontrol_id: gunlukKontrolId,
+        site_id: siteId,
         ocr_engine: engine,
         raw_text: ocrResult.rawText || null,
         plate_returned: ocrResult.plate || null,
@@ -78,14 +83,18 @@ async function markCorrected(gunlukKontrolId, correctedTo) {
  * @param {number} days  Kaç günlük pencere (default 7)
  * @returns {Promise<{total, ok, accuracy, p50_ms, p95_ms, by_engine}>}
  */
-async function getSummary(days = 7) {
+async function getSummary(days = 7, siteId) {
+  if (siteId == null) {
+    return { days, total: 0, untouched: 0, accuracy: null, p50_ms: null, p95_ms: null, by_engine: [] };
+  }
   const sinceIso = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
 
   const totals = await db('ocr_metrics')
-    .where('created_at', '>=', sinceIso)
-    .where('ocr_ok', true)
+    .where('site_id', siteId)
+    .andWhere('created_at', '>=', sinceIso)
+    .andWhere('ocr_ok', true)
     .whereNotNull('plate_returned')
-    .where('plate_returned', '!=', '')
+    .andWhere('plate_returned', '!=', '')
     .select(
       db.raw('count(*)::int as total'),
       db.raw('sum(case when was_corrected_by_user = false then 1 else 0 end)::int as untouched')
@@ -94,17 +103,19 @@ async function getSummary(days = 7) {
 
   // p50/p95 — pg-mem percentile_cont desteklemediği için JS tarafında hesapla
   const latencies = await db('ocr_metrics')
-    .where('created_at', '>=', sinceIso)
+    .where('site_id', siteId)
+    .andWhere('created_at', '>=', sinceIso)
     .whereNotNull('elapsed_ms')
     .pluck('elapsed_ms');
   latencies.sort((a, b) => a - b);
   const pct = (arr, p) => (arr.length ? arr[Math.min(arr.length - 1, Math.floor(arr.length * p))] : null);
 
   const byEngine = await db('ocr_metrics')
-    .where('created_at', '>=', sinceIso)
-    .where('ocr_ok', true)
+    .where('site_id', siteId)
+    .andWhere('created_at', '>=', sinceIso)
+    .andWhere('ocr_ok', true)
     .whereNotNull('plate_returned')
-    .where('plate_returned', '!=', '')
+    .andWhere('plate_returned', '!=', '')
     .groupBy('ocr_engine')
     .select(
       'ocr_engine',

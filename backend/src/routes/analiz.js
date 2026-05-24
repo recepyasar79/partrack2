@@ -1,6 +1,6 @@
 const express = require('express');
 const db = require('../db');
-const { authRequired } = require('../middleware/auth');
+const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { detectViolations } = require('../utils/violations');
 const { todayTR, normalizeMisafirZaman } = require('../utils/timezone');
@@ -8,23 +8,27 @@ const { normalizePlaka } = require('../utils/validators');
 
 const router = express.Router();
 
+router.use(authRequired, requireScopedSite);
+
 const IHLAL_MESAJI =
   'Sayın {sahip}, {daire} numaralı dairenize tanımlı birden fazla araç ({plakalar}) site otoparkında tespit edildi. ' +
   'Lütfen en kısa sürede fazla olan aracı/araçları çıkartınız.';
 
-router.post('/analiz-et', authRequired, async (req, res, next) => {
+router.post('/analiz-et', async (req, res, next) => {
   try {
     const tarih = req.body?.tarih || todayTR();
+    const siteId = req.scopedSiteId;
 
     const kontroller = await db('gunluk_kontroller')
-      .where({ kontrol_tarihi: tarih })
+      .where({ kontrol_tarihi: tarih, site_id: siteId })
       .whereNotNull('plaka')
       .where('plaka', '!=', '');
     const plakalar = kontroller.map((k) => k.plaka);
 
     const aktifAraclar = await db('araclar')
       .join('daireler', 'araclar.daire_id', 'daireler.id')
-      .where('araclar.aktif', true)
+      .where('araclar.site_id', siteId)
+      .andWhere('araclar.aktif', true)
       .andWhere('daireler.aktif', true)
       .select(
         'araclar.plaka',
@@ -42,7 +46,8 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
       req.body?.referans_zaman || normalizeMisafirZaman(`${tarih}T20:00`, false);
     const misafirler = await db('misafir_araclar')
       .join('daireler', 'misafir_araclar.daire_id', 'daireler.id')
-      .where('baslangic_tarihi', '<=', referansZaman)
+      .where('misafir_araclar.site_id', siteId)
+      .andWhere('baslangic_tarihi', '<=', referansZaman)
       .andWhere('bitis_tarihi', '>=', referansZaman)
       .andWhere('daireler.aktif', true)
       .select(
@@ -93,7 +98,7 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
     await db.transaction(async (trx) => {
       for (const i of ihlalYapanDaireler) {
         const existing = await trx('ihlaller')
-          .where({ kontrol_tarihi: tarih, daire_id: i.daire_id })
+          .where({ kontrol_tarihi: tarih, daire_id: i.daire_id, site_id: siteId })
           .first();
         if (existing) {
           const eskiSet = new Set(existing.plaka_listesi || []);
@@ -113,6 +118,7 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
               daire_no_snapshot: i.daire_no,
               plaka_listesi: JSON.stringify(i.plakalar),
               ihlal_tipi: 'coklu_arac',
+              site_id: siteId,
             })
             .returning('*');
           yeniIhlaller.push({
@@ -127,7 +133,7 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
       }
 
       const existingKayitsiz = await trx('ihlaller')
-        .where({ kontrol_tarihi: tarih, ihlal_tipi: 'kayitsiz' })
+        .where({ kontrol_tarihi: tarih, ihlal_tipi: 'kayitsiz', site_id: siteId })
         .whereNull('daire_id')
         .first();
       if (kayitsizPlakalar.length) {
@@ -142,6 +148,7 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
             daire_no_snapshot: null,
             plaka_listesi: JSON.stringify(kayitsizPlakalar),
             ihlal_tipi: 'kayitsiz',
+            site_id: siteId,
           });
         }
       } else if (existingKayitsiz) {
@@ -151,6 +158,7 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
 
     await writeAudit({
       user_id: req.user.id,
+      site_id: req.scopedSiteId,
       eylem: 'analiz_et',
       tablo_adi: 'ihlaller',
       yeni_deger: {
@@ -179,11 +187,12 @@ router.post('/analiz-et', authRequired, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get('/ihlaller', authRequired, async (req, res, next) => {
+router.get('/ihlaller', async (req, res, next) => {
   try {
     const { baslangic, bitis, daire_id, tipi } = req.query;
     let qb = db('ihlaller')
       .leftJoin('daireler', 'ihlaller.daire_id', 'daireler.id')
+      .where('ihlaller.site_id', req.scopedSiteId)
       .select(
         'ihlaller.*',
         'daireler.sahip_ad',
@@ -199,12 +208,13 @@ router.get('/ihlaller', authRequired, async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
-router.get('/ihlaller/ozet', authRequired, async (req, res, next) => {
+router.get('/ihlaller/ozet', async (req, res, next) => {
   try {
     const { baslangic, bitis } = req.query;
     let qb = db('ihlaller')
       .leftJoin('daireler', 'ihlaller.daire_id', 'daireler.id')
-      .where('ihlaller.ihlal_tipi', 'coklu_arac')
+      .where('ihlaller.site_id', req.scopedSiteId)
+      .andWhere('ihlaller.ihlal_tipi', 'coklu_arac')
       .groupBy('daireler.daire_no', 'daireler.sahip_ad')
       .select(
         'daireler.daire_no',

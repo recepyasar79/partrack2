@@ -82,27 +82,30 @@ function charDiffs(ocrRaw, correct) {
 /**
  * Substitution kayıtlarını cache'le (her fuzzy match için DB'yi yormamak için).
  * 60 saniyelik TTL — yeni öğrenme yakında etkili olsun ama her çağrıda
- * select yapmayalım.
+ * select yapmayalım. Multi-tenant'ta cache site_id başına bölünür.
  */
-let _substitutionCache = null;
-let _substitutionCacheAt = 0;
 const SUBSTITUTION_CACHE_MS = 60_000;
 
+// Multi-tenant: cache key olarak site_id kullan. Her sitenin substitution
+// histogramı bağımsız — site A'nın "L↔I" pattern'i site B'yi etkilemez.
+const _substitutionCacheBySite = new Map(); // siteId → { map, at }
+
 function clearSubstitutionCache() {
-  _substitutionCache = null;
-  _substitutionCacheAt = 0;
+  _substitutionCacheBySite.clear();
 }
 
-async function getSubstitutionMap() {
+async function getSubstitutionMap(siteId) {
+  if (siteId == null) return new Map();
   const now = Date.now();
-  if (_substitutionCache && now - _substitutionCacheAt < SUBSTITUTION_CACHE_MS) {
-    return _substitutionCache;
+  const cached = _substitutionCacheBySite.get(siteId);
+  if (cached && now - cached.at < SUBSTITUTION_CACHE_MS) {
+    return cached.map;
   }
   let rows = [];
   try {
-    rows = await db('plate_char_substitutions').select(
-      'from_char', 'to_char', 'count', 'last_seen_at'
-    );
+    rows = await db('plate_char_substitutions')
+      .where({ site_id: siteId })
+      .select('from_char', 'to_char', 'count', 'last_seen_at');
   } catch (e) {
     // Tablo henüz migration olmamış olabilir — sessizce devam et
     return new Map();
@@ -114,8 +117,7 @@ async function getSubstitutionMap() {
     const decayFactor = Math.pow(0.5, ageDays / SUBSTITUTION_DECAY_HALF_LIFE_DAYS);
     map.set(key, r.count * decayFactor);
   }
-  _substitutionCache = map;
-  _substitutionCacheAt = now;
+  _substitutionCacheBySite.set(siteId, { map, at: now });
   return map;
 }
 
@@ -142,22 +144,25 @@ function substitutionBonus(ocrRaw, candidate, subMap) {
 }
 
 /**
- * OCR çıktısına en yakın kayıtlı plakayı bul
- * ÖNCELİK: 1. Fuzzy match (registered plates) → 2. Learned corrections
- * NEDEN: Gerçek plaka 34YF957 ise fuzzy match bulur, öğrenme tablosu karışmaz
+ * OCR çıktısına en yakın kayıtlı plakayı bul.
+ * Multi-tenant: tüm sorgular site_id ile filtrelenir. siteId zorunlu —
+ * eksikse null döner (yanlışlıkla cross-site leak'i önler).
+ *
  * @param {string} ocrGuess - OCR'ın okuduğu ham plaka
+ * @param {number} siteId - Kullanıcının site'si
  * @param {number} minScore - Minimum benzerlik skoru (default 60)
  * @returns {Promise<{plaka: string, score: number, source: string}|null>}
  */
-async function findBestMatch(ocrGuess, minScore = 60) {
+async function findBestMatch(ocrGuess, siteId, minScore = 60) {
   if (!ocrGuess || ocrGuess.length < 5) return null;
+  if (siteId == null) return null;
 
   const ocrNormalized = ocrGuess.toUpperCase().replace(/\s+/g, '');
 
   // 1. Exact learning match — fastest path. If we've seen this exact OCR
   // output before and the user corrected it, just use that mapping.
   const exactLearned = await db('plate_learnings')
-    .where('ocr_raw', ocrNormalized)
+    .where({ ocr_raw: ocrNormalized, site_id: siteId })
     .first();
   if (exactLearned) {
     return {
@@ -175,7 +180,7 @@ async function findBestMatch(ocrGuess, minScore = 60) {
   const signature = normalizeSignature(ocrNormalized);
   if (signature) {
     const signatureMatch = await db('plate_learnings')
-      .where('normalize_signature', signature)
+      .where({ normalize_signature: signature, site_id: siteId })
       .orderBy('confirm_count', 'desc')
       .orderBy('last_confirmed_at', 'desc')
       .first();
@@ -193,11 +198,11 @@ async function findBestMatch(ocrGuess, minScore = 60) {
   // learned correct plates. A plate that has been confirmed once becomes
   // part of the "known good" pool for future variants of the same OCR
   // output (e.g. 34MN1089 / 34MNI089 / 34MNT089 all snap to 34MNL089).
-  const registeredPlates = await getAllRegisteredPlates();
-  const learnedPlates = await db('plate_learnings').select(
-    'correct_plaka', 'confirm_count', 'last_confirmed_at'
-  );
-  const subMap = await getSubstitutionMap();
+  const registeredPlates = await getAllRegisteredPlates(siteId);
+  const learnedPlates = await db('plate_learnings')
+    .where({ site_id: siteId })
+    .select('correct_plaka', 'confirm_count', 'last_confirmed_at');
+  const subMap = await getSubstitutionMap(siteId);
 
   let bestMatch = null;
   let bestScore = 0;
@@ -255,19 +260,21 @@ async function findBestMatch(ocrGuess, minScore = 60) {
   return bestMatch;
 }
 
-// Yardımcı fonksiyon: Tüm kayıtlı plakaları al
-async function getAllRegisteredPlates() {
+// Yardımcı fonksiyon: site bazında tüm kayıtlı plakaları al
+async function getAllRegisteredPlates(siteId) {
+  if (siteId == null) return [];
   const registeredPlates = await db('araclar')
-    .select('plaka')
-    .where('aktif', true);
+    .where({ site_id: siteId, aktif: true })
+    .select('plaka');
 
   // misafir_araclar has no `aktif` column — bitis_tarihi is the only
   // expiry check. Pull current (date range covers today) entries.
   const today = new Date().toISOString().slice(0, 10);
   const registeredMisafir = await db('misafir_araclar')
-    .select('plaka')
+    .where({ site_id: siteId })
     .where('baslangic_tarihi', '<=', today)
-    .where('bitis_tarihi', '>=', today);
+    .where('bitis_tarihi', '>=', today)
+    .select('plaka');
 
   return [
     ...registeredPlates.map(r => r.plaka),
@@ -276,11 +283,12 @@ async function getAllRegisteredPlates() {
 }
 
 /**
- * OCR çıktısını düzelt
+ * OCR çıktısını düzelt — site_id zorunlu.
  * @param {string} ocrGuess - OCR çıktısı
+ * @param {number} siteId   - Kullanıcının site'si
  * @returns {Promise<{original: string, corrected: string|null, source: string, score: number|null}>}
  */
-async function correctOCRGuess(ocrGuess) {
+async function correctOCRGuess(ocrGuess, siteId) {
   const result = {
     original: ocrGuess,
     corrected: null,
@@ -290,7 +298,7 @@ async function correctOCRGuess(ocrGuess) {
 
   if (!ocrGuess) return result;
 
-  const match = await findBestMatch(ocrGuess);
+  const match = await findBestMatch(ocrGuess, siteId);
 
   if (match) {
     result.corrected = match.plaka;
@@ -308,7 +316,8 @@ async function correctOCRGuess(ocrGuess) {
  * Aynı uzunlukta olmayan plakalarda diff yok — Levenshtein insert/delete
  * substitution değil, histograma karıştırmıyoruz.
  */
-async function recordSubstitutions(ocrRaw, correct) {
+async function recordSubstitutions(ocrRaw, correct, siteId) {
+  if (siteId == null) return;
   const diffs = charDiffs(ocrRaw, correct);
   if (!diffs.length) return;
 
@@ -317,7 +326,7 @@ async function recordSubstitutions(ocrRaw, correct) {
     if (!/^[A-Z0-9]$/.test(d.from) || !/^[A-Z0-9]$/.test(d.to)) continue;
     try {
       const existing = await db('plate_char_substitutions')
-        .where({ from_char: d.from, to_char: d.to })
+        .where({ from_char: d.from, to_char: d.to, site_id: siteId })
         .first();
       if (existing) {
         await db('plate_char_substitutions')
@@ -331,6 +340,7 @@ async function recordSubstitutions(ocrRaw, correct) {
           from_char: d.from,
           to_char: d.to,
           count: 1,
+          site_id: siteId,
         });
       }
     } catch (e) {
@@ -343,12 +353,14 @@ async function recordSubstitutions(ocrRaw, correct) {
 }
 
 /**
- * Kullanıcı plaka düzelttiğinde kaydet (öğrenme)
+ * Kullanıcı plaka düzelttiğinde kaydet (öğrenme) — site_id zorunlu.
  * @param {string} ocrRaw - OCR'ın okuduğu ham plaka
  * @param {string} correctPlaka - Kullanıcının onayladığı doğru plaka
+ * @param {number} siteId - Kullanıcının site'si
  */
-async function recordLearning(ocrRaw, correctPlaka) {
+async function recordLearning(ocrRaw, correctPlaka, siteId) {
   if (!ocrRaw || !correctPlaka) return;
+  if (siteId == null) return;
 
   const ocrNormalized = ocrRaw.toUpperCase().replace(/\s+/g, '');
   const correctNormalized = correctPlaka.toUpperCase().replace(/\s+/g, '');
@@ -359,14 +371,14 @@ async function recordLearning(ocrRaw, correctPlaka) {
   const signature = normalizeSignature(ocrNormalized);
 
   const existing = await db('plate_learnings')
-    .where('ocr_raw', ocrNormalized)
+    .where({ ocr_raw: ocrNormalized, site_id: siteId })
     .first();
 
   if (existing) {
     // Daha önce öğrenilmiş, doğru plaka değiştiyse güncelle
     if (existing.correct_plaka !== correctNormalized) {
       await db('plate_learnings')
-        .where('ocr_raw', ocrNormalized)
+        .where({ id: existing.id })
         .update({
           correct_plaka: correctNormalized,
           confirm_count: existing.confirm_count + 1,
@@ -376,7 +388,7 @@ async function recordLearning(ocrRaw, correctPlaka) {
     } else {
       // Aynı düzeltme tekrarlandı, sadece sayaç artır
       await db('plate_learnings')
-        .where('ocr_raw', ocrNormalized)
+        .where({ id: existing.id })
         .update({
           confirm_count: existing.confirm_count + 1,
           last_confirmed_at: db.fn.now(),
@@ -391,24 +403,26 @@ async function recordLearning(ocrRaw, correctPlaka) {
         correct_plaka: correctNormalized,
         confirm_count: 1,
         normalize_signature: signature,
+        site_id: siteId,
       });
   }
 
   // Karakter pattern'ini de histograma yaz — bir sonraki hiç görülmemiş
   // plakada da bu pattern (örn. 1↔L) etkili olabilsin.
-  await recordSubstitutions(ocrNormalized, correctNormalized);
+  await recordSubstitutions(ocrNormalized, correctNormalized, siteId);
 }
 
 /**
  * Birden fazla OCR çıktısını toplu düzelt
  * @param {string[]} ocrGuesses
+ * @param {number} siteId
  * @returns {Promise<Array>}
  */
-async function correctBatchOCR(ocrGuesses) {
+async function correctBatchOCR(ocrGuesses, siteId) {
   const results = [];
 
   for (const guess of ocrGuesses) {
-    const corrected = await correctOCRGuess(guess);
+    const corrected = await correctOCRGuess(guess, siteId);
     results.push(corrected);
   }
 
@@ -416,10 +430,12 @@ async function correctBatchOCR(ocrGuesses) {
 }
 
 /**
- * Öğrenme tablosundaki istatistikleri al
+ * Öğrenme tablosundaki istatistikleri al — site bazında
  */
-async function getLearningStats() {
+async function getLearningStats(siteId) {
+  if (siteId == null) return { total_learning: 0, recent: [] };
   const stats = await db('plate_learnings')
+    .where({ site_id: siteId })
     .select(
       db.raw('COUNT(*) as total_learning'),
       db.raw('SUM(confirm_count) as total_confirms'),
@@ -429,6 +445,7 @@ async function getLearningStats() {
     .first();
 
   const recent = await db('plate_learnings')
+    .where({ site_id: siteId })
     .select('ocr_raw', 'correct_plaka', 'confirm_count', 'last_confirmed_at')
     .orderBy('last_confirmed_at', 'desc')
     .limit(10);
@@ -439,19 +456,22 @@ async function getLearningStats() {
 /**
  * Belirli bir OCR çıktısının öğrenilip öğrenilmediğini kontrol et
  */
-async function isLearned(ocrRaw) {
+async function isLearned(ocrRaw, siteId) {
+  if (siteId == null) return false;
   const normalized = ocrRaw.toUpperCase().replace(/\s+/g, '');
   const record = await db('plate_learnings')
-    .where('ocr_raw', normalized)
+    .where({ ocr_raw: normalized, site_id: siteId })
     .first();
   return !!record;
 }
 
 /**
- * Tüm öğrenme kayıtlarını getir (yönetici için)
+ * Tüm öğrenme kayıtlarını getir (yönetici için) — site bazında
  */
-async function getAllLearnings() {
+async function getAllLearnings(siteId) {
+  if (siteId == null) return [];
   return db('plate_learnings')
+    .where({ site_id: siteId })
     .select('*')
     .orderBy('confirm_count', 'desc')
     .orderBy('last_confirmed_at', 'desc');
