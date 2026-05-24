@@ -102,7 +102,6 @@ export default function Layout({ children }) {
                 ))}
               </div>
             )}
-            {isSuperadmin && <ActiveSiteSwitcher />}
             <div className="flex items-center gap-2 border-l border-white/20 pl-3">
               <ThemeToggle />
               <Link
