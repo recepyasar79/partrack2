@@ -10,6 +10,7 @@ import {
   UsersIcon,
   ShieldIcon,
   LockClosedIcon,
+  LogoutIcon,
   SunIcon,
   MoonIcon
 } from './ui/Icons';
@@ -122,9 +123,10 @@ export default function Layout({ children }) {
               <span aria-hidden="true" className="w-px bg-white/20 self-stretch" />
               <button
                 onClick={logout}
-                className="text-xs text-white/70 hover:text-white hover:bg-white/10 transition-colors px-2 py-2 rounded-lg"
+                className="text-xs text-white/70 hover:text-white hover:bg-white/10 transition-colors px-2 py-2 rounded-lg flex items-center gap-1"
               >
-                Çıkış
+                <LogoutIcon className="w-4 h-4" />
+                <span className="hidden sm:inline">Çıkış</span>
               </button>
             </div>
           </div>

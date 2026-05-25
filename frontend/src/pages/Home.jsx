@@ -9,8 +9,6 @@ import {
   ArrowRightIcon
 } from '../components/ui/Icons';
 
-// Akşam Kontrolü kartı altta tek başına dursun diye en sonda; sm:col-span-2
-// ile tam genişliğe çıkıyor. Sıra Akşam Kontrolü ↔ Raporlar yer değişti.
 const cards = [
   {
     to: '/daireler',
@@ -56,7 +54,6 @@ const cards = [
     gradient: 'from-purple-500 to-purple-600',
     iconBg: 'bg-purple-100',
     iconColor: 'text-purple-600',
-    fullWidth: true,
   },
 ];
 
@@ -90,11 +87,11 @@ export default function Home() {
 
         {blokSayisi > 0 && (
           <div className="flex gap-2">
-            <div className="bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-900/40 dark:to-brand-800/40 rounded-xl px-4 py-2 border border-brand-100 dark:border-brand-800 text-center">
+            <div className="w-24 bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-900/40 dark:to-brand-800/40 rounded-xl px-3 py-2 border border-brand-100 dark:border-brand-800 text-center">
               <div className="text-xl font-bold text-brand-700 dark:text-brand-300 tabular-nums leading-tight">{toplamDaire}</div>
               <div className="text-[10px] text-brand-600 dark:text-brand-400 uppercase tracking-wide">Toplam Daire</div>
             </div>
-            <div className="bg-gradient-to-br from-accent-50 to-accent-100 dark:from-accent-900/40 dark:to-accent-800/40 rounded-xl px-4 py-2 border border-accent-100 dark:border-accent-800 text-center">
+            <div className="w-24 bg-gradient-to-br from-accent-50 to-accent-100 dark:from-accent-900/40 dark:to-accent-800/40 rounded-xl px-3 py-2 border border-accent-100 dark:border-accent-800 text-center">
               <div className="text-xl font-bold text-accent-700 dark:text-accent-300 tabular-nums leading-tight">{blokSayisi}</div>
               <div className="text-[10px] text-accent-600 dark:text-accent-400 uppercase tracking-wide">Blok</div>
             </div>
@@ -108,7 +105,7 @@ export default function Home() {
           <Link
             key={card.to}
             to={card.to}
-            className={`group bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-5 hover:shadow-xl dark:hover:shadow-black/40 hover:-translate-y-1 transition-all duration-300 animate-slide-up ${card.fullWidth ? 'sm:col-span-2' : ''}`}
+            className="group bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 p-5 hover:shadow-xl dark:hover:shadow-black/40 hover:-translate-y-1 transition-all duration-300 animate-slide-up"
             style={{ animationDelay: `${index * 50}ms` }}
           >
             <div className="flex items-start gap-4">
