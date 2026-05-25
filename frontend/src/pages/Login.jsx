@@ -84,7 +84,7 @@ export default function Login() {
             value={site_slug}
             onChange={(e) => setSiteSlug(e.target.value)}
             placeholder="k7fm2qx9bn"
-            helperText="Site yöneticinizden aldığınız 10 karakterli kod. Platform yöneticisi boş bırakır."
+            helperText="Site yöneticinizden aldığınız 10 karakterli kod."
           />
 
           <Input
