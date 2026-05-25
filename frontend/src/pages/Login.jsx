@@ -80,11 +80,12 @@ export default function Login() {
           <Input
             label="Site Kodu"
             icon={BuildingIcon}
-            autoComplete="organization"
+            autoComplete="off"
+            name="site-code"
             value={site_slug}
             onChange={(e) => setSiteSlug(e.target.value)}
-            placeholder="k7fm2qx9bn"
-            helperText="Site yöneticinizden aldığınız 10 karakterli kod."
+            placeholder="ornek: akasya-evleri"
+            helperText="Site yöneticinizden aldığınız kod."
           />
 
           <Input

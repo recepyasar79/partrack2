@@ -52,6 +52,17 @@ export function AuthProvider({ children }) {
     }
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
+  // Sekme tekrar odaklanınca /me'yi yenile — başka bir session'da
+  // (orn. superadmin sitelerini değiştirdiğinde) yapılan değişiklik
+  // localStorage'daki stale user.site verisini ezsin.
+  useEffect(() => {
+    function onFocus() {
+      if (localStorage.getItem(TOKEN_KEY)) refresh();
+    }
+    window.addEventListener('focus', onFocus);
+    return () => window.removeEventListener('focus', onFocus);
+  }, [refresh]);
+
   return (
     <AuthContext.Provider value={{ user, loading, login, logout, refresh }}>
       {children}
