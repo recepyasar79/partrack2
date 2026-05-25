@@ -116,7 +116,9 @@ router.post('/register', authRequired, requireSiteAdmin, async (req, res) => {
   if (sifre.length < 8) {
     return res.status(400).json({ error: 'Şifre en az 8 karakter olmalı.' });
   }
-  const existing = await db('users').where({ kullanici_adi }).first();
+  // Aynı kullanıcı adı farklı sitelerde olabilir (composite unique
+  // (site_id, kullanici_adi)). Yalnız bu site içindeki çakışmaya bak.
+  const existing = await db('users').where({ kullanici_adi, site_id }).first();
   if (existing) {
     return res.status(409).json({ error: 'Bu kullanıcı adı zaten alınmış.' });
   }
@@ -141,7 +143,12 @@ router.post('/sifre-sifirla', authRequired, requireSiteAdmin, async (req, res) =
   if (!kullanici_id || !yeni_sifre || yeni_sifre.length < 8) {
     return res.status(400).json({ error: 'Geçersiz alan veya şifre çok kısa.' });
   }
-  const target = await db('users').where({ id: kullanici_id }).first();
+  // Site yöneticisi sadece kendi sitesindeki kullanıcıların şifresini
+  // sıfırlayabilir. Başka site'nin kullanıcısı veya superadmin ID'si
+  // gelse bile bulunamadı yanıtı dön.
+  const target = await db('users')
+    .where({ id: kullanici_id, site_id: req.user.site_id })
+    .first();
   if (!target) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
   const sifre_hash = await hashPassword(yeni_sifre);
   await db('users').where({ id: kullanici_id }).update({ sifre_hash });
@@ -177,8 +184,12 @@ router.post('/sifre-degistir', authRequired, async (req, res) => {
   res.json({ ok: true });
 });
 
-router.get('/kullanicilar', authRequired, requireSiteAdmin, async (_req, res) => {
+router.get('/kullanicilar', authRequired, requireSiteAdmin, async (req, res) => {
+  // Site yöneticisi yalnız kendi sitesindeki kullanıcıları görür.
+  // Superadmin ve diğer sitelerin kullanıcıları listede çıkmaz —
+  // tenant izolasyonu (KVKK + müşteri güveni).
   const list = await db('users')
+    .where({ site_id: req.user.site_id })
     .select('id', 'kullanici_adi', 'rol', 'aktif', 'son_giris', 'olusturma_zamani')
     .orderBy('id');
   res.json({ kullanicilar: list });
@@ -189,7 +200,10 @@ router.patch('/kullanicilar/:id', authRequired, requireSiteAdmin, async (req, re
   if (!id) return res.status(400).json({ error: 'Geçersiz id.' });
   const { aktif } = req.body || {};
   if (typeof aktif !== 'boolean') return res.status(400).json({ error: 'aktif alanı zorunlu.' });
-  const target = await db('users').where({ id }).first();
+  // Site yöneticisi yalnız kendi sitesindeki kullanıcıyı aktif/pasif yapabilir.
+  const target = await db('users')
+    .where({ id, site_id: req.user.site_id })
+    .first();
   if (!target) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
   await db('users').where({ id }).update({ aktif });
   await writeAudit({

@@ -80,17 +80,19 @@ async function markCorrected(gunlukKontrolId, correctedTo) {
 /**
  * Yönetici paneli için özet — son N gün doğruluk + gecikme.
  *
- * @param {number} days  Kaç günlük pencere (default 7)
+ * @param {number} days   Kaç günlük pencere (default 7)
+ * @param {number|null} siteId  Belirli bir site; null ise tüm sitelerin
+ *                              toplamı (yalnız superadmin çağırır).
  * @returns {Promise<{total, ok, accuracy, p50_ms, p95_ms, by_engine}>}
  */
-async function getSummary(days = 7, siteId) {
-  if (siteId == null) {
-    return { days, total: 0, untouched: 0, accuracy: null, p50_ms: null, p95_ms: null, by_engine: [] };
-  }
+async function getSummary(days = 7, siteId = null) {
   const sinceIso = new Date(Date.now() - days * 24 * 3600 * 1000).toISOString();
+  const applyScope = (qb) => {
+    if (siteId != null) qb.where('site_id', siteId);
+    return qb;
+  };
 
-  const totals = await db('ocr_metrics')
-    .where('site_id', siteId)
+  const totals = await applyScope(db('ocr_metrics'))
     .andWhere('created_at', '>=', sinceIso)
     .andWhere('ocr_ok', true)
     .whereNotNull('plate_returned')
@@ -102,16 +104,14 @@ async function getSummary(days = 7, siteId) {
     .first();
 
   // p50/p95 — pg-mem percentile_cont desteklemediği için JS tarafında hesapla
-  const latencies = await db('ocr_metrics')
-    .where('site_id', siteId)
+  const latencies = await applyScope(db('ocr_metrics'))
     .andWhere('created_at', '>=', sinceIso)
     .whereNotNull('elapsed_ms')
     .pluck('elapsed_ms');
   latencies.sort((a, b) => a - b);
   const pct = (arr, p) => (arr.length ? arr[Math.min(arr.length - 1, Math.floor(arr.length * p))] : null);
 
-  const byEngine = await db('ocr_metrics')
-    .where('site_id', siteId)
+  const byEngine = await applyScope(db('ocr_metrics'))
     .andWhere('created_at', '>=', sinceIso)
     .andWhere('ocr_ok', true)
     .whereNotNull('plate_returned')

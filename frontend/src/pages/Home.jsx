@@ -76,6 +76,11 @@ export default function Home() {
             <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
               Hoş geldiniz
             </h1>
+            {user?.site?.ad && (
+              <p className="text-sm font-semibold text-brand-700 dark:text-brand-300">
+                {user.site.ad}
+              </p>
+            )}
             <p className="text-sm text-slate-600 dark:text-slate-400">
               {user?.kullanici_adi} · {user?.rol === 'superadmin' ? 'Platform Yöneticisi' : user?.rol === 'site_yonetici' ? 'Site Yöneticisi' : 'Güvenlik'}
             </p>

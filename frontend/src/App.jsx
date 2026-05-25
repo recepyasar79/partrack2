@@ -83,7 +83,7 @@ export default function App() {
           <Route
             path="/ocr-istatistik"
             element={
-              <RoleRoute roller={['site_yonetici']}>
+              <RoleRoute roller={['superadmin']}>
                 <Layout><OcrIstatistik /></Layout>
               </RoleRoute>
             }

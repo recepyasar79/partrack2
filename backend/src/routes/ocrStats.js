@@ -1,16 +1,18 @@
 const express = require('express');
-const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
+const { authRequired, requireSuperadmin } = require('../middleware/auth');
 const { getSummary } = require('../services/ocrMetrics');
 
 const router = express.Router();
 
-// Yönetici doğruluk + p95 latency'sini görür. Kademe 1 → 2 → 3
-// geçişlerinin etkisini buradan ölçeceğiz. Multi-tenant sonrası site
-// scoped — superadmin ?siteId=N ile başka site'ye geçebilir.
-router.get('/summary', authRequired, requireScopedSite, requireSiteAdmin, async (req, res, next) => {
+// OCR doğruluk + p95 latency'si platform katmanı metriğidir; OCR motoru
+// karşılaştırması ve faturalama için kullanılır. Sadece superadmin görür.
+// Site verisine erişim yok — yalnız ocr_metrics agregesi.
+// ?siteId=N verilirse tek site, verilmezse tüm sitelerin toplamı döner.
+router.get('/summary', authRequired, requireSuperadmin, async (req, res, next) => {
   try {
     const days = Math.min(90, Math.max(1, parseInt(req.query.days, 10) || 7));
-    const summary = await getSummary(days, req.scopedSiteId);
+    const siteIdParam = req.query.siteId ? parseInt(req.query.siteId, 10) : null;
+    const summary = await getSummary(days, siteIdParam);
     res.json(summary);
   } catch (e) { next(e); }
 });

@@ -250,9 +250,13 @@ router.post('/:id/users', async (req, res, next) => {
     if (sifre.length < 8) {
       return res.status(400).json({ error: 'Şifre en az 8 karakter olmalı.' });
     }
-    const existing = await db('users').where({ kullanici_adi }).first();
+    // Aynı kullanıcı adı farklı sitelerde olabilir — composite unique
+    // (site_id, kullanici_adi). Yalnız bu site içindeki çakışmaya bak.
+    const existing = await db('users')
+      .where({ kullanici_adi, site_id: id })
+      .first();
     if (existing) {
-      return res.status(409).json({ error: 'Bu kullanıcı adı zaten alınmış.' });
+      return res.status(409).json({ error: 'Bu sitede aynı kullanıcı adı zaten var.' });
     }
     const sifre_hash = await hashPassword(sifre);
     const [created] = await db('users')
