@@ -9,6 +9,13 @@ router.get('/', authRequired, requireScopedSite, requireSiteAdmin, async (req, r
   let qb = db('audit_log')
     .leftJoin('users', 'audit_log.user_id', 'users.id')
     .where('audit_log.site_id', req.scopedSiteId)
+    // Site yöneticileri superadmin'in yaptığı işlemleri görmesin —
+    // platform katmanı (slug değişimi, kullanıcı ekleme vb.) site sahibine
+    // ait özel detaylar. NULL user_id (silinmiş user) gizlenmez; o satırlar
+    // tarihsel kayıtlar olarak korunmalı.
+    .where(function () {
+      this.whereNull('users.rol').orWhereNot('users.rol', 'superadmin');
+    })
     .select(
       'audit_log.*',
       'users.kullanici_adi'
