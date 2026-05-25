@@ -92,9 +92,6 @@ export default function Home() {
             </p>
           </div>
         </div>
-        <p className="text-slate-500 dark:text-slate-400 text-sm">
-          Site otopark yönetim sistemine hoş geldiniz. Yukarıdaki kartlardan işlem yapabilirsiniz.
-        </p>
       </div>
 
       {/* Quick Actions Grid */}

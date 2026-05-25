@@ -10,7 +10,6 @@ import {
   UsersIcon,
   ShieldIcon,
   LockClosedIcon,
-  ArrowRightIcon,
   SunIcon,
   MoonIcon
 } from './ui/Icons';
@@ -122,7 +121,7 @@ export default function Layout({ children }) {
               </Link>
               <button
                 onClick={logout}
-                className="text-xs text-white/70 hover:text-white transition-colors"
+                className="text-xs text-white/70 hover:text-white transition-colors border-l border-white/20 pl-3"
               >
                 Çıkış
               </button>
