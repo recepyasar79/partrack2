@@ -113,7 +113,7 @@ export default function MisafirAraclar() {
               ))}
             </select>
           </div>
-          <Input label="Plaka" value={form.plaka} onChange={(e) => setForm({ ...form, plaka: e.target.value })} />
+          <Input label="Plaka" value={form.plaka} onChange={(e) => setForm({ ...form, plaka: e.target.value.toUpperCase() })} />
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Input
               label="Başlangıç (tarih + saat)"

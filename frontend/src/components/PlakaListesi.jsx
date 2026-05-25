@@ -59,7 +59,7 @@ export default function PlakaListesi({ daireId, araclar, onChanged, canEdit }) {
           <Input
             placeholder="Yeni plaka (örn 34ABC123)"
             value={plaka}
-            onChange={(e) => setPlaka(e.target.value)}
+            onChange={(e) => setPlaka(e.target.value.toUpperCase())}
             containerClassName="flex-1"
           />
           <Button onClick={ekle} disabled={busy}>Ekle</Button>
