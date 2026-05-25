@@ -12,6 +12,8 @@ import {
   XMarkIcon,
   ClipboardDocumentIcon,
   InformationCircleIcon,
+  TrashIcon,
+  ExclamationTriangleIcon,
 } from '../components/ui/Icons';
 
 const PLAN_LABELS = {
@@ -98,7 +100,7 @@ function NewSiteForm({ onCreated, onCancel }) {
           <BuildingIcon className="w-4 h-4 text-slate-500" />
           <span className="text-sm font-medium text-slate-700 dark:text-slate-300">Blok Yapısı</span>
         </div>
-        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 items-end">
+        <div className="grid grid-cols-2 sm:grid-cols-3 gap-3 items-start">
           <Input
             label="Blok Sayısı"
             type="number"
@@ -117,9 +119,20 @@ function NewSiteForm({ onCreated, onCancel }) {
             onChange={(e) => setForm({ ...form, daire_per_blok: e.target.value })}
             helperText="1-200"
           />
-          <div className="bg-brand-50 dark:bg-brand-900/30 rounded-xl p-3 text-sm">
-            <div className="text-xs text-brand-700 dark:text-brand-300 uppercase tracking-wide">Toplam Daire</div>
-            <div className="text-2xl font-bold text-brand-700 dark:text-brand-200 tabular-nums">{toplamDaire}</div>
+          {/* Input ile aynı yapısal iskelet: label + min-h-[48px] kutu + helper satırı.
+              Böylece grid'de asıl kutular pixel-perfect aynı hizada başlıyor. */}
+          <div className="flex flex-col gap-1.5">
+            <label className="text-sm font-semibold text-slate-700 dark:text-slate-200">
+              Toplam Daire
+            </label>
+            <div className="w-full min-h-[48px] rounded-xl border border-brand-200 dark:border-brand-800 bg-brand-50 dark:bg-brand-900/30 px-4 py-3 flex items-center justify-end">
+              <span className="text-xl font-bold text-brand-700 dark:text-brand-200 tabular-nums">
+                {toplamDaire}
+              </span>
+            </div>
+            <p className="text-sm text-brand-600 dark:text-brand-400">
+              Otomatik hesaplanır
+            </p>
           </div>
         </div>
         <p className="text-xs text-slate-500 dark:text-slate-400 mt-2 flex items-start gap-1.5">
@@ -139,8 +152,12 @@ function NewSiteForm({ onCreated, onCancel }) {
   );
 }
 
-function SlugDisplay({ slug }) {
+function SlugDisplay({ slug, siteId, onSaved }) {
   const toast = useToast();
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(slug);
+  const [busy, setBusy] = useState(false);
+
   function copy() {
     try {
       navigator.clipboard?.writeText(slug);
@@ -149,31 +166,105 @@ function SlugDisplay({ slug }) {
       toast.error('Kopyalanamadı.');
     }
   }
+
+  function startEdit() {
+    setDraft(slug);
+    setEditing(true);
+  }
+
+  function cancelEdit() {
+    setEditing(false);
+    setDraft(slug);
+  }
+
+  async function save() {
+    const yeni = draft.trim().toLowerCase();
+    if (yeni === slug) {
+      setEditing(false);
+      return;
+    }
+    if (yeni.length < 3 || yeni.length > 30) {
+      return toast.error('Site kodu 3-30 karakter olmalı.');
+    }
+    if (!/^[a-z0-9]+(?:-[a-z0-9]+)*$/.test(yeni)) {
+      return toast.error('Yalnız küçük harf, rakam ve tire kullanılabilir.');
+    }
+    setBusy(true);
+    try {
+      await api.patch(`/sites/${siteId}`, { slug: yeni });
+      toast.success('Site kodu güncellendi.');
+      setEditing(false);
+      onSaved?.();
+    } catch (e) {
+      // 409 → backend Türkçe çakışma mesajı dönüyor; apiError onu yansıtır
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
   return (
     <div className="bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 rounded-xl p-4 m-4">
       <div className="flex items-start gap-3">
         <InformationCircleIcon className="w-5 h-5 text-amber-700 dark:text-amber-300 mt-0.5 flex-shrink-0" />
-        <div className="flex-1">
+        <div className="flex-1 min-w-0">
           <div className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-1">
             Site Kodu
           </div>
           <p className="text-xs text-amber-800 dark:text-amber-300/80 mb-3">
-            Site yöneticileri ve güvenlik bu 10 karakterli kodu login ekranındaki "Site Kodu"
-            alanına yazarak giriş yapar. Tahmin edilemez — kodu bilmeyen başka site kullanıcıları
-            erişim sağlayamaz. Site yöneticisine bu kodu güvenli kanaldan iletin.
+            Site yöneticileri ve güvenlik bu kodu login ekranındaki "Site Kodu" alanına yazarak
+            giriş yapar. Değiştirirsen tüm kullanıcılara yeni kodu güvenli kanaldan iletmeyi
+            unutma — eskisiyle giriş artık çalışmaz.
           </p>
-          <div className="flex items-center gap-2">
-            <code className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 rounded-lg font-mono text-lg font-bold tracking-wider text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 select-all">
-              {slug}
-            </code>
-            <button
-              onClick={copy}
-              className="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors"
-              title="Kopyala"
-            >
-              <ClipboardDocumentIcon className="w-5 h-5" />
-            </button>
-          </div>
+          {editing ? (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <input
+                type="text"
+                value={draft}
+                onChange={(e) => setDraft(e.target.value)}
+                disabled={busy}
+                placeholder="orn: akasya-evleri veya k7fm2qx9bn"
+                autoFocus
+                className="flex-1 min-w-0 px-3 py-2 bg-white dark:bg-slate-900 rounded-lg font-mono text-lg font-bold tracking-wider text-amber-900 dark:text-amber-200 border border-amber-300 dark:border-amber-700 focus:outline-none focus:ring-2 focus:ring-amber-400"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={save}
+                  disabled={busy}
+                  className="px-3 py-2 bg-amber-600 hover:bg-amber-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  {busy ? 'Kaydediliyor…' : 'Kaydet'}
+                </button>
+                <button
+                  onClick={cancelEdit}
+                  disabled={busy}
+                  className="px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium transition-colors"
+                >
+                  İptal
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <code className="flex-1 min-w-0 px-3 py-2 bg-white dark:bg-slate-900 rounded-lg font-mono text-lg font-bold tracking-wider text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 select-all truncate">
+                {slug}
+              </code>
+              <button
+                onClick={copy}
+                className="p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg transition-colors flex-shrink-0"
+                title="Kopyala"
+              >
+                <ClipboardDocumentIcon className="w-5 h-5" />
+              </button>
+              <button
+                onClick={startEdit}
+                className="px-3 py-2 bg-white dark:bg-slate-900 border border-amber-300 dark:border-amber-700 text-amber-800 dark:text-amber-200 hover:bg-amber-100 dark:hover:bg-slate-800 rounded-lg text-sm font-medium transition-colors flex-shrink-0"
+                title="Site kodunu değiştir"
+              >
+                Düzenle
+              </button>
+            </div>
+          )}
         </div>
       </div>
     </div>
@@ -241,7 +332,14 @@ function SiteDetail({ siteId, onClose, onChanged }) {
         </button>
       </div>
 
-      <SlugDisplay slug={site.slug} />
+      <SlugDisplay
+        slug={site.slug}
+        siteId={site.id}
+        onSaved={() => {
+          load();
+          onChanged?.();
+        }}
+      />
 
       <div className="p-4 grid grid-cols-2 sm:grid-cols-3 gap-3">
         <Metric Icon={BuildingIcon} label="Daire" value={metrikler.daire_sayisi} />
@@ -318,6 +416,88 @@ function SiteDetail({ siteId, onClose, onChanged }) {
   );
 }
 
+function DeleteSiteModal({ site, onCancel, onDeleted }) {
+  const toast = useToast();
+  const [busy, setBusy] = useState(false);
+
+  async function confirmDelete() {
+    setBusy(true);
+    try {
+      await api.delete(`/sites/${site.id}`);
+      toast.success(`${site.ad} kalıcı olarak silindi.`);
+      onDeleted();
+    } catch (e) {
+      toast.error(apiError(e));
+      setBusy(false);
+    }
+  }
+
+  // ESC ile kapatma + arka tıklamayla kapatma — modal UX standardı
+  return (
+    <div
+      className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 animate-fade-in"
+      onClick={busy ? undefined : onCancel}
+    >
+      <div
+        className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl max-w-md w-full p-6 animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 mb-4">
+          <div className="w-12 h-12 rounded-full bg-red-100 dark:bg-red-900/40 flex items-center justify-center flex-shrink-0">
+            <ExclamationTriangleIcon className="w-6 h-6 text-red-600 dark:text-red-400" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="text-lg font-bold text-slate-900 dark:text-slate-100">
+              Site silinecek
+            </h3>
+            <p className="text-sm text-slate-600 dark:text-slate-400 mt-1">
+              <strong className="text-slate-900 dark:text-slate-100">{site.ad}</strong>{' '}
+              ve aşağıdaki tüm veriler <strong>kalıcı olarak silinecek</strong>.
+              Bu işlem geri alınamaz.
+            </p>
+          </div>
+        </div>
+
+        <div className="bg-red-50 dark:bg-red-950/30 border border-red-100 dark:border-red-900 rounded-xl p-3 mb-4 text-sm text-red-900 dark:text-red-200">
+          <ul className="list-disc list-inside space-y-1">
+            <li><strong>{site.daire_sayisi || 0}</strong> daire kaydı</li>
+            <li><strong>{site.user_sayisi || 0}</strong> kullanıcı (yönetici/güvenlik)</li>
+            <li>Tüm araç plakaları, misafir araçlar, sahip tarihçesi</li>
+            <li>Tüm ihlal ve WhatsApp bildirim geçmişi</li>
+            <li>Tüm fotoğraf kayıtları, OCR metrikleri, audit log</li>
+          </ul>
+        </div>
+
+        <p className="text-xs text-slate-500 dark:text-slate-400 mb-5">
+          Site kodu <code className="font-mono">{site.slug}</code> ile artık giriş yapılamaz.
+        </p>
+
+        <div className="flex gap-2 justify-end">
+          <button
+            onClick={onCancel}
+            disabled={busy}
+            className="px-4 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg text-sm font-medium transition-colors disabled:opacity-60"
+          >
+            İptal
+          </button>
+          <button
+            onClick={confirmDelete}
+            disabled={busy}
+            className="px-4 py-2 bg-red-600 hover:bg-red-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-60 flex items-center gap-2"
+          >
+            {busy ? 'Siliniyor…' : (
+              <>
+                <TrashIcon className="w-4 h-4" />
+                Evet, sil
+              </>
+            )}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Metric({ Icon, label, value }) {
   return (
     <div className="flex items-center gap-3 p-3 bg-slate-50 dark:bg-slate-800/50 rounded-xl">
@@ -338,6 +518,7 @@ export default function SuperadminSiteler() {
   const [showNew, setShowNew] = useState(false);
   const [selectedId, setSelectedId] = useState(null);
   const [loading, setLoading] = useState(false);
+  const [deleteTarget, setDeleteTarget] = useState(null);
 
   async function load() {
     setLoading(true);
@@ -382,6 +563,19 @@ export default function SuperadminSiteler() {
         />
       )}
 
+      {deleteTarget && (
+        <DeleteSiteModal
+          site={deleteTarget}
+          onCancel={() => setDeleteTarget(null)}
+          onDeleted={() => {
+            const wasSelected = selectedId === deleteTarget.id;
+            setDeleteTarget(null);
+            if (wasSelected) setSelectedId(null);
+            load();
+          }}
+        />
+      )}
+
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
         {loading ? (
           <div className="p-6 text-center text-slate-500">Yükleniyor…</div>
@@ -397,6 +591,7 @@ export default function SuperadminSiteler() {
                 <th className="p-3 text-right">Kullanıcı</th>
                 <th className="p-3">Plan</th>
                 <th className="p-3">Durum</th>
+                <th className="p-3 text-right">İşlem</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
@@ -413,6 +608,20 @@ export default function SuperadminSiteler() {
                   <td className="p-3">{PLAN_LABELS[s.plan] || s.plan}</td>
                   <td className={`p-3 ${s.aktif ? 'text-green-700' : 'text-red-700'}`}>
                     {s.aktif ? 'Aktif' : 'Pasif'}
+                  </td>
+                  <td className="p-3 text-right">
+                    {s.id === 1 ? (
+                      <span className="text-xs text-slate-400" title="Varsayılan site silinemez">—</span>
+                    ) : (
+                      <button
+                        onClick={(e) => { e.stopPropagation(); setDeleteTarget(s); }}
+                        className="inline-flex items-center justify-center w-8 h-8 rounded-lg text-red-600 dark:text-red-400 hover:bg-red-50 dark:hover:bg-red-900/30 transition-colors"
+                        title="Siteyi sil"
+                        aria-label={`${s.ad} sitesini sil`}
+                      >
+                        <TrashIcon className="w-4 h-4" />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}

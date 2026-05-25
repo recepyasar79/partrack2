@@ -185,15 +185,31 @@ router.patch('/:id', async (req, res, next) => {
     const eski = await db('sites').where({ id }).first();
     if (!eski) return res.status(404).json({ error: 'Site bulunamadı.' });
 
-    const { ad, plan, aktif, blok_yapisi } = req.body || {};
+    const { ad, plan, aktif, blok_yapisi, slug } = req.body || {};
     const update = {};
     if (ad !== undefined) {
       if (!ad || ad.length < 2) return res.status(400).json({ error: 'Site adı geçersiz.' });
       update.ad = ad;
     }
-    // Slug PATCH üzerinden değiştirilemez — sahip slug'ı sabit tutmalı
-    // (login url'i değişmesin). Yeniden generate gerektiğinde superadmin
-    // ayrı bir POST /sites/:id/rotate-slug akışıyla yapar (ileride).
+    // Slug superadmin tarafından manuel set edilebilir. Format: 3-30 karakter,
+    // küçük harf + rakam + tire (kenarlarda/ardışık tire yok). Tekillik DB'de
+    // UNIQUE; çakışma varsa 409 dön ve update'i hiç başlatma.
+    if (slug !== undefined) {
+      const yeniSlug = String(slug).trim().toLowerCase();
+      if (yeniSlug.length < 3 || yeniSlug.length > 30) {
+        return res.status(400).json({ error: 'Site kodu 3-30 karakter olmalı.' });
+      }
+      if (!SLUG_REGEX.test(yeniSlug)) {
+        return res.status(400).json({
+          error: 'Site kodu yalnız küçük harf, rakam ve tire içerebilir (kenarlarda tire olamaz).',
+        });
+      }
+      const conflict = await db('sites').where({ slug: yeniSlug }).whereNot({ id }).first();
+      if (conflict) {
+        return res.status(409).json({ error: 'Bu site kodu başka bir sitede kullanılıyor.' });
+      }
+      update.slug = yeniSlug;
+    }
     if (plan !== undefined) {
       if (!['baslangic', 'standart', 'pro', 'kurumsal'].includes(plan)) {
         return res.status(400).json({ error: 'Geçersiz plan.' });
@@ -283,18 +299,46 @@ router.delete('/:id', async (req, res, next) => {
     }
     const eski = await db('sites').where({ id }).first();
     if (!eski) return res.status(404).json({ error: 'Site bulunamadı.' });
-    // Soft delete — site verisi DB'de kalır ama login mümkün değil (aktif=false)
-    await db('sites').where({ id }).update({ aktif: false });
-    await db('users').where({ site_id: id }).update({ aktif: false });
-    await writeAudit({
-      user_id: req.user.id,
-      site_id: id,
-      eylem: 'sil',
-      tablo_adi: 'sites',
-      kayit_id: id,
-      eski_deger: eski,
-      ip_adres: req.ip,
+
+    // Kalıcı silme — site_id taşıyan tüm tabloları FK bağımlılık sırasına göre
+    // temizle. Tek transaction içinde; herhangi bir adım fail olursa hiçbir
+    // şey silinmez. Soft delete yerine bilinçli olarak kalıcı silme;
+    // superadmin modalda onayladı.
+    //
+    // Sıra: önce başka tablolara referans veren child'lar, sonra parent'lar,
+    // en son sites. araclar/misafir_araclar/daire_sahip_tarihce daireler'e
+    // CASCADE bağlı zaten ama explicit silme idempotent ve okunaklı.
+    await db.transaction(async (trx) => {
+      await trx('bildirimler').where({ site_id: id }).del();
+      await trx('ihlaller').where({ site_id: id }).del();
+      await trx('gunluk_kontroller').where({ site_id: id }).del();
+      await trx('daire_sahip_tarihce').where({ site_id: id }).del();
+      await trx('misafir_araclar').where({ site_id: id }).del();
+      await trx('araclar').where({ site_id: id }).del();
+      await trx('daireler').where({ site_id: id }).del();
+      await trx('ocr_metrics').where({ site_id: id }).del();
+      await trx('plate_learnings').where({ site_id: id }).del();
+      await trx('plate_char_substitutions').where({ site_id: id }).del();
+      // audit_log son kalır: site-spesifik log'lar dahil tüm tarih silinir.
+      // user_id FK SET NULL olduğu için diğer site'lerin log'ları kırılmaz.
+      await trx('audit_log').where({ site_id: id }).del();
+      await trx('users').where({ site_id: id }).del();
+      await trx('sites').where({ id }).del();
     });
+
+    // audit_log'da site_id NOT NULL — silme olayı için DB'ye yazamayız.
+    // Sunucu log'una düş; Fly.io logs'ta görülür, platform sahibi için
+    // kalıcı bir iz kalır.
+    console.warn('[sites.delete] site kalıcı silindi:', {
+      site_id: id,
+      site_ad: eski.ad,
+      site_slug: eski.slug,
+      silen_user_id: req.user.id,
+      silen_kullanici_adi: req.user.kullanici_adi,
+      ip: req.ip,
+      zaman: new Date().toISOString(),
+    });
+
     res.json({ ok: true });
   } catch (e) { next(e); }
 });
