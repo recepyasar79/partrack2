@@ -278,6 +278,9 @@ function SiteDetail({ siteId, onClose, onChanged }) {
   const [userForm, setUserForm] = useState({ kullanici_adi: '', sifre: '', rol: 'site_yonetici' });
   const [showUserForm, setShowUserForm] = useState(false);
   const [busy, setBusy] = useState(false);
+  const [editingAd, setEditingAd] = useState(false);
+  const [adDraft, setAdDraft] = useState('');
+  const [adBusy, setAdBusy] = useState(false);
 
   async function load() {
     try {
@@ -311,23 +314,93 @@ function SiteDetail({ siteId, onClose, onChanged }) {
     }
   }
 
+  async function saveAd() {
+    const yeni = adDraft.trim();
+    if (!yeni || yeni.length < 2) {
+      return toast.error('Site adı en az 2 karakter olmalı.');
+    }
+    if (yeni === detay.site.ad) {
+      setEditingAd(false);
+      return;
+    }
+    setAdBusy(true);
+    try {
+      await api.patch(`/sites/${siteId}`, { ad: yeni });
+      toast.success('Site adı güncellendi.');
+      setEditingAd(false);
+      load();
+      onChanged?.();
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setAdBusy(false);
+    }
+  }
+
+  function startEditAd() {
+    setAdDraft(detay.site.ad);
+    setEditingAd(true);
+  }
+
   if (!detay) return <div className="p-4 text-slate-500">Yükleniyor…</div>;
 
   const { site, metrikler } = detay;
 
   return (
     <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-2xl shadow-sm">
-      <div className="flex items-center justify-between p-4 border-b border-slate-100 dark:border-slate-800">
-        <div>
-          <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100">{site.ad}</h2>
-          <p className="text-xs text-slate-500 dark:text-slate-400">
+      <div className="flex items-start justify-between p-4 border-b border-slate-100 dark:border-slate-800 gap-3">
+        <div className="flex-1 min-w-0">
+          {editingAd ? (
+            <div className="flex flex-col sm:flex-row sm:items-center gap-2">
+              <input
+                type="text"
+                value={adDraft}
+                onChange={(e) => setAdDraft(e.target.value)}
+                disabled={adBusy}
+                placeholder="Site adı"
+                autoFocus
+                maxLength={120}
+                className="flex-1 min-w-0 px-3 py-2 text-lg font-semibold text-slate-900 dark:text-slate-100 bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-lg focus:outline-none focus:ring-2 focus:ring-brand-400"
+              />
+              <div className="flex gap-2">
+                <button
+                  onClick={saveAd}
+                  disabled={adBusy}
+                  className="px-3 py-2 bg-brand-600 hover:bg-brand-700 disabled:opacity-60 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  {adBusy ? 'Kaydediliyor…' : 'Kaydet'}
+                </button>
+                <button
+                  onClick={() => setEditingAd(false)}
+                  disabled={adBusy}
+                  className="px-3 py-2 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-700 rounded-lg text-sm font-medium transition-colors"
+                >
+                  İptal
+                </button>
+              </div>
+            </div>
+          ) : (
+            <div className="flex items-center gap-2">
+              <h2 className="text-lg font-semibold text-slate-900 dark:text-slate-100 truncate" title={site.ad}>
+                {site.ad}
+              </h2>
+              <button
+                onClick={startEditAd}
+                className="px-2 py-1 text-xs text-brand-700 dark:text-brand-300 hover:bg-brand-50 dark:hover:bg-brand-900/30 rounded-md font-medium transition-colors flex-shrink-0"
+                title="Site adını değiştir"
+              >
+                Yeniden adlandır
+              </button>
+            </div>
+          )}
+          <p className="text-xs text-slate-500 dark:text-slate-400 mt-1">
             {PLAN_LABELS[site.plan] || site.plan} ·{' '}
             <span className={site.aktif ? 'text-green-600' : 'text-red-600'}>
               {site.aktif ? 'Aktif' : 'Pasif'}
             </span>
           </p>
         </div>
-        <button onClick={onClose} className="text-slate-500 hover:text-slate-700">
+        <button onClick={onClose} className="text-slate-500 hover:text-slate-700 flex-shrink-0">
           <XMarkIcon className="w-5 h-5" />
         </button>
       </div>
