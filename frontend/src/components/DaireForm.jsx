@@ -119,7 +119,7 @@ export default function DaireForm({ initial = {}, onSubmit, busy }) {
         {errors.kvkk_riza && <span className="text-sm text-red-600 dark:text-red-400">{errors.kvkk_riza}</span>}
       </div>
 
-      <label className="flex items-start gap-2 text-sm bg-slate-50 rounded-lg p-3 border border-slate-200">
+      <label className="flex items-start gap-2 text-sm bg-slate-50 dark:bg-slate-800 rounded-lg p-3 border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200">
         <input
           type="checkbox"
           checked={bildirim_opt_in}
