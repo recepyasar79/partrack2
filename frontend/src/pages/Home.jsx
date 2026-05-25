@@ -64,6 +64,12 @@ const cards = [
 
 export default function Home() {
   const { user } = useAuth();
+  const blokYapisi = Array.isArray(user?.site?.blok_yapisi) ? user.site.blok_yapisi : [];
+  const blokSayisi = blokYapisi.length;
+  const toplamDaire = blokYapisi.reduce(
+    (sum, b) => sum + (Number(b?.daire_sayisi) || 0),
+    0
+  );
   return (
     <div className="p-4 max-w-3xl mx-auto">
       {/* Welcome Section */}
@@ -121,17 +127,19 @@ export default function Home() {
         ))}
       </div>
 
-      {/* Info Cards */}
-      <div className="mt-6 grid grid-cols-2 gap-3">
-        <div className="bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-900/40 dark:to-brand-800/40 rounded-xl p-4 border border-brand-100 dark:border-brand-800">
-          <div className="text-2xl font-bold text-brand-700 dark:text-brand-300">136</div>
-          <div className="text-xs text-brand-600 dark:text-brand-400">Toplam Daire</div>
+      {/* Info Cards — site'nin blok_yapisi'ndan türetilir */}
+      {blokSayisi > 0 && (
+        <div className="mt-6 grid grid-cols-2 gap-3">
+          <div className="bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-900/40 dark:to-brand-800/40 rounded-xl p-4 border border-brand-100 dark:border-brand-800">
+            <div className="text-2xl font-bold text-brand-700 dark:text-brand-300">{toplamDaire}</div>
+            <div className="text-xs text-brand-600 dark:text-brand-400">Toplam Daire</div>
+          </div>
+          <div className="bg-gradient-to-br from-accent-50 to-accent-100 dark:from-accent-900/40 dark:to-accent-800/40 rounded-xl p-4 border border-accent-100 dark:border-accent-800">
+            <div className="text-2xl font-bold text-accent-700 dark:text-accent-300">{blokSayisi}</div>
+            <div className="text-xs text-accent-600 dark:text-accent-400">Blok Sayısı</div>
+          </div>
         </div>
-        <div className="bg-gradient-to-br from-accent-50 to-accent-100 dark:from-accent-900/40 dark:to-accent-800/40 rounded-xl p-4 border border-accent-100 dark:border-accent-800">
-          <div className="text-2xl font-bold text-accent-700 dark:text-accent-300">4</div>
-          <div className="text-xs text-accent-600 dark:text-accent-400">Blok Sayısı</div>
-        </div>
-      </div>
+      )}
     </div>
   );
 }
