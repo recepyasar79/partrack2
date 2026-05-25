@@ -92,6 +92,9 @@ export default function Layout({ children }) {
               </div>
             </span>
             {(isSiteAdmin || isSuperadmin) && (
+              <span aria-hidden="true" className="hidden md:block w-px bg-white/20 self-stretch" />
+            )}
+            {(isSiteAdmin || isSuperadmin) && (
               <div className="hidden md:flex gap-1">
                 {(isSuperadmin ? superadminItems : adminItems).map((item) => (
                   <NavLink

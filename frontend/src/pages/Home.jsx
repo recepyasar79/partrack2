@@ -87,11 +87,11 @@ export default function Home() {
 
         {blokSayisi > 0 && (
           <div className="flex gap-2">
-            <div className="w-24 bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-900/40 dark:to-brand-800/40 rounded-xl px-3 py-2 border border-brand-100 dark:border-brand-800 text-center">
+            <div className="w-[168px] bg-gradient-to-br from-brand-50 to-brand-100 dark:from-brand-900/40 dark:to-brand-800/40 rounded-xl px-3 py-2 border border-brand-100 dark:border-brand-800 text-center">
               <div className="text-xl font-bold text-brand-700 dark:text-brand-300 tabular-nums leading-tight">{toplamDaire}</div>
               <div className="text-[10px] text-brand-600 dark:text-brand-400 uppercase tracking-wide">Toplam Daire</div>
             </div>
-            <div className="w-24 bg-gradient-to-br from-accent-50 to-accent-100 dark:from-accent-900/40 dark:to-accent-800/40 rounded-xl px-3 py-2 border border-accent-100 dark:border-accent-800 text-center">
+            <div className="w-[168px] bg-gradient-to-br from-accent-50 to-accent-100 dark:from-accent-900/40 dark:to-accent-800/40 rounded-xl px-3 py-2 border border-accent-100 dark:border-accent-800 text-center">
               <div className="text-xl font-bold text-accent-700 dark:text-accent-300 tabular-nums leading-tight">{blokSayisi}</div>
               <div className="text-[10px] text-accent-600 dark:text-accent-400 uppercase tracking-wide">Blok</div>
             </div>
