@@ -144,7 +144,7 @@ function SlugDisplay({ slug }) {
   function copy() {
     try {
       navigator.clipboard?.writeText(slug);
-      toast.success('Site adresi kopyalandı.');
+      toast.success('Site kodu kopyalandı.');
     } catch {
       toast.error('Kopyalanamadı.');
     }
@@ -155,11 +155,12 @@ function SlugDisplay({ slug }) {
         <InformationCircleIcon className="w-5 h-5 text-amber-700 dark:text-amber-300 mt-0.5 flex-shrink-0" />
         <div className="flex-1">
           <div className="text-sm font-semibold text-amber-900 dark:text-amber-200 mb-1">
-            Site Giriş Adresi
+            Site Kodu
           </div>
           <p className="text-xs text-amber-800 dark:text-amber-300/80 mb-3">
-            Site sakinleri bu adresi login ekranındaki "Site Adresi" alanına yazarak giriş yapar.
-            Tahmin edilemez — başka sitelerin sakinleri bu adresi bilmediği sürece sitenize erişemez.
+            Site yöneticileri ve güvenlik bu 10 karakterli kodu login ekranındaki "Site Kodu"
+            alanına yazarak giriş yapar. Tahmin edilemez — kodu bilmeyen başka site kullanıcıları
+            erişim sağlayamaz. Site yöneticisine bu kodu güvenli kanaldan iletin.
           </p>
           <div className="flex items-center gap-2">
             <code className="flex-1 px-3 py-2 bg-white dark:bg-slate-900 rounded-lg font-mono text-lg font-bold tracking-wider text-amber-900 dark:text-amber-200 border border-amber-200 dark:border-amber-800 select-all">
@@ -391,7 +392,7 @@ export default function SuperadminSiteler() {
             <thead className="bg-slate-50 dark:bg-slate-800 text-left text-slate-600 dark:text-slate-300">
               <tr>
                 <th className="p-3">Site</th>
-                <th className="p-3">Slug</th>
+                <th className="p-3">Site Kodu</th>
                 <th className="p-3 text-right">Daire</th>
                 <th className="p-3 text-right">Kullanıcı</th>
                 <th className="p-3">Plan</th>

@@ -78,13 +78,13 @@ export default function Login() {
           </div>
 
           <Input
-            label="Site Adresi"
+            label="Site Kodu"
             icon={BuildingIcon}
             autoComplete="organization"
             value={site_slug}
             onChange={(e) => setSiteSlug(e.target.value)}
             placeholder="k7fm2qx9bn"
-            helperText="Site yöneticinizden aldığınız adres. Platform yöneticileri boş bırakır."
+            helperText="Site yöneticinizden aldığınız 10 karakterli kod. Platform yöneticisi boş bırakır."
           />
 
           <Input
