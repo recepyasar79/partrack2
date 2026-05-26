@@ -266,20 +266,29 @@ describe('Multi-tenant izolasyon', () => {
   // ---------- SITES CRUD ----------
 
   describe('sites CRUD (superadmin only)', () => {
-    test('superadmin yeni site oluşturur', async () => {
+    test('superadmin yeni site oluşturur (slug otomatik üretilir, body slug yok sayılır)', async () => {
       const r = await request(app)
         .post('/api/sites')
         .set('Authorization', `Bearer ${tokenSuper}`)
-        .send({ ad: 'Test C', slug: 'test-c', plan: 'standart' });
+        // Body'de slug versek bile YOK SAYILIR — Ü1.11'de güvenlik için
+        // tahmin edilemez 10 karakterlik slug otomatik üretiliyor.
+        .send({ ad: 'Test C', slug: 'tahmin-edilebilir', plan: 'standart' });
       expect(r.status).toBe(201);
-      expect(r.body.site.slug).toBe('test-c');
+      expect(r.body.site.slug).not.toBe('tahmin-edilebilir');
+      expect(r.body.site.slug).toMatch(/^[a-z0-9]{10}$/);
     });
 
-    test('aynı slug ile ikinci site → 409', async () => {
+    test('PATCH ile slug çakışması → 409', async () => {
+      // Manuel slug değişimi (yalnız superadmin için açık) çakışma kontrolü
+      // hâlâ aktif: B sitesinin slug'ı zaten 'site-b'; başka bir siteyi de
+      // bu slug'a almaya çalış → 409.
+      const yeniSite = await db('sites')
+        .insert({ ad: 'Çakışma Test', slug: 'cakisma-test', plan: 'baslangic', aktif: true })
+        .returning('*');
       const r = await request(app)
-        .post('/api/sites')
+        .patch(`/api/sites/${yeniSite[0].id}`)
         .set('Authorization', `Bearer ${tokenSuper}`)
-        .send({ ad: 'Dup', slug: 'test-c', plan: 'baslangic' });
+        .send({ slug: 'site-b' });
       expect(r.status).toBe(409);
     });
 
@@ -288,6 +297,136 @@ describe('Multi-tenant izolasyon', () => {
         .delete('/api/sites/1')
         .set('Authorization', `Bearer ${tokenSuper}`);
       expect(r.status).toBe(400);
+    });
+  });
+
+  // ---------- AUDIT LOG: superadmin işlemleri site_yonetici'ye gizli ----------
+  //
+  // Site yöneticisi GET /api/audit-log çağırınca, kendi site_id'sindeki tüm
+  // kayıtları DEĞİL — superadmin (platform sahibi) tarafından yapılan işlemler
+  // hariç görür. Slug değişimi, kullanıcı oluşturma vs. site sahibine değil
+  // platforma ait detaylardır. Silinmiş user (NULL user_id) satırları
+  // tarihsel kayıt olarak korunur.
+
+  describe('audit log: superadmin işlemleri gizli', () => {
+    test('superadmin slug değişimi adminA listesinde GÖRÜNMEZ', async () => {
+      const rPatch = await request(app)
+        .patch(`/api/sites/${siteA.id}`)
+        .set('Authorization', `Bearer ${tokenSuper}`)
+        .send({ slug: `gizli-${Date.now().toString(36)}` });
+      expect(rPatch.status).toBe(200);
+
+      const rLog = await request(app)
+        .get('/api/audit-log?tablo=sites')
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(rLog.status).toBe(200);
+      const superAction = rLog.body.kayitlar.find(
+        (k) => k.eylem === 'guncelle' && k.tablo_adi === 'sites' && k.kayit_id === siteA.id
+      );
+      expect(superAction).toBeUndefined();
+    });
+
+    test('adminA kendi yaptığı işlemi audit_log\'da görür', async () => {
+      const rPost = await request(app)
+        .post('/api/daireler')
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .send({
+          daire_no: 'D9', sahip_ad: 'Audit Test', sahip_tel: '05553334444',
+          kvkk_riza: true,
+        });
+      expect(rPost.status).toBe(201);
+
+      const rLog = await request(app)
+        .get('/api/audit-log?tablo=daireler')
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(rLog.status).toBe(200);
+      const benimKayit = rLog.body.kayitlar.find(
+        (k) => k.kayit_id === rPost.body.daire.id && k.eylem === 'olustur'
+      );
+      expect(benimKayit).toBeDefined();
+      expect(benimKayit.kullanici_adi).toBe('adminA');
+    });
+
+    test('NULL user_id\'li satır (silinmiş kullanıcı) listede görünür', async () => {
+      // Direkt DB'ye user_id=null insert et — bir kullanıcının silindiği durumu
+      // simüle ediyor (users FK SET NULL).
+      await db('audit_log').insert({
+        user_id: null,
+        site_id: siteA.id,
+        eylem: 'eski-kayit',
+        tablo_adi: 'daireler',
+        kayit_id: 999999,
+        ip_adres: '127.0.0.1',
+      });
+
+      const rLog = await request(app)
+        .get('/api/audit-log')
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(rLog.status).toBe(200);
+      const silinmis = rLog.body.kayitlar.find((k) => k.eylem === 'eski-kayit');
+      expect(silinmis).toBeDefined();
+      expect(silinmis.kullanici_adi).toBeNull();
+    });
+  });
+
+  // ---------- SITE HARD DELETE CASCADE ----------
+  //
+  // DELETE /api/sites/:id tek transaction içinde 13 tabloyu temizler.
+  // Burada ayrı bir test sitesi (C) oluşturup içine domain verisi yazıyoruz;
+  // silme sonrası: (a) C'nin tüm satırları gitti, (b) A/B sitelerinin verisi
+  // sağlam, (c) id=1 her durumda korunuyor.
+
+  describe('site hard delete cascade', () => {
+    test('site silme 13 tablodaki kayıtları temizler, diğer site etkilenmez', async () => {
+      // Test sitesi C + domain verisi
+      const siteC = await createTestSite({ ad: 'Cascade Test', slug: 'cascade-test' });
+      const daireC = await createTestDaire({
+        daire_no: 'C1', sahip_ad: 'Cascade Sahip', site_id: siteC.id,
+      });
+      const aracC = await createTestArac({
+        daire_id: daireC.id, plaka: '99CCC999', site_id: siteC.id,
+      });
+      await db('audit_log').insert({
+        site_id: siteC.id, user_id: superAdmin.id,
+        eylem: 'olustur', tablo_adi: 'sites', kayit_id: siteC.id,
+        ip_adres: '127.0.0.1',
+      });
+      await db('gunluk_kontroller').insert({
+        site_id: siteC.id, plaka: '99CCC999',
+        kontrol_tarihi: new Date().toISOString().slice(0, 10),
+      });
+
+      // A sitesinde de referans veri olduğunu doğrula (silinmesin)
+      const aOnceDaire = await db('daireler').where({ site_id: siteA.id }).count('* as c').first();
+
+      const r = await request(app)
+        .delete(`/api/sites/${siteC.id}`)
+        .set('Authorization', `Bearer ${tokenSuper}`);
+      expect(r.status).toBe(200);
+
+      // C'nin hiçbir tablodaki kaydı kalmamalı
+      const tablolar = [
+        'sites', 'daireler', 'araclar', 'gunluk_kontroller',
+        'audit_log', 'misafir_araclar', 'daire_sahip_tarihce',
+        'ihlaller', 'bildirimler', 'ocr_metrics',
+        'plate_learnings', 'plate_char_substitutions',
+      ];
+      for (const t of tablolar) {
+        const col = t === 'sites' ? 'id' : 'site_id';
+        const sayi = await db(t).where(col, siteC.id).count('* as c').first();
+        expect(parseInt(sayi.c, 10)).toBe(0);
+      }
+      // users tablosunda da C'ye bağlı kalmamalı (siteC'nin user'ı yoktu zaten)
+      const userC = await db('users').where({ site_id: siteC.id }).count('* as c').first();
+      expect(parseInt(userC.c, 10)).toBe(0);
+
+      // A sitesinin daire sayısı değişmemiş olmalı
+      const aSonDaire = await db('daireler').where({ site_id: siteA.id }).count('* as c').first();
+      expect(aSonDaire.c).toBe(aOnceDaire.c);
+
+      // Kullanılmamış değişkenler uyarı vermesin (referans)
+      expect(daireC.id).toBeDefined();
+      expect(aracC.id).toBeDefined();
     });
   });
 });

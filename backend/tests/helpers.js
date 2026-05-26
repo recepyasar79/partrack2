@@ -13,12 +13,18 @@ function makeToken(payload) {
  */
 async function createTestSite(overrides = {}) {
   const slug = overrides.slug || `test-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`;
+  // blok_yapisi boş olursa daire_no validasyonu hep fail eder; default site
+  // (id=1) migration'da A-D × 34 ile backfill ediliyor — test sitesi de aynı
+  // varsayılan yapıya sahip olsun, override gerekirse override.blok_yapisi geç.
+  const defaultBlokYapisi = ['A', 'B', 'C', 'D'].map((ad) => ({ ad, daire_sayisi: 34 }));
+  const blokYapisi = overrides.blok_yapisi !== undefined ? overrides.blok_yapisi : defaultBlokYapisi;
   const [site] = await db('sites')
     .insert({
       ad: overrides.ad || 'Test Site',
       slug,
       plan: overrides.plan || 'baslangic',
       aktif: overrides.aktif !== undefined ? overrides.aktif : true,
+      blok_yapisi: JSON.stringify(blokYapisi),
     })
     .returning('*');
   return site;
