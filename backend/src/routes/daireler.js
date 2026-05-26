@@ -4,6 +4,7 @@ const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middle
 const { writeAudit } = require('../middleware/audit');
 const { isValidTelefon } = require('../utils/validators');
 const { isValidDaireInSite, parseDaireNoFlexible } = require('../utils/siteYapisi');
+const { getEffectiveLimits, isLimitReached } = require('../utils/planLimits');
 
 const router = express.Router();
 
@@ -63,6 +64,25 @@ router.post('/', requireSiteAdmin, async (req, res) => {
     .first();
   if (existing && existing.aktif) {
     return res.status(409).json({ error: 'Bu daire numarası zaten kayıtlı.' });
+  }
+
+  // Plan limit kontrolü (Ü2). YENİ daire eklemesi limit'i aşacaksa 402.
+  // Reactivate (existing && !aktif) limit'i artırmaz, sadece insert yolu sayar.
+  if (!existing) {
+    const limits = getEffectiveLimits(site);
+    const aktifCount = await db('daireler')
+      .where({ site_id: req.scopedSiteId, aktif: true })
+      .count('* as c')
+      .first();
+    const current = parseInt(aktifCount.c, 10) || 0;
+    if (isLimitReached(limits.daire_max, current)) {
+      return res.status(402).json({
+        error: `Plan limiti doldu (${current}/${limits.daire_max} daire). Plan yükseltmek için site sahibinizle iletişime geçin.`,
+        limit: 'daire_max',
+        current,
+        max: limits.daire_max,
+      });
+    }
   }
 
   let created;

@@ -21,6 +21,7 @@ const { writeAudit } = require('../middleware/audit');
 const { hashPassword } = require('../utils/auth');
 const { generateSiteSlug } = require('../utils/slug');
 const { validateBlokYapisi, buildUniformBlokYapisi } = require('../utils/siteYapisi');
+const { getEffectiveLimits, isLimitReached, validatePlanLimitsOverride } = require('../utils/planLimits');
 
 const router = express.Router();
 
@@ -165,6 +166,7 @@ router.get('/:id', async (req, res, next) => {
 
     res.json({
       site,
+      limits: getEffectiveLimits(site),
       metrikler: {
         daire_sayisi: parseInt(daireCount.c, 10) || 0,
         arac_sayisi: parseInt(aracCount.c, 10) || 0,
@@ -185,7 +187,7 @@ router.patch('/:id', async (req, res, next) => {
     const eski = await db('sites').where({ id }).first();
     if (!eski) return res.status(404).json({ error: 'Site bulunamadı.' });
 
-    const { ad, plan, aktif, blok_yapisi, slug } = req.body || {};
+    const { ad, plan, aktif, blok_yapisi, slug, plan_limits } = req.body || {};
     const update = {};
     if (ad !== undefined) {
       if (!ad || ad.length < 2) return res.status(400).json({ error: 'Site adı geçersiz.' });
@@ -221,6 +223,13 @@ router.patch('/:id', async (req, res, next) => {
       const v = validateBlokYapisi(blok_yapisi);
       if (!v.ok) return res.status(400).json({ error: v.error });
       update.blok_yapisi = JSON.stringify(v.normalized);
+    }
+    // plan_limits override (Ü2). null/{} ile reset edilir, plan defaults
+    // kullanılır. Sadece daire_max + user_max kabul edilir.
+    if (plan_limits !== undefined) {
+      const v = validatePlanLimitsOverride(plan_limits);
+      if (!v.ok) return res.status(400).json({ error: v.error });
+      update.plan_limits = v.normalized == null ? null : JSON.stringify(v.normalized);
     }
     if (!Object.keys(update).length) {
       return res.status(400).json({ error: 'Güncellenecek alan yok.' });
@@ -273,6 +282,22 @@ router.post('/:id/users', async (req, res, next) => {
       .first();
     if (existing) {
       return res.status(409).json({ error: 'Bu sitede aynı kullanıcı adı zaten var.' });
+    }
+
+    // Plan limit kontrolü (Ü2). Aktif kullanıcı (site_yonetici + guvenlik) sayısı.
+    const limits = getEffectiveLimits(site);
+    const aktifCount = await db('users')
+      .where({ site_id: id, aktif: true })
+      .count('* as c')
+      .first();
+    const current = parseInt(aktifCount.c, 10) || 0;
+    if (isLimitReached(limits.user_max, current)) {
+      return res.status(402).json({
+        error: `Plan limiti doldu (${current}/${limits.user_max} kullanıcı). Plan yükseltmek için iletişime geçin.`,
+        limit: 'user_max',
+        current,
+        max: limits.user_max,
+      });
     }
     const sifre_hash = await hashPassword(sifre);
     const [created] = await db('users')

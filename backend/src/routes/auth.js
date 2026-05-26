@@ -4,6 +4,7 @@ const db = require('../db');
 const { hashPassword, verifyPassword, signToken } = require('../utils/auth');
 const { authRequired, requireRole, requireSiteAdmin, requireSuperadmin } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
+const { getEffectiveLimits, isLimitReached } = require('../utils/planLimits');
 
 const router = express.Router();
 
@@ -72,8 +73,9 @@ router.post('/login', loginLimiter, async (req, res) => {
   if (user.site_id) {
     site = await db('sites')
       .where({ id: user.site_id })
-      .select('id', 'ad', 'slug', 'plan', 'aktif', 'blok_yapisi')
+      .select('id', 'ad', 'slug', 'plan', 'aktif', 'blok_yapisi', 'plan_limits')
       .first();
+    if (site) site.limits = getEffectiveLimits(site);
   }
   res.json({
     token,
@@ -97,8 +99,9 @@ router.get('/me', authRequired, async (req, res) => {
   if (user.site_id) {
     site = await db('sites')
       .where({ id: user.site_id })
-      .select('id', 'ad', 'slug', 'plan', 'aktif', 'blok_yapisi')
+      .select('id', 'ad', 'slug', 'plan', 'aktif', 'blok_yapisi', 'plan_limits')
       .first();
+    if (site) site.limits = getEffectiveLimits(site);
   }
   res.json({ kullanici: { ...user, site } });
 });
@@ -121,6 +124,25 @@ router.post('/register', authRequired, requireSiteAdmin, async (req, res) => {
   const existing = await db('users').where({ kullanici_adi, site_id }).first();
   if (existing) {
     return res.status(409).json({ error: 'Bu kullanıcı adı zaten alınmış.' });
+  }
+
+  // Plan limit kontrolü (Ü2). Aktif kullanıcı sayısı plan'a göre sınırlı.
+  const site = await db('sites').where({ id: site_id }).first();
+  if (site) {
+    const limits = getEffectiveLimits(site);
+    const aktifCount = await db('users')
+      .where({ site_id, aktif: true })
+      .count('* as c')
+      .first();
+    const current = parseInt(aktifCount.c, 10) || 0;
+    if (isLimitReached(limits.user_max, current)) {
+      return res.status(402).json({
+        error: `Plan limiti doldu (${current}/${limits.user_max} kullanıcı). Plan yükseltmek için iletişime geçin.`,
+        limit: 'user_max',
+        current,
+        max: limits.user_max,
+      });
+    }
   }
   const sifre_hash = await hashPassword(sifre);
   const [created] = await db('users')
