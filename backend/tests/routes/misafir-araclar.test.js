@@ -6,9 +6,9 @@ let admin, guard;
 
 beforeEach(async () => {
   await cleanupTables();
-  admin = await createTestUser({ kullanici_adi: 'madmin', rol: 'yonetici' });
+  admin = await createTestUser({ kullanici_adi: 'madmin', rol: 'site_yonetici' });
   guard = await createTestUser({ kullanici_adi: 'mguard', rol: 'guvenlik' });
-  adminToken = makeToken({ id: admin.id, kullanici_adi: 'madmin', rol: 'yonetici' });
+  adminToken = makeToken({ id: admin.id, kullanici_adi: 'madmin', rol: 'site_yonetici' });
   guardToken = makeToken({ id: guard.id, kullanici_adi: 'mguard', rol: 'guvenlik' });
 });
 
@@ -17,6 +17,7 @@ describe('GET /api/misafir-araclar', () => {
     const daire = await createTestDaire({ daire_no: 'A1' });
     const today = new Date().toISOString().slice(0, 10);
     await db('misafir_araclar').insert({
+      site_id: 1,
       daire_id: daire.id,
       plaka: '34MIS001',
       baslangic_tarihi: today,
@@ -34,6 +35,7 @@ describe('GET /api/misafir-araclar', () => {
     const daire = await createTestDaire({ daire_no: 'A2' });
     const today = new Date().toISOString().slice(0, 10);
     await db('misafir_araclar').insert({
+      site_id: 1,
       daire_id: daire.id,
       plaka: '34MIS002',
       baslangic_tarihi: today,
@@ -57,6 +59,7 @@ describe('POST /api/misafir-araclar', () => {
       .post('/api/misafir-araclar')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
+        site_id: 1,
         daire_id: daire.id,
         plaka: '34GU001',
         baslangic_tarihi: today,
@@ -75,6 +78,7 @@ describe('POST /api/misafir-araclar', () => {
       .post('/api/misafir-araclar')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
+        site_id: 1,
         daire_id: daire.id,
         plaka: '34BAD1',
         baslangic_tarihi: today,
@@ -90,6 +94,7 @@ describe('POST /api/misafir-araclar', () => {
       .post('/api/misafir-araclar')
       .set('Authorization', `Bearer ${adminToken}`)
       .send({
+        site_id: 1,
         daire_id: daire.id,
         plaka: 'INVALID',
         baslangic_tarihi: today,
@@ -105,6 +110,7 @@ describe('POST /api/misafir-araclar', () => {
       .post('/api/misafir-araclar')
       .set('Authorization', `Bearer ${guardToken}`)
       .send({
+        site_id: 1,
         daire_id: daire.id,
         plaka: '34GRD01',
         baslangic_tarihi: today,
@@ -120,6 +126,7 @@ describe('DELETE /api/misafir-araclar/:id', () => {
     const today = new Date().toISOString().slice(0, 10);
     const [misafir] = await db('misafir_araclar')
       .insert({
+        site_id: 1,
         daire_id: daire.id,
         plaka: '34DEL001',
         baslangic_tarihi: today,
@@ -140,6 +147,7 @@ describe('DELETE /api/misafir-araclar/:id', () => {
     const today = new Date().toISOString().slice(0, 10);
     const [misafir] = await db('misafir_araclar')
       .insert({
+        site_id: 1,
         daire_id: daire.id,
         plaka: '34DEL002',
         baslangic_tarihi: today,

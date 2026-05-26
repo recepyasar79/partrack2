@@ -17,6 +17,7 @@ describeIfDb('ocrMetrics', () => {
   async function makeKontrol(plaka = '34TST001') {
     const [row] = await db('gunluk_kontroller')
       .insert({
+        site_id: 1,
         kontrol_tarihi: new Date().toISOString().slice(0, 10),
         plaka,
         foto_url: '/uploads/dummy.jpg',
@@ -28,6 +29,7 @@ describeIfDb('ocrMetrics', () => {
   test('recordOcrCall: başarılı OCR sonucu kaydeder', async () => {
     const kontrol = await makeKontrol();
     const id = await recordOcrCall({
+      siteId: 1,
       gunlukKontrolId: kontrol.id,
       engine: 'easyocr',
       ocrResult: {
@@ -53,6 +55,7 @@ describeIfDb('ocrMetrics', () => {
   test('recordOcrCall: başarısız OCR sonucu (ok=false) yine kaydeder', async () => {
     const kontrol = await makeKontrol('');
     const id = await recordOcrCall({
+      siteId: 1,
       gunlukKontrolId: kontrol.id,
       ocrResult: { ok: false, plate: '', error: 'Python OCR unreachable: ECONNREFUSED' },
     });
@@ -70,6 +73,7 @@ describeIfDb('ocrMetrics', () => {
   test('markCorrected: en son metric satırını işaretler', async () => {
     const kontrol = await makeKontrol();
     await recordOcrCall({
+      siteId: 1,
       gunlukKontrolId: kontrol.id,
       ocrResult: { ok: true, plate: '34ABC123', confidence: 0.6, elapsedMs: 500 },
     });
@@ -90,14 +94,17 @@ describeIfDb('ocrMetrics', () => {
     const k2 = await makeKontrol('34A2');
     const k3 = await makeKontrol('34A3');
     await recordOcrCall({
+      siteId: 1,
       gunlukKontrolId: k1.id,
       ocrResult: { ok: true, plate: '34A1', confidence: 0.9, elapsedMs: 300 },
     });
     await recordOcrCall({
+      siteId: 1,
       gunlukKontrolId: k2.id,
       ocrResult: { ok: true, plate: '34A2', confidence: 0.9, elapsedMs: 600 },
     });
     await recordOcrCall({
+      siteId: 1,
       gunlukKontrolId: k3.id,
       ocrResult: { ok: true, plate: '34BAD', confidence: 0.4, elapsedMs: 2000 },
     });

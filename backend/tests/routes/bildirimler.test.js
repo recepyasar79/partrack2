@@ -4,8 +4,8 @@ let adminToken;
 let admin;
 
 beforeAll(async () => {
-  admin = await createTestUser({ kullanici_adi: 'badmin', rol: 'yonetici' });
-  adminToken = makeToken({ id: admin.id, kullanici_adi: 'badmin', rol: 'yonetici' });
+  admin = await createTestUser({ kullanici_adi: 'badmin', rol: 'site_yonetici' });
+  adminToken = makeToken({ id: admin.id, kullanici_adi: 'badmin', rol: 'site_yonetici' });
 });
 
 beforeEach(async () => {
@@ -18,8 +18,8 @@ async function createIhlalDaire() {
   await createTestArac({ daire_id: daire.id, plaka: '34BIL002' });
   const today = new Date().toISOString().slice(0, 10);
   await db('gunluk_kontroller').insert([
-    { kontrol_tarihi: today, plaka: '34BIL001', foto_url: '/uploads/b1.jpg' },
-    { kontrol_tarihi: today, plaka: '34BIL002', foto_url: '/uploads/b2.jpg' },
+    { site_id: 1, kontrol_tarihi: today, plaka: '34BIL001', foto_url: '/uploads/b1.jpg' },
+    { site_id: 1, kontrol_tarihi: today, plaka: '34BIL002', foto_url: '/uploads/b2.jpg' },
   ]);
   await request(app)
     .post('/api/kontroller/analiz-et')
@@ -47,8 +47,8 @@ describe('POST /api/bildirimler/gonder', () => {
     await createTestArac({ daire_id: daire.id, plaka: '34NOO002' });
     const today = new Date().toISOString().slice(0, 10);
     await db('gunluk_kontroller').insert([
-      { kontrol_tarihi: today, plaka: '34NOO001', foto_url: '/uploads/n1.jpg' },
-      { kontrol_tarihi: today, plaka: '34NOO002', foto_url: '/uploads/n2.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34NOO001', foto_url: '/uploads/n1.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34NOO002', foto_url: '/uploads/n2.jpg' },
     ]);
     await request(app)
       .post('/api/kontroller/analiz-et')
@@ -66,6 +66,7 @@ describe('POST /api/bildirimler/gonder', () => {
   test('kayitsiz tipindeki ihlale bildirim gonderilemez (422)', async () => {
     const today = new Date().toISOString().slice(0, 10);
     await db('gunluk_kontroller').insert({
+      site_id: 1,
       kontrol_tarihi: today,
       plaka: '99NOCAR0',
       foto_url: '/uploads/nc.jpg',
@@ -103,10 +104,10 @@ describe('POST /api/bildirimler/toplu-gonder', () => {
     await createTestArac({ daire_id: d2.id, plaka: '34TOP004' });
     const today = new Date().toISOString().slice(0, 10);
     await db('gunluk_kontroller').insert([
-      { kontrol_tarihi: today, plaka: '34TOP001', foto_url: '/uploads/t1.jpg' },
-      { kontrol_tarihi: today, plaka: '34TOP002', foto_url: '/uploads/t2.jpg' },
-      { kontrol_tarihi: today, plaka: '34TOP003', foto_url: '/uploads/t3.jpg' },
-      { kontrol_tarihi: today, plaka: '34TOP004', foto_url: '/uploads/t4.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34TOP001', foto_url: '/uploads/t1.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34TOP002', foto_url: '/uploads/t2.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34TOP003', foto_url: '/uploads/t3.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34TOP004', foto_url: '/uploads/t4.jpg' },
     ]);
     await request(app)
       .post('/api/kontroller/analiz-et')

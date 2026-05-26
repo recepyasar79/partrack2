@@ -4,7 +4,14 @@ const db = require('../src/db');
 const app = require('../src/server');
 
 function makeToken(payload) {
-  return signToken(payload);
+  // Multi-tenant: middleware site_id'yi token'dan okur. Test'lerde her token
+  // çağrısına site_id eklemek yerine burada default uyguluyoruz:
+  // - superadmin: site_id null (platform-wide)
+  // - site_yonetici/guvenlik: site_id 1 (default site)
+  const site_id = payload.site_id !== undefined
+    ? payload.site_id
+    : (payload.rol === 'superadmin' ? null : 1);
+  return signToken({ ...payload, site_id });
 }
 
 /**
@@ -104,6 +111,16 @@ async function cleanupTables(preserveUsers = []) {
   }
   // Sites: default site (id=1) hariç hepsini sil
   await db('sites').whereNot('id', 1).del();
+  // Default site (id=1) baseline'a reset — başka testler PATCH ile slug/ad
+  // değiştirmiş olabilir. Auth testleri 'varsayilan' slug bekliyor.
+  const defaultBlokYapisi = ['A', 'B', 'C', 'D'].map((ad) => ({ ad, daire_sayisi: 34 }));
+  await db('sites').where({ id: 1 }).update({
+    ad: 'Varsayılan Site',
+    slug: 'varsayilan',
+    plan: 'baslangic',
+    aktif: true,
+    blok_yapisi: JSON.stringify(defaultBlokYapisi),
+  });
 }
 
 module.exports = {

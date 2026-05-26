@@ -4,6 +4,18 @@ import userEvent from '@testing-library/user-event';
 import DaireForm from './DaireForm';
 import { ToastProvider } from './ui/Toast';
 
+// DaireForm useAuth() ile site.blok_yapisi'ndan daire listesini türetiyor.
+// Test ortamında AuthProvider yok — minimum yapıda mock'la (varsayılan A-D × 34).
+vi.mock('../auth/AuthContext', () => ({
+  useAuth: () => ({
+    user: {
+      site: {
+        blok_yapisi: ['A', 'B', 'C', 'D'].map((ad) => ({ ad, daire_sayisi: 34 })),
+      },
+    },
+  }),
+}));
+
 function setup(props = {}) {
   const onSubmit = vi.fn();
   render(

@@ -11,6 +11,11 @@ vi.mock('../services/api', () => ({
   apiError: (e) => e.message || 'Hata',
 }));
 
+// useAuth gerçek context'i gerektirmesin
+vi.mock('../auth/AuthContext', () => ({
+  useAuth: () => ({ user: { kullanici_adi: 'test', rol: 'site_yonetici' } }),
+}));
+
 function renderWithToast(ui) {
   return render(<ToastProvider>{ui}</ToastProvider>);
 }

@@ -105,7 +105,7 @@ describeIfDb('plateMatcher DB integration', () => {
   });
 
   test('recordLearning hem learnings hem substitutions yazar', async () => {
-    await recordLearning('34MN1089', '34MNL089');
+    await recordLearning('34MN1089', '34MNL089', 1);
 
     const learn = await db('plate_learnings').where({ ocr_raw: '34MN1089' }).first();
     expect(learn.correct_plaka).toBe('34MNL089');
@@ -118,8 +118,8 @@ describeIfDb('plateMatcher DB integration', () => {
   });
 
   test('aynı substitution tekrarı count++', async () => {
-    await recordSubstitutions('34A1', '34AL');
-    await recordSubstitutions('34X1Y', '34XLY');
+    await recordSubstitutions('34A1', '34AL', 1);
+    await recordSubstitutions('34X1Y', '34XLY', 1);
     const sub = await db('plate_char_substitutions')
       .where({ from_char: '1', to_char: 'L' })
       .first();
@@ -127,7 +127,7 @@ describeIfDb('plateMatcher DB integration', () => {
   });
 
   test('farklı uzunluk → substitution yazılmaz', async () => {
-    await recordSubstitutions('34AB', '34ABC');
+    await recordSubstitutions('34AB', '34ABC', 1);
     const subs = await db('plate_char_substitutions').select('*');
     expect(subs).toHaveLength(0);
   });
@@ -139,13 +139,13 @@ describeIfDb('plateMatcher DB integration', () => {
 
     // Histograma 1↔L pattern'ini güçlü yaz
     for (let i = 0; i < 10; i++) {
-      await recordSubstitutions('34A1', '34AL');
+      await recordSubstitutions('34A1', '34AL', 1);
     }
     clearSubstitutionCache();
 
     // OCR "34MN1089" okudu — hem L hem T tek karakter farklı
     // Histogram olmadan iki seçenek tie; histogramla L kazanmalı
-    const match = await findBestMatch('34MN1089');
+    const match = await findBestMatch('34MN1089', 1);
     expect(match).toBeTruthy();
     expect(match.plaka).toBe('34MNL089');
     expect(match.substitutionBonus).toBeGreaterThan(0);

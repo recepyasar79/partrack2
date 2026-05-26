@@ -5,9 +5,9 @@ let guardToken;
 let admin, guard;
 
 beforeAll(async () => {
-  admin = await createTestUser({ kullanici_adi: 'aadmin', rol: 'yonetici' });
+  admin = await createTestUser({ kullanici_adi: 'aadmin', rol: 'site_yonetici' });
   guard = await createTestUser({ kullanici_adi: 'aguard', rol: 'guvenlik' });
-  adminToken = makeToken({ id: admin.id, kullanici_adi: 'aadmin', rol: 'yonetici' });
+  adminToken = makeToken({ id: admin.id, kullanici_adi: 'aadmin', rol: 'site_yonetici' });
   guardToken = makeToken({ id: guard.id, kullanici_adi: 'aguard', rol: 'guvenlik' });
 });
 

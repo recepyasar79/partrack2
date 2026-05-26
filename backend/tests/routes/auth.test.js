@@ -20,7 +20,7 @@ describe('POST /api/auth/login', () => {
     await createTestUser({ kullanici_adi: 'testgiris', sifre: 'GirisPass123!', rol: 'guvenlik' });
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ kullanici_adi: 'testgiris', sifre: 'GirisPass123!' });
+      .send({ kullanici_adi: 'testgiris', sifre: 'GirisPass123!', site_slug: 'varsayilan' });
     expect(res.status).toBe(200);
     expect(res.body.token).toBeDefined();
     expect(res.body.kullanici.kullanici_adi).toBe('testgiris');
@@ -31,14 +31,14 @@ describe('POST /api/auth/login', () => {
     await createTestUser({ kullanici_adi: 'testyanlis', sifre: 'DogruSifre1!' });
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ kullanici_adi: 'testyanlis', sifre: 'YanlisSifre1!' });
+      .send({ kullanici_adi: 'testyanlis', sifre: 'YanlisSifre1!', site_slug: 'varsayilan' });
     expect(res.status).toBe(401);
   });
 
   test('olmayan kullanici ile 401 doner', async () => {
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ kullanici_adi: 'olmayan', sifre: 'Sifre123!' });
+      .send({ kullanici_adi: 'olmayan', sifre: 'Sifre123!', site_slug: 'varsayilan' });
     expect(res.status).toBe(401);
   });
 
@@ -46,7 +46,7 @@ describe('POST /api/auth/login', () => {
     await createTestUser({ kullanici_adi: 'deaktif', aktif: false });
     const res = await request(app)
       .post('/api/auth/login')
-      .send({ kullanici_adi: 'deaktif', sifre: 'Sifre123!' });
+      .send({ kullanici_adi: 'deaktif', sifre: 'Sifre123!', site_slug: 'varsayilan' });
     expect(res.status).toBe(401);
   });
 
@@ -60,7 +60,7 @@ describe('POST /api/auth/login', () => {
     expect(user.son_giris).toBeNull();
     await request(app)
       .post('/api/auth/login')
-      .send({ kullanici_adi: 'sonlogin', sifre: 'LoginPass1!' });
+      .send({ kullanici_adi: 'sonlogin', sifre: 'LoginPass1!', site_slug: 'varsayilan' });
     const updated = await db('users').where({ id: user.id }).first();
     expect(updated.son_giris).not.toBeNull();
   });
@@ -68,8 +68,8 @@ describe('POST /api/auth/login', () => {
 
 describe('GET /api/auth/me', () => {
   test('token ile kullanici bilgisi doner', async () => {
-    const user = await createTestUser({ kullanici_adi: 'meuser', rol: 'yonetici' });
-    const token = makeToken({ id: user.id, kullanici_adi: 'meuser', rol: 'yonetici' });
+    const user = await createTestUser({ kullanici_adi: 'meuser', rol: 'site_yonetici' });
+    const token = makeToken({ id: user.id, kullanici_adi: 'meuser', rol: 'site_yonetici' });
     const res = await request(app)
       .get('/api/auth/me')
       .set('Authorization', `Bearer ${token}`);
@@ -92,8 +92,8 @@ describe('GET /api/auth/me', () => {
 
 describe('POST /api/auth/register', () => {
   test('yonetici yeni kullanici olusturabilir', async () => {
-    const admin = await createTestUser({ kullanici_adi: 'regadmin', rol: 'yonetici' });
-    const token = makeToken({ id: admin.id, kullanici_adi: 'regadmin', rol: 'yonetici' });
+    const admin = await createTestUser({ kullanici_adi: 'regadmin', rol: 'site_yonetici' });
+    const token = makeToken({ id: admin.id, kullanici_adi: 'regadmin', rol: 'site_yonetici' });
     const res = await request(app)
       .post('/api/auth/register')
       .set('Authorization', `Bearer ${token}`)
@@ -114,8 +114,8 @@ describe('POST /api/auth/register', () => {
   });
 
   test('ayni kullanici adi ile 409 doner', async () => {
-    const admin = await createTestUser({ kullanici_adi: 'dupadmin', rol: 'yonetici' });
-    const token = makeToken({ id: admin.id, kullanici_adi: 'dupadmin', rol: 'yonetici' });
+    const admin = await createTestUser({ kullanici_adi: 'dupadmin', rol: 'site_yonetici' });
+    const token = makeToken({ id: admin.id, kullanici_adi: 'dupadmin', rol: 'site_yonetici' });
     await request(app)
       .post('/api/auth/register')
       .set('Authorization', `Bearer ${token}`)
@@ -128,8 +128,8 @@ describe('POST /api/auth/register', () => {
   });
 
   test('kisa sifre ile 400 doner', async () => {
-    const admin = await createTestUser({ kullanici_adi: 'shortpwadmin', rol: 'yonetici' });
-    const token = makeToken({ id: admin.id, kullanici_adi: 'shortpwadmin', rol: 'yonetici' });
+    const admin = await createTestUser({ kullanici_adi: 'shortpwadmin', rol: 'site_yonetici' });
+    const token = makeToken({ id: admin.id, kullanici_adi: 'shortpwadmin', rol: 'site_yonetici' });
     const res = await request(app)
       .post('/api/auth/register')
       .set('Authorization', `Bearer ${token}`)
@@ -140,9 +140,9 @@ describe('POST /api/auth/register', () => {
 
 describe('POST /api/auth/sifre-sifirla', () => {
   test('yonetici baskasinin sifresini sifirlayabilir', async () => {
-    const admin = await createTestUser({ kullanici_adi: 'resetadmin', rol: 'yonetici' });
+    const admin = await createTestUser({ kullanici_adi: 'resetadmin', rol: 'site_yonetici' });
     const target = await createTestUser({ kullanici_adi: 'resettarget', sifre: 'EskiSifre1!' });
-    const token = makeToken({ id: admin.id, kullanici_adi: 'resetadmin', rol: 'yonetici' });
+    const token = makeToken({ id: admin.id, kullanici_adi: 'resetadmin', rol: 'site_yonetici' });
     const res = await request(app)
       .post('/api/auth/sifre-sifirla')
       .set('Authorization', `Bearer ${token}`)
@@ -150,7 +150,7 @@ describe('POST /api/auth/sifre-sifirla', () => {
     expect(res.status).toBe(200);
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ kullanici_adi: 'resettarget', sifre: 'YeniSifre123!' });
+      .send({ kullanici_adi: 'resettarget', sifre: 'YeniSifre123!', site_slug: 'varsayilan' });
     expect(loginRes.status).toBe(200);
   });
 
@@ -176,7 +176,7 @@ describe('POST /api/auth/sifre-degistir', () => {
     expect(res.status).toBe(200);
     const loginRes = await request(app)
       .post('/api/auth/login')
-      .send({ kullanici_adi: 'changeme', sifre: 'YeniSifre123!' });
+      .send({ kullanici_adi: 'changeme', sifre: 'YeniSifre123!', site_slug: 'varsayilan' });
     expect(loginRes.status).toBe(200);
   });
 

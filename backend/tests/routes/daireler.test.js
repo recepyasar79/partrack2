@@ -6,10 +6,10 @@ let adminId;
 let admin, guard;
 
 beforeAll(async () => {
-  admin = await createTestUser({ kullanici_adi: 'dadmin', rol: 'yonetici' });
+  admin = await createTestUser({ kullanici_adi: 'dadmin', rol: 'site_yonetici' });
   guard = await createTestUser({ kullanici_adi: 'dguard', rol: 'guvenlik' });
   adminId = admin.id;
-  adminToken = makeToken({ id: admin.id, kullanici_adi: 'dadmin', rol: 'yonetici' });
+  adminToken = makeToken({ id: admin.id, kullanici_adi: 'dadmin', rol: 'site_yonetici' });
   guardToken = makeToken({ id: guard.id, kullanici_adi: 'dguard', rol: 'guvenlik' });
 });
 

@@ -4,8 +4,8 @@ let adminToken;
 let admin;
 
 beforeAll(async () => {
-  admin = await createTestUser({ kullanici_adi: 'sdadmin', rol: 'yonetici' });
-  adminToken = makeToken({ id: admin.id, kullanici_adi: 'sdadmin', rol: 'yonetici' });
+  admin = await createTestUser({ kullanici_adi: 'sdadmin', rol: 'site_yonetici' });
+  adminToken = makeToken({ id: admin.id, kullanici_adi: 'sdadmin', rol: 'site_yonetici' });
 });
 
 beforeEach(async () => {

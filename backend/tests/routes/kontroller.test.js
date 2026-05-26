@@ -4,8 +4,8 @@ let adminToken;
 let admin;
 
 beforeAll(async () => {
-  admin = await createTestUser({ kullanici_adi: 'kadmin', rol: 'yonetici' });
-  adminToken = makeToken({ id: admin.id, kullanici_adi: 'kadmin', rol: 'yonetici' });
+  admin = await createTestUser({ kullanici_adi: 'kadmin', rol: 'site_yonetici' });
+  adminToken = makeToken({ id: admin.id, kullanici_adi: 'kadmin', rol: 'site_yonetici' });
 });
 
 beforeEach(async () => {
@@ -48,6 +48,7 @@ describe('POST /api/kontroller/foto-upload', () => {
 describe('GET /api/kontroller', () => {
   test('bugunk kontroller listelenir', async () => {
     await db('gunluk_kontroller').insert({
+      site_id: 1,
       kontrol_tarihi: new Date().toISOString().slice(0, 10),
       plaka: '34LIST01',
       foto_url: '/uploads/test.jpg',
@@ -64,6 +65,7 @@ describe('PATCH /api/kontroller/:id/plaka', () => {
   test('kontrol plakasi duzeltilir', async () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
+        site_id: 1,
         kontrol_tarihi: new Date().toISOString().slice(0, 10),
         plaka: '',
         foto_url: '/uploads/fix.jpg',
@@ -105,6 +107,7 @@ describe('OCR metrics', () => {
   test('PATCH /plaka düzeltmesi metric satırını işaretler', async () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
+        site_id: 1,
         kontrol_tarihi: new Date().toISOString().slice(0, 10),
         plaka: '34WRONG1',
         foto_url: '/uploads/m.jpg',
@@ -113,6 +116,7 @@ describe('OCR metrics', () => {
     // Bağlı metric satırı oluştur (foto upload yapmadığımız için elle)
     const [m] = await db('ocr_metrics')
       .insert({
+        site_id: 1,
         gunluk_kontrol_id: kontrol.id,
         ocr_engine: 'easyocr',
         plate_returned: '34WRONG1',
@@ -136,15 +140,25 @@ describe('OCR metrics', () => {
 });
 
 describe('GET /api/ocr-stats/summary', () => {
-  test('yönetici doğruluk özetini görür', async () => {
+  test('superadmin doğruluk özetini görür', async () => {
+    // Ü1.10 sonrası platform metriği: yalnız superadmin (requireSuperadmin).
+    const sa = await createTestUser({ kullanici_adi: 'ocr_sa', rol: 'superadmin', site_id: null });
+    const saToken = makeToken({ id: sa.id, kullanici_adi: 'ocr_sa', rol: 'superadmin', site_id: null });
     const res = await request(app)
       .get('/api/ocr-stats/summary?days=7')
-      .set('Authorization', `Bearer ${adminToken}`);
+      .set('Authorization', `Bearer ${saToken}`);
     expect(res.status).toBe(200);
     expect(res.body).toHaveProperty('total');
     expect(res.body).toHaveProperty('accuracy');
     expect(res.body).toHaveProperty('p95_ms');
     expect(Array.isArray(res.body.by_engine)).toBe(true);
+  });
+
+  test('site_yonetici 403 alır (platform metriği)', async () => {
+    const res = await request(app)
+      .get('/api/ocr-stats/summary')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(403);
   });
 
   test('güvenlik rolü 403 alır', async () => {
@@ -161,6 +175,7 @@ describe('DELETE /api/kontroller/:id', () => {
   test('kontrol kaydi silinir', async () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
+        site_id: 1,
         kontrol_tarihi: new Date().toISOString().slice(0, 10),
         plaka: '34DELETE',
         foto_url: '/uploads/del.jpg',
@@ -182,8 +197,8 @@ describe('POST /api/kontroller/analiz-et', () => {
     await createTestArac({ daire_id: daire.id, plaka: '34ANA002' });
     const today = new Date().toISOString().slice(0, 10);
     await db('gunluk_kontroller').insert([
-      { kontrol_tarihi: today, plaka: '34ANA001', foto_url: '/uploads/a1.jpg' },
-      { kontrol_tarihi: today, plaka: '34ANA002', foto_url: '/uploads/a2.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34ANA001', foto_url: '/uploads/a1.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34ANA002', foto_url: '/uploads/a2.jpg' },
     ]);
     const res = await request(app)
       .post('/api/kontroller/analiz-et')
@@ -197,6 +212,7 @@ describe('POST /api/kontroller/analiz-et', () => {
   test('kayitsiz plaka ihlal verir', async () => {
     const today = new Date().toISOString().slice(0, 10);
     await db('gunluk_kontroller').insert({
+      site_id: 1,
       kontrol_tarihi: today,
       plaka: '99UNREG0',
       foto_url: '/uploads/unreg.jpg',
@@ -216,8 +232,8 @@ describe('POST /api/kontroller/analiz-et', () => {
     await createTestArac({ daire_id: daire.id, plaka: '34IDEM03' });
     const today = new Date().toISOString().slice(0, 10);
     await db('gunluk_kontroller').insert([
-      { kontrol_tarihi: today, plaka: '34IDEM01', foto_url: '/uploads/i1.jpg' },
-      { kontrol_tarihi: today, plaka: '34IDEM02', foto_url: '/uploads/i2.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34IDEM01', foto_url: '/uploads/i1.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34IDEM02', foto_url: '/uploads/i2.jpg' },
     ]);
     const res1 = await request(app)
       .post('/api/kontroller/analiz-et')
@@ -228,6 +244,7 @@ describe('POST /api/kontroller/analiz-et', () => {
     expect(res1.body.ihlaller[0].plakalar).toHaveLength(2);
 
     await db('gunluk_kontroller').insert({
+      site_id: 1,
       kontrol_tarihi: today,
       plaka: '34IDEM03',
       foto_url: '/uploads/i3.jpg',
@@ -249,8 +266,8 @@ describe('GET /api/kontroller/ihlaller', () => {
     await createTestArac({ daire_id: daire.id, plaka: '34IHLL02' });
     const today = new Date().toISOString().slice(0, 10);
     await db('gunluk_kontroller').insert([
-      { kontrol_tarihi: today, plaka: '34IHLL01', foto_url: '/uploads/h1.jpg' },
-      { kontrol_tarihi: today, plaka: '34IHLL02', foto_url: '/uploads/h2.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34IHLL01', foto_url: '/uploads/h1.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34IHLL02', foto_url: '/uploads/h2.jpg' },
     ]);
     await request(app)
       .post('/api/kontroller/analiz-et')

@@ -15,10 +15,10 @@ describe('signToken + verifyToken', () => {
   });
 
   test('sign + verify çalışır', () => {
-    const token = signToken({ id: 1, rol: 'yonetici' });
+    const token = signToken({ id: 1, rol: 'site_yonetici' });
     const payload = verifyToken(token);
     expect(payload.id).toBe(1);
-    expect(payload.rol).toBe('yonetici');
+    expect(payload.rol).toBe('site_yonetici');
   });
 
   test('geçersiz imza reddedilir', () => {
