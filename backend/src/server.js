@@ -25,6 +25,7 @@ const sitesRoutes = require('./routes/sites');
 const siteUsageRoutes = require('./routes/siteUsage');
 const subscriptionRoutes = require('./routes/subscription');
 const webhookRoutes = require('./routes/webhooks');
+const raporlarRoutes = require('./routes/raporlar');
 const { isR2Configured } = require('./services/storage');
 
 const { notFound, errorHandler } = require('./middleware/errorHandler');
@@ -87,6 +88,7 @@ app.use('/api/ocr-stats', ocrStatsRoutes);
 app.use('/api/sites', sitesRoutes);
 app.use('/api/site-usage', siteUsageRoutes);
 app.use('/api/site/subscription', subscriptionRoutes);
+app.use('/api/raporlar', raporlarRoutes);
 
 if (!isR2Configured()) {
   const uploadDir = path.resolve(process.env.UPLOAD_DIR || path.join(__dirname, '../../uploads'));

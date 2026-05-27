@@ -1,11 +1,15 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useState, lazy, Suspense } from 'react';
 import { api, apiError } from '../services/api';
 import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { toCSV, downloadCSV } from '../utils/csv';
 
+// Recharts bundle ~250KB — diğer Raporlar tab'larında gerek yok, lazy
+const DashboardPanel = lazy(() => import('../components/RaporlarDashboard'));
+
 const TABS = [
+  { id: 'dashboard', label: 'Özet' },
   { id: 'ihlal', label: 'İhlal Geçmişi' },
   { id: 'ozet', label: 'Daire Özeti' },
   { id: 'bildirim', label: 'Bildirim Logları' },
@@ -19,7 +23,7 @@ function bugunMinusGun(g) {
 
 export default function Raporlar() {
   const toast = useToast();
-  const [tab, setTab] = useState('ihlal');
+  const [tab, setTab] = useState('dashboard');
   const [filt, setFilt] = useState({
     baslangic: bugunMinusGun(30),
     bitis: bugunMinusGun(0),
@@ -62,6 +66,7 @@ export default function Raporlar() {
 
   function exportCsv() {
     const tarih = new Date().toISOString().slice(0, 10);
+    if (tab === 'dashboard') return;
     if (tab === 'ihlal') {
       const csv = toCSV(ihlaller, [
         { key: 'kontrol_tarihi', label: 'Tarih', get: (r) => String(r.kontrol_tarihi).slice(0, 10) },
@@ -96,7 +101,9 @@ export default function Raporlar() {
     <div className="p-4 max-w-5xl mx-auto flex flex-col gap-4">
       <div className="flex justify-between items-center flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Raporlar</h1>
-        <Button variant="secondary" onClick={exportCsv}>CSV İndir</Button>
+        {tab !== 'dashboard' && (
+          <Button variant="secondary" onClick={exportCsv}>CSV İndir</Button>
+        )}
       </div>
 
       <div className="flex gap-1 bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-1">
@@ -142,6 +149,14 @@ export default function Raporlar() {
           </div>
         )}
       </div>
+
+      {tab === 'dashboard' && (
+        <Suspense fallback={
+          <div className="p-12 text-center text-slate-500 dark:text-slate-400">Grafikler yükleniyor…</div>
+        }>
+          <DashboardPanel baslangic={filt.baslangic} bitis={filt.bitis} />
+        </Suspense>
+      )}
 
       {tab === 'ihlal' && (
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 overflow-x-auto">
