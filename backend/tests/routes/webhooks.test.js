@@ -39,7 +39,7 @@ async function seedActiveSub({ status = 'active', refCode = 'iyz_sub_test' } = {
     subscription_id: sub.id,
     invoice_no: `2026-05-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`,
     amount_excl_tax: 29900,
-    tax_rate: 0.20,
+    tax_rate: 20,
     amount_incl_tax: 35880,
     period_start: periodStart,
     period_end: periodEnd,
