@@ -97,13 +97,99 @@ export default function Raporlar() {
     }
   }
 
+  async function exportPdf() {
+    const tarih = new Date().toISOString().slice(0, 10);
+    const donem = `${filt.baslangic} → ${filt.bitis}`;
+    try {
+      const { newRaporPDF } = await import('../utils/pdf');
+
+      if (tab === 'dashboard') {
+        const { data } = await api.get('/raporlar/dashboard', {
+          params: { baslangic: filt.baslangic, bitis: filt.bitis },
+        });
+        const pdf = await newRaporPDF({ baslik: 'Özet Raporu', altBaslik: `Dönem: ${donem}` });
+        pdf.addTable({
+          head: [['Metrik', 'Değer']],
+          body: [
+            ['Toplam İhlal', String(data.ozet.toplam_ihlal)],
+            ['Çoklu Araç', String(data.ozet.coklu_arac)],
+            ['Kayıtsız Plaka', String(data.ozet.kayitsiz)],
+            ['Etkilenen Daire', String(data.ozet.etkilenen_daire)],
+            ['Kontrol Günü', String(data.ozet.kontrol_yapilan_gun)],
+            ['Bildirim Toplam', String(data.bildirim.toplam)],
+            ['Bildirim Gönderildi', String(data.bildirim.gonderildi)],
+            ['Bildirim Başarı', `%${data.bildirim.basari_orani}`],
+          ],
+        });
+        if (data.top_daireler?.length) {
+          pdf.addTable({
+            startY: pdf.doc.lastAutoTable.finalY + 20,
+            head: [['#', 'Daire', 'Sahip', 'İhlal', 'Son İhlal']],
+            body: data.top_daireler.map((d, i) => [
+              String(i + 1),
+              d.daire_no,
+              d.sahip_ad || '—',
+              String(d.ihlal_sayisi),
+              d.son_ihlal ? String(d.son_ihlal).slice(0, 10) : '—',
+            ]),
+          });
+        }
+        pdf.save(`ozet_${tarih}.pdf`);
+      } else if (tab === 'ihlal') {
+        const pdf = await newRaporPDF({ baslik: 'İhlal Geçmişi', altBaslik: `Dönem: ${donem} • ${ihlaller.length} kayıt` });
+        pdf.addTable({
+          head: [['Tarih', 'Daire', 'Sahip', 'Tip', 'Plakalar']],
+          body: ihlaller.map((i) => [
+            String(i.kontrol_tarihi).slice(0, 10),
+            i.daire_no_snapshot || '—',
+            i.sahip_ad || '—',
+            i.ihlal_tipi,
+            Array.isArray(i.plaka_listesi) ? i.plaka_listesi.join(', ') : String(i.plaka_listesi || ''),
+          ]),
+        });
+        pdf.save(`ihlaller_${tarih}.pdf`);
+      } else if (tab === 'ozet') {
+        const pdf = await newRaporPDF({ baslik: 'Daire Özeti', altBaslik: `Dönem: ${donem} • ${ozet.length} daire` });
+        pdf.addTable({
+          head: [['Daire', 'Sahip', 'İhlal Sayısı', 'Son İhlal']],
+          body: ozet.map((o) => [
+            o.daire_no,
+            o.sahip_ad || '—',
+            String(o.ihlal_sayisi),
+            o.son_ihlal ? String(o.son_ihlal).slice(0, 10) : '—',
+          ]),
+        });
+        pdf.save(`ihlal_ozet_${tarih}.pdf`);
+      } else if (tab === 'bildirim') {
+        const pdf = await newRaporPDF({ baslik: 'Bildirim Logları', altBaslik: `Dönem: ${donem} • ${bildirimler.length} kayıt` });
+        pdf.addTable({
+          head: [['Zaman', 'Daire', 'Telefon', 'Durum', 'Deneme', 'Hata']],
+          body: bildirimler.map((b) => [
+            new Date(b.olusturma_zamani).toLocaleString('tr-TR'),
+            b.daire_no,
+            b.telefon,
+            b.gonderim_durumu,
+            String(b.deneme_sayisi),
+            b.hata_mesaji || '—',
+          ]),
+        });
+        pdf.save(`bildirimler_${tarih}.pdf`);
+      }
+    } catch (e) {
+      toast.error(apiError(e) || 'PDF üretilemedi.');
+    }
+  }
+
   return (
     <div className="p-4 max-w-5xl mx-auto flex flex-col gap-4">
       <div className="flex justify-between items-center flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Raporlar</h1>
-        {tab !== 'dashboard' && (
-          <Button variant="secondary" onClick={exportCsv}>CSV İndir</Button>
-        )}
+        <div className="flex gap-2">
+          {tab !== 'dashboard' && (
+            <Button variant="secondary" onClick={exportCsv}>CSV İndir</Button>
+          )}
+          <Button variant="secondary" onClick={exportPdf}>PDF İndir</Button>
+        </div>
       </div>
 
       <div className="flex gap-1 bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-1">
