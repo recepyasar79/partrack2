@@ -26,8 +26,8 @@ const navItems = [
 
 const adminItems = [
   { to: '/kullanicilar', label: 'Kullanıcılar', Icon: UsersIcon },
-  { to: '/audit', label: 'Audit Log', Icon: ShieldIcon },
   { to: '/abonelik', label: 'Abonelik', Icon: CreditCardIcon },
+  { to: '/audit', label: 'Audit Log', Icon: ShieldIcon },
 ];
 
 // Sadece superadmin (platform sahibi) için ek menü.

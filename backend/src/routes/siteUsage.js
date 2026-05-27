@@ -17,9 +17,10 @@ router.get('/', authRequired, requireScopedSite, async (req, res, next) => {
     const site = await db('sites').where({ id: req.scopedSiteId }).first();
     if (!site) return res.status(404).json({ error: 'Site bulunamadı.' });
 
-    const [daireRow, userRow] = await Promise.all([
+    const [daireRow, userRow, aracRow] = await Promise.all([
       db('daireler').where({ site_id: req.scopedSiteId, aktif: true }).count('* as c').first(),
       db('users').where({ site_id: req.scopedSiteId, aktif: true }).count('* as c').first(),
+      db('araclar').where({ site_id: req.scopedSiteId, aktif: true }).count('* as c').first(),
     ]);
 
     const limits = getEffectiveLimits(site);
@@ -27,6 +28,10 @@ router.get('/', authRequired, requireScopedSite, async (req, res, next) => {
       daire: {
         current: parseInt(daireRow.c, 10) || 0,
         max: limits.daire_max,
+      },
+      arac: {
+        current: parseInt(aracRow.c, 10) || 0,
+        max: null,
       },
       user: {
         current: parseInt(userRow.c, 10) || 0,

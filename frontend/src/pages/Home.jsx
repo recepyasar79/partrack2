@@ -121,6 +121,7 @@ export default function Home() {
         {usage && (
           <div className="flex gap-2">
             <UsageStat label="Daireler" current={usage.daire.current} max={usage.daire.max} accent="brand" />
+            <UsageStat label="Araçlar" current={usage.arac?.current || 0} max={usage.arac?.max ?? null} accent="brand" />
             <UsageStat label="Kullanıcılar" current={usage.user.current} max={usage.user.max} accent="accent" />
           </div>
         )}
