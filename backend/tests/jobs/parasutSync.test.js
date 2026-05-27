@@ -29,9 +29,11 @@ beforeEach(async () => {
 });
 
 async function seedInvoice({ status, parasut_invoice_id = null }) {
+  // UNIQUE(site_id) WHERE status != 'cancelled' → çoklu test sub'ı için
+  // status='cancelled' kullan (invoice'ler için sub.status sadece label'da)
   const [sub] = await db('subscriptions').insert({
     site_id: 1, plan: 'standart', billing_cycle: 'monthly',
-    status: 'active', provider: 'mock',
+    status: 'cancelled', provider: 'mock',
     provider_subscription_id: `sub_${Date.now()}_${Math.random()}`,
     current_period_start: new Date(),
     current_period_end: new Date(Date.now() + 30 * 86400 * 1000),
