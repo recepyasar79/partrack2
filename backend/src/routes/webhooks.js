@@ -14,6 +14,7 @@
 const express = require('express');
 const db = require('../db');
 const { getProvider } = require('../services/billing');
+const parasut = require('../services/parasut');
 
 const router = express.Router();
 
@@ -105,6 +106,12 @@ async function dispatchEvent(providerName, evt) {
       } catch (e) {
         if (!/unique|duplicate/i.test(e.message)) throw e;
       }
+      // Paraşüt e-fatura — fire-and-forget. Webhook response gecikmesin;
+      // başarısızlık durumunda parasutSync cron'u yakalar.
+      parasut.issueInvoiceForPaidInvoice(inv.id).catch((err) => {
+        // eslint-disable-next-line no-console
+        console.warn(`[parasut] invoice ${inv.id} issuance fail:`, err.message);
+      });
     }
     // Sub past_due → active recovery; PayTR'da sub başlangıçta 'past_due'
     // (route 'pending' provider response'ını 'past_due'ya çekiyor) — ilk
