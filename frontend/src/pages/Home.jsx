@@ -63,6 +63,7 @@ const cards = [
 const ACCENT_CLASSES = {
   brand: 'from-brand-50 to-brand-100 dark:from-brand-900/40 dark:to-brand-800/40 border-brand-100 dark:border-brand-800 text-brand-700 dark:text-brand-300',
   accent: 'from-accent-50 to-accent-100 dark:from-accent-900/40 dark:to-accent-800/40 border-accent-100 dark:border-accent-800 text-accent-700 dark:text-accent-300',
+  orange: 'from-orange-50 to-orange-100 dark:from-orange-900/40 dark:to-orange-800/40 border-orange-200 dark:border-orange-800 text-orange-700 dark:text-orange-300',
 };
 const DANGER_CLASSES = 'from-rose-50 to-rose-100 dark:from-rose-900/40 dark:to-rose-800/40 border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300';
 const WARN_CLASSES = 'from-amber-50 to-amber-100 dark:from-amber-900/40 dark:to-amber-800/40 border-amber-200 dark:border-amber-800 text-amber-700 dark:text-amber-300';
@@ -75,7 +76,7 @@ function UsageStat({ label, current, max, accent }) {
   const warn = !limitless && ratio >= 0.8 && !danger;
   const color = danger ? DANGER_CLASSES : warn ? WARN_CLASSES : (ACCENT_CLASSES[accent] || ACCENT_CLASSES.brand);
   return (
-    <div className={`w-44 bg-gradient-to-br ${color} rounded-xl px-3 py-[5px] border text-center`}>
+    <div className={`flex-1 min-w-[100px] bg-gradient-to-br ${color} rounded-xl px-3 py-[5px] border text-center`}>
       <div className="text-xl font-bold tabular-nums leading-tight">
         {current}{limitless ? '' : <span className="text-sm font-medium opacity-70"> / {max}</span>}
       </div>
@@ -100,32 +101,30 @@ export default function Home() {
   }, [user?.id]);
   return (
     <div className="p-4 max-w-3xl mx-auto">
-      {/* Welcome + Stats — yan yana; küçük ekranda iki satıra düşer */}
-      <div className="mb-6 flex flex-wrap items-center justify-between gap-4">
-        <div className="flex items-center gap-3 min-w-0">
-          <div className="w-12 h-12 bg-gradient-to-br from-brand-500 to-brand-600 rounded-2xl flex items-center justify-center shadow-lg shadow-brand-500/25 flex-shrink-0">
-            <span className="text-2xl">🅿️</span>
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-              Hoş geldiniz
-            </h1>
-            {user?.site?.ad && (
-              <p className="text-sm font-semibold text-brand-700 dark:text-brand-300 truncate" title={user.site.ad}>
-                {user.site.ad}
-              </p>
-            )}
-          </div>
+      {/* Welcome — kendi satırı; istatistikler altta sola hizalı */}
+      <div className="mb-4 flex items-center gap-3 min-w-0">
+        <div className="w-12 h-12 bg-gradient-to-br from-brand-500 to-brand-600 rounded-2xl flex items-center justify-center shadow-lg shadow-brand-500/25 flex-shrink-0">
+          <span className="text-2xl">🅿️</span>
         </div>
-
-        {usage && (
-          <div className="flex gap-2">
-            <UsageStat label="Daireler" current={usage.daire.current} max={usage.daire.max} accent="brand" />
-            <UsageStat label="Araçlar" current={usage.arac?.current || 0} max={usage.arac?.max ?? null} accent="brand" />
-            <UsageStat label="Kullanıcılar" current={usage.user.current} max={usage.user.max} accent="accent" />
-          </div>
-        )}
+        <div className="min-w-0">
+          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+            Hoş geldiniz
+          </h1>
+          {user?.site?.ad && (
+            <p className="text-sm font-semibold text-brand-700 dark:text-brand-300 truncate" title={user.site.ad}>
+              {user.site.ad}
+            </p>
+          )}
+        </div>
       </div>
+
+      {usage && (
+        <div className="mb-6 flex gap-2">
+          <UsageStat label="Daireler" current={usage.daire.current} max={usage.daire.max} accent="accent" />
+          <UsageStat label="Araçlar" current={usage.arac?.current || 0} max={usage.arac?.max ?? null} accent="brand" />
+          <UsageStat label="Kullanıcılar" current={usage.user.current} max={usage.user.max} accent="orange" />
+        </div>
+      )}
 
       {/* Quick Actions Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
