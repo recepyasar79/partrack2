@@ -84,7 +84,7 @@ router.get('/dashboard', async (req, res, next) => {
     const aylikRows = await db('ihlaller')
       .where({ site_id: siteId })
       .whereBetween('kontrol_tarihi', [aylik_baslangic, aylik_bitis])
-      .groupBy(db.raw(`to_char(kontrol_tarihi, 'YYYY-MM')`), 'ihlal_tipi')
+      .groupByRaw(`to_char(kontrol_tarihi, 'YYYY-MM'), ihlal_tipi`)
       .select(
         db.raw(`to_char(kontrol_tarihi, 'YYYY-MM') as ay`),
         'ihlal_tipi',
