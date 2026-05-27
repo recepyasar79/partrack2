@@ -35,6 +35,9 @@ function makeHandler(providerName) {
 
     try {
       await dispatchEvent(providerName, verify);
+      // PayTR notification URL'i text 'OK' bekler (aksi halde retry tetiklenir).
+      // Diğer provider'lar JSON kabul ediyor.
+      if (providerName === 'paytr') return res.type('text/plain').send('OK');
       res.json({ ok: true });
     } catch (err) {
       // 500 dön — provider retry edecek. Idempotency için provider_payment_id
@@ -71,8 +74,11 @@ async function dispatchEvent(providerName, evt) {
     return;
   }
 
-  // 2) Recurring payment success
-  if (event_type === 'payment.success' || event_type === 'PAYMENT_SUCCESS') {
+  // 2) Recurring payment success (PayTR ilk aktivasyon + sonraki tahsilatların
+  // hepsi 'paytr.payment.success' ile gelir; sub.status'a göre activation vs
+  // recurring ayrımı bu branch içinde yapılır)
+  if (event_type === 'payment.success' || event_type === 'PAYMENT_SUCCESS'
+      || event_type === 'paytr.payment.success') {
     if (!sub) return;
     // En son pending invoice'i paid yap
     const inv = await db('invoices')
@@ -100,7 +106,9 @@ async function dispatchEvent(providerName, evt) {
         if (!/unique|duplicate/i.test(e.message)) throw e;
       }
     }
-    // Sub past_due ise active'e döndür
+    // Sub past_due → active recovery; PayTR'da sub başlangıçta 'past_due'
+    // (route 'pending' provider response'ını 'past_due'ya çekiyor) — ilk
+    // payment success aynı transition'ı tetikler, yani activation gibi davranır.
     if (sub.status === 'past_due') {
       await db('subscriptions').where({ id: sub.id }).update({
         status: 'active',
@@ -112,7 +120,8 @@ async function dispatchEvent(providerName, evt) {
   }
 
   // 3) Recurring payment failure → past_due (cron'da grace period ilerletir)
-  if (event_type === 'payment.failure' || event_type === 'PAYMENT_FAILURE') {
+  if (event_type === 'payment.failure' || event_type === 'PAYMENT_FAILURE'
+      || event_type === 'paytr.payment.failure') {
     if (!sub) return;
     const grace = new Date();
     grace.setDate(grace.getDate() + 7);
@@ -157,5 +166,6 @@ async function dispatchEvent(providerName, evt) {
 }
 
 router.post('/iyzico', makeHandler('iyzico'));
+router.post('/paytr', makeHandler('paytr'));
 
 module.exports = router;

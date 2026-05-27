@@ -43,11 +43,12 @@
 
 const mock = require('./mock');
 const iyzico = require('./iyzico');
+const paytr = require('./paytr');
 
 const REGISTRY = {
   mock,
   iyzico,
-  // paytr:  require('./paytr'),   // Ü3.6'da eklenecek
+  paytr,
 };
 
 /**

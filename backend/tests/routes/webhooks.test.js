@@ -14,6 +14,9 @@ const TEST_SECRET = 'webhook_test_secret_99';
 process.env.IYZICO_API_KEY = 'k';
 process.env.IYZICO_SECRET_KEY = TEST_SECRET;
 process.env.IYZICO_BASE_URL = 'https://sandbox-api.iyzipay.com';
+process.env.PAYTR_MERCHANT_ID = '999999';
+process.env.PAYTR_MERCHANT_KEY = 'paytr_test_key';
+process.env.PAYTR_MERCHANT_SALT = 'paytr_test_salt';
 
 const { app, request, db, cleanupTables } = require('../helpers');
 
@@ -213,5 +216,116 @@ describe('POST /api/webhooks/iyzico', () => {
     expect(r2.status).toBe(200);
     const attempts = await db('payment_attempts').where({ invoice_id: inv.id });
     expect(attempts.length).toBe(1);
+  });
+});
+
+// ----------------------------------------------------------------------
+// PayTR — form-encoded notification body, response 'OK' text
+// ----------------------------------------------------------------------
+
+function paytrSign(merchantOid, status, totalAmount) {
+  return crypto
+    .createHmac('sha256', 'paytr_test_key')
+    .update(merchantOid + 'paytr_test_salt' + status + totalAmount)
+    .digest('base64');
+}
+
+function paytrBody({ merchant_oid, status, total_amount = '35880', payment_id }) {
+  return new URLSearchParams({
+    merchant_oid,
+    status,
+    total_amount,
+    hash: paytrSign(merchant_oid, status, total_amount),
+    payment_id: payment_id || '',
+    merchant_id: '999999',
+  }).toString();
+}
+
+async function seedPaytrSub({ status = 'past_due', refCode = 'pt_1_seed' } = {}) {
+  const periodStart = new Date();
+  const periodEnd = new Date(Date.now() + 30 * 86400 * 1000);
+  const [sub] = await db('subscriptions').insert({
+    site_id: 1,
+    plan: 'standart',
+    billing_cycle: 'monthly',
+    status,
+    provider: 'paytr',
+    provider_subscription_id: refCode,
+    current_period_start: periodStart,
+    current_period_end: periodEnd,
+  }).returning('*');
+  const [inv] = await db('invoices').insert({
+    site_id: 1,
+    subscription_id: sub.id,
+    invoice_no: `2026-05-pt-${String(Math.floor(Math.random() * 99999)).padStart(5, '0')}`,
+    amount_excl_tax: 29900,
+    tax_rate: 20,
+    amount_incl_tax: 35880,
+    period_start: periodStart,
+    period_end: periodEnd,
+    status: 'pending',
+  }).returning('*');
+  return { sub, inv };
+}
+
+describe('POST /api/webhooks/paytr', () => {
+  test('payment.success (ilk aktivasyon, past_due→active) + invoice paid + OK text', async () => {
+    const { sub, inv } = await seedPaytrSub({ status: 'past_due', refCode: 'pt_act_1' });
+    const body = paytrBody({
+      merchant_oid: 'pt_act_1',
+      status: 'success',
+      payment_id: 'paytr_pay_1',
+    });
+    const r = await request(app)
+      .post('/api/webhooks/paytr')
+      .set('Content-Type', 'application/x-www-form-urlencoded')
+      .send(body);
+    expect(r.status).toBe(200);
+    expect(r.text).toBe('OK');
+    const updatedSub = await db('subscriptions').where({ id: sub.id }).first();
+    expect(updatedSub.status).toBe('active');
+    const updatedInv = await db('invoices').where({ id: inv.id }).first();
+    expect(updatedInv.status).toBe('paid');
+    const att = await db('payment_attempts').where({ invoice_id: inv.id }).first();
+    expect(att.status).toBe('success');
+    expect(att.provider).toBe('paytr');
+  });
+
+  test('payment.failure → past_due + grace period', async () => {
+    const { sub, inv } = await seedPaytrSub({ status: 'active', refCode: 'pt_fail_1' });
+    const body = paytrBody({
+      merchant_oid: 'pt_fail_1',
+      status: 'failed',
+      payment_id: 'paytr_pay_f1',
+    });
+    const r = await request(app)
+      .post('/api/webhooks/paytr')
+      .set('Content-Type', 'application/x-www-form-urlencoded')
+      .send(body);
+    expect(r.status).toBe(200);
+    expect(r.text).toBe('OK');
+    const updatedSub = await db('subscriptions').where({ id: sub.id }).first();
+    expect(updatedSub.status).toBe('past_due');
+    expect(updatedSub.grace_period_ends_at).toBeTruthy();
+    const att = await db('payment_attempts').where({ invoice_id: inv.id }).first();
+    expect(att.status).toBe('failed');
+  });
+
+  test('yanlış hash → 401, DB değişmez', async () => {
+    const { sub } = await seedPaytrSub({ status: 'past_due', refCode: 'pt_bad' });
+    const body = new URLSearchParams({
+      merchant_oid: 'pt_bad',
+      status: 'success',
+      total_amount: '35880',
+      hash: 'WRONG_HASH',
+      merchant_id: '999999',
+    }).toString();
+    const r = await request(app)
+      .post('/api/webhooks/paytr')
+      .set('Content-Type', 'application/x-www-form-urlencoded')
+      .send(body);
+    expect(r.status).toBe(401);
+    const after = await db('subscriptions').where({ id: sub.id }).first();
+    expect(after.status).toBe('past_due');
   });
 });
