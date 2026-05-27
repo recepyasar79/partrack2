@@ -76,7 +76,7 @@ function UsageStat({ label, current, max, accent }) {
   const warn = !limitless && ratio >= 0.8 && !danger;
   const color = danger ? DANGER_CLASSES : warn ? WARN_CLASSES : (ACCENT_CLASSES[accent] || ACCENT_CLASSES.brand);
   return (
-    <div className={`flex-1 min-w-[100px] bg-gradient-to-br ${color} rounded-xl px-3 py-[5px] border text-center`}>
+    <div className={`w-28 bg-gradient-to-br ${color} rounded-xl px-2 py-[5px] border text-center flex-shrink-0`}>
       <div className="text-xl font-bold tabular-nums leading-tight">
         {current}{limitless ? '' : <span className="text-sm font-medium opacity-70"> / {max}</span>}
       </div>
@@ -101,30 +101,32 @@ export default function Home() {
   }, [user?.id]);
   return (
     <div className="p-4 max-w-3xl mx-auto">
-      {/* Welcome — kendi satırı; istatistikler altta sola hizalı */}
-      <div className="mb-4 flex items-center gap-3 min-w-0">
-        <div className="w-12 h-12 bg-gradient-to-br from-brand-500 to-brand-600 rounded-2xl flex items-center justify-center shadow-lg shadow-brand-500/25 flex-shrink-0">
-          <span className="text-2xl">🅿️</span>
+      {/* Welcome + istatistikler aynı satırda */}
+      <div className="mb-6 flex items-center justify-between gap-3">
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-12 h-12 bg-gradient-to-br from-brand-500 to-brand-600 rounded-2xl flex items-center justify-center shadow-lg shadow-brand-500/25 flex-shrink-0">
+            <span className="text-2xl">🅿️</span>
+          </div>
+          <div className="min-w-0">
+            <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
+              Hoş geldiniz
+            </h1>
+            {user?.site?.ad && (
+              <p className="text-sm font-semibold text-brand-700 dark:text-brand-300 truncate" title={user.site.ad}>
+                {user.site.ad}
+              </p>
+            )}
+          </div>
         </div>
-        <div className="min-w-0">
-          <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">
-            Hoş geldiniz
-          </h1>
-          {user?.site?.ad && (
-            <p className="text-sm font-semibold text-brand-700 dark:text-brand-300 truncate" title={user.site.ad}>
-              {user.site.ad}
-            </p>
-          )}
-        </div>
-      </div>
 
-      {usage && (
-        <div className="mb-6 flex gap-2">
-          <UsageStat label="Daireler" current={usage.daire.current} max={usage.daire.max} accent="accent" />
-          <UsageStat label="Araçlar" current={usage.arac?.current || 0} max={usage.arac?.max ?? null} accent="brand" />
-          <UsageStat label="Kullanıcılar" current={usage.user.current} max={usage.user.max} accent="orange" />
-        </div>
-      )}
+        {usage && (
+          <div className="flex gap-2 flex-shrink-0">
+            <UsageStat label="Daireler" current={usage.daire.current} max={usage.daire.max} accent="accent" />
+            <UsageStat label="Araçlar" current={usage.arac?.current || 0} max={usage.arac?.max ?? null} accent="brand" />
+            <UsageStat label="Kullanıcılar" current={usage.user.current} max={usage.user.max} accent="orange" />
+          </div>
+        )}
+      </div>
 
       {/* Quick Actions Grid */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
