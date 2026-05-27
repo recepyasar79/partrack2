@@ -7,12 +7,14 @@ import { toCSV, downloadCSV } from '../utils/csv';
 
 // Recharts bundle ~250KB — diğer Raporlar tab'larında gerek yok, lazy
 const DashboardPanel = lazy(() => import('../components/RaporlarDashboard'));
+const EmailSchedulesPanel = lazy(() => import('../components/EmailSchedulesPanel'));
 
 const TABS = [
   { id: 'dashboard', label: 'Özet' },
   { id: 'ihlal', label: 'İhlal Geçmişi' },
   { id: 'ozet', label: 'Daire Özeti' },
   { id: 'bildirim', label: 'Bildirim Logları' },
+  { id: 'email', label: 'Email Aboneliği' },
 ];
 
 function bugunMinusGun(g) {
@@ -185,10 +187,12 @@ export default function Raporlar() {
       <div className="flex justify-between items-center flex-wrap gap-2">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Raporlar</h1>
         <div className="flex gap-2">
-          {tab !== 'dashboard' && (
+          {tab !== 'dashboard' && tab !== 'email' && (
             <Button variant="secondary" onClick={exportCsv}>CSV İndir</Button>
           )}
-          <Button variant="secondary" onClick={exportPdf}>PDF İndir</Button>
+          {tab !== 'email' && (
+            <Button variant="secondary" onClick={exportPdf}>PDF İndir</Button>
+          )}
         </div>
       </div>
 
@@ -206,41 +210,51 @@ export default function Raporlar() {
         ))}
       </div>
 
-      <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-3 flex flex-wrap gap-2 items-end">
-        <Input
-          label="Başlangıç"
-          type="date"
-          value={filt.baslangic}
-          onChange={(e) => setFilt({ ...filt, baslangic: e.target.value })}
-        />
-        <Input
-          label="Bitiş"
-          type="date"
-          value={filt.bitis}
-          onChange={(e) => setFilt({ ...filt, bitis: e.target.value })}
-        />
-        {tab === 'bildirim' && (
-          <div className="flex flex-col gap-1">
-            <label className="text-sm text-slate-700 dark:text-slate-200">Durum</label>
-            <select
-              value={filt.durum}
-              onChange={(e) => setFilt({ ...filt, durum: e.target.value })}
-              className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-3"
-            >
-              <option value="">Tümü</option>
-              <option value="gonderildi">Gönderildi</option>
-              <option value="beklemede">Beklemede</option>
-              <option value="basarisiz">Başarısız</option>
-            </select>
-          </div>
-        )}
-      </div>
+      {tab !== 'email' && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-3 flex flex-wrap gap-2 items-end">
+          <Input
+            label="Başlangıç"
+            type="date"
+            value={filt.baslangic}
+            onChange={(e) => setFilt({ ...filt, baslangic: e.target.value })}
+          />
+          <Input
+            label="Bitiş"
+            type="date"
+            value={filt.bitis}
+            onChange={(e) => setFilt({ ...filt, bitis: e.target.value })}
+          />
+          {tab === 'bildirim' && (
+            <div className="flex flex-col gap-1">
+              <label className="text-sm text-slate-700 dark:text-slate-200">Durum</label>
+              <select
+                value={filt.durum}
+                onChange={(e) => setFilt({ ...filt, durum: e.target.value })}
+                className="min-h-[44px] rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 px-3"
+              >
+                <option value="">Tümü</option>
+                <option value="gonderildi">Gönderildi</option>
+                <option value="beklemede">Beklemede</option>
+                <option value="basarisiz">Başarısız</option>
+              </select>
+            </div>
+          )}
+        </div>
+      )}
 
       {tab === 'dashboard' && (
         <Suspense fallback={
           <div className="p-12 text-center text-slate-500 dark:text-slate-400">Grafikler yükleniyor…</div>
         }>
           <DashboardPanel baslangic={filt.baslangic} bitis={filt.bitis} />
+        </Suspense>
+      )}
+
+      {tab === 'email' && (
+        <Suspense fallback={
+          <div className="p-12 text-center text-slate-500 dark:text-slate-400">Yükleniyor…</div>
+        }>
+          <EmailSchedulesPanel />
         </Suspense>
       )}
 

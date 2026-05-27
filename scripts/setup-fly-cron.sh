@@ -37,6 +37,7 @@ JOBS=(
   "foto-temizle|daily|job:foto-temizle"
   "parasut-sync|daily|job:parasut-sync"
   "subscription-lifecycle|daily|job:subscription-lifecycle"
+  "email-raporu|daily|job:email-raporu"
   "bildirim-retry|hourly|job:bildirim-retry"
 )
 

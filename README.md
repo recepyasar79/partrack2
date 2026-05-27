@@ -133,6 +133,7 @@ Kurulan job'lar:
 | foto-temizle              | daily    | `npm run job:foto-temizle`       |
 | parasut-sync              | daily    | `npm run job:parasut-sync`       |
 | subscription-lifecycle    | daily    | `npm run job:subscription-lifecycle` |
+| email-raporu              | daily    | `npm run job:email-raporu`       |
 | bildirim-retry            | hourly   | `npm run job:bildirim-retry`     |
 
 Script idempotent: tekrar çalıştırılırsa eski `cron-*` machines temizlenir

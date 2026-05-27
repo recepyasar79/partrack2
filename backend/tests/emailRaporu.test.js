@@ -1,0 +1,112 @@
+/**
+ * DB-bağımsız unit testler — isDueToday + buildHtml.
+ * Cron'un DB-touch eden runEmailRaporu() entegrasyon testi
+ * tests/jobs/emailRaporu.integration.test.js içindedir.
+ */
+const dayjs = require('dayjs');
+const utc = require('dayjs/plugin/utc');
+const timezone = require('dayjs/plugin/timezone');
+dayjs.extend(utc);
+dayjs.extend(timezone);
+
+const { isDueToday, buildHtml, frequencyLabel } = require('../src/jobs/emailRaporu');
+
+const TR = 'Europe/Istanbul';
+
+describe('emailRaporu.isDueToday', () => {
+  // 2026-05-25 Pazartesi 10:00 TR
+  const pazartesi = dayjs.tz('2026-05-25 10:00', TR);
+  // 2026-05-26 Salı
+  const sali = dayjs.tz('2026-05-26 10:00', TR);
+  // 2026-06-01 Pazartesi (ayın 1'i)
+  const ayinIlki = dayjs.tz('2026-06-01 10:00', TR);
+
+  test('daily — her gün true (last_sent_at yoksa)', () => {
+    expect(isDueToday({ frequency: 'daily', last_sent_at: null }, pazartesi)).toBe(true);
+    expect(isDueToday({ frequency: 'daily', last_sent_at: null }, sali)).toBe(true);
+  });
+
+  test('daily — aynı gün last_sent_at varsa false (idempotent)', () => {
+    expect(isDueToday({
+      frequency: 'daily',
+      last_sent_at: dayjs.tz('2026-05-25 08:00', TR).toISOString(),
+    }, pazartesi)).toBe(false);
+  });
+
+  test('weekly — Pazartesi true, Salı false', () => {
+    expect(isDueToday({ frequency: 'weekly', last_sent_at: null }, pazartesi)).toBe(true);
+    expect(isDueToday({ frequency: 'weekly', last_sent_at: null }, sali)).toBe(false);
+  });
+
+  test('monthly — ayın 1\'i true, diğerleri false', () => {
+    expect(isDueToday({ frequency: 'monthly', last_sent_at: null }, ayinIlki)).toBe(true);
+    expect(isDueToday({ frequency: 'monthly', last_sent_at: null }, pazartesi)).toBe(false);
+  });
+
+  test('weekly + bir hafta önce gönderildi → tekrar Pazartesi tetiklenir', () => {
+    expect(isDueToday({
+      frequency: 'weekly',
+      last_sent_at: dayjs.tz('2026-05-18 10:00', TR).toISOString(),
+    }, pazartesi)).toBe(true);
+  });
+
+  test('bilinmeyen frequency → false', () => {
+    expect(isDueToday({ frequency: 'never', last_sent_at: null }, pazartesi)).toBe(false);
+  });
+});
+
+describe('emailRaporu.buildHtml', () => {
+  const data = {
+    siteAd: 'Akasya Sitesi',
+    frequency: 'weekly',
+    baslangic: '2026-05-21',
+    bitis: '2026-05-27',
+    ihlalRow: { coklu_arac: 5, kayitsiz: 2, etkilenen_daire: 3 },
+    bildirimRow: { toplam: 4, gonderildi: 3 },
+    top: [
+      { daire_no: 'B5', sahip_ad: 'Ayşe', ihlal_sayisi: 3 },
+      { daire_no: 'A1', sahip_ad: 'Ali', ihlal_sayisi: 2 },
+    ],
+  };
+
+  test('HTML site adı + dönem + toplam ihlal içerir', () => {
+    const html = buildHtml(data);
+    expect(html).toContain('Akasya Sitesi');
+    expect(html).toContain('2026-05-21 → 2026-05-27');
+    expect(html).toMatch(/>7</); // toplam_ihlal = 5+2
+  });
+
+  test('HTML Top tablosunda daire numaralarını gösterir', () => {
+    const html = buildHtml(data);
+    expect(html).toContain('B5');
+    expect(html).toContain('Ayşe');
+    expect(html).toContain('A1');
+  });
+
+  test('HTML başarı yüzdesini doğru hesaplar', () => {
+    const html = buildHtml(data);
+    expect(html).toMatch(/%75/);
+  });
+
+  test('Top listesi boş ise alternatif mesaj', () => {
+    const html = buildHtml({ ...data, top: [], ihlalRow: { coklu_arac: 0, kayitsiz: 0, etkilenen_daire: 0 } });
+    expect(html).toContain('Bu dönemde ihlal kaydı yok.');
+  });
+
+  test('HTML escape — XSS güvenliği', () => {
+    const html = buildHtml({ ...data, siteAd: '<script>alert(1)</script>', top: [] });
+    expect(html).not.toContain('<script>alert(1)</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+});
+
+describe('frequencyLabel', () => {
+  test('TR label döner', () => {
+    expect(frequencyLabel('daily')).toBe('Günlük');
+    expect(frequencyLabel('weekly')).toBe('Haftalık');
+    expect(frequencyLabel('monthly')).toBe('Aylık');
+  });
+  test('bilinmeyen → girdiyi geri ver', () => {
+    expect(frequencyLabel('xxx')).toBe('xxx');
+  });
+});

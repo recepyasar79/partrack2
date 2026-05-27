@@ -9,11 +9,15 @@
  */
 const express = require('express');
 const db = require('../db');
-const { authRequired, requireScopedSite } = require('../middleware/auth');
+const { authRequired, requireScopedSite, requireSiteAdmin } = require('../middleware/auth');
+const { writeAudit } = require('../middleware/audit');
 const { todayTR, dayjs, TR_TZ } = require('../utils/timezone');
 
 const router = express.Router();
 router.use(authRequired, requireScopedSite);
+
+const EMAIL_RE = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+const VALID_FREQ = new Set(['daily', 'weekly', 'monthly']);
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
@@ -155,6 +159,112 @@ router.get('/dashboard', async (req, res, next) => {
       blok_dagilim,
       top_daireler,
     });
+  } catch (e) { next(e); }
+});
+
+/**
+ * Faz Ü7.2 — Email rapor aboneliği CRUD.
+ * Site yöneticisi kendi site'sinin schedules'ını yönetir.
+ */
+router.get('/schedules', async (req, res, next) => {
+  try {
+    const list = await db('report_schedules')
+      .where({ site_id: req.scopedSiteId })
+      .orderBy('created_at', 'desc');
+    res.json({ schedules: list });
+  } catch (e) { next(e); }
+});
+
+router.post('/schedules', requireSiteAdmin, async (req, res, next) => {
+  try {
+    const { email, frequency, enabled } = req.body || {};
+    if (!email || !EMAIL_RE.test(email)) {
+      return res.status(400).json({ error: 'Geçerli bir e-posta adresi giriniz.' });
+    }
+    if (!VALID_FREQ.has(frequency)) {
+      return res.status(400).json({ error: 'frequency daily/weekly/monthly olmalı.' });
+    }
+    try {
+      const [row] = await db('report_schedules').insert({
+        site_id: req.scopedSiteId,
+        email: email.toLowerCase().trim(),
+        frequency,
+        enabled: enabled !== false,
+        created_by_user_id: req.user.id,
+      }).returning('*');
+      await writeAudit({
+        user_id: req.user.id, site_id: req.scopedSiteId,
+        eylem: 'ekle', tablo_adi: 'report_schedules', kayit_id: row.id,
+        yeni_deger: { email: row.email, frequency: row.frequency, enabled: row.enabled },
+        ip_adres: req.ip,
+      });
+      res.status(201).json({ schedule: row });
+    } catch (err) {
+      if (err.code === '23505') {
+        return res.status(409).json({ error: 'Bu e-posta + sıklık kombinasyonu zaten kayıtlı.' });
+      }
+      throw err;
+    }
+  } catch (e) { next(e); }
+});
+
+router.put('/schedules/:id', requireSiteAdmin, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const existing = await db('report_schedules')
+      .where({ id, site_id: req.scopedSiteId }).first();
+    if (!existing) return res.status(404).json({ error: 'Schedule bulunamadı.' });
+
+    const patch = {};
+    if (req.body?.email !== undefined) {
+      if (!EMAIL_RE.test(req.body.email)) {
+        return res.status(400).json({ error: 'Geçerli bir e-posta adresi giriniz.' });
+      }
+      patch.email = req.body.email.toLowerCase().trim();
+    }
+    if (req.body?.frequency !== undefined) {
+      if (!VALID_FREQ.has(req.body.frequency)) {
+        return res.status(400).json({ error: 'frequency daily/weekly/monthly olmalı.' });
+      }
+      patch.frequency = req.body.frequency;
+    }
+    if (req.body?.enabled !== undefined) patch.enabled = !!req.body.enabled;
+    if (Object.keys(patch).length === 0) {
+      return res.status(400).json({ error: 'Güncellenecek alan yok.' });
+    }
+    patch.updated_at = db.fn.now();
+
+    try {
+      const [row] = await db('report_schedules')
+        .where({ id }).update(patch).returning('*');
+      await writeAudit({
+        user_id: req.user.id, site_id: req.scopedSiteId,
+        eylem: 'guncelle', tablo_adi: 'report_schedules', kayit_id: id,
+        eski_deger: existing, yeni_deger: row, ip_adres: req.ip,
+      });
+      res.json({ schedule: row });
+    } catch (err) {
+      if (err.code === '23505') {
+        return res.status(409).json({ error: 'Bu e-posta + sıklık kombinasyonu zaten kayıtlı.' });
+      }
+      throw err;
+    }
+  } catch (e) { next(e); }
+});
+
+router.delete('/schedules/:id', requireSiteAdmin, async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const existing = await db('report_schedules')
+      .where({ id, site_id: req.scopedSiteId }).first();
+    if (!existing) return res.status(404).json({ error: 'Schedule bulunamadı.' });
+    await db('report_schedules').where({ id }).delete();
+    await writeAudit({
+      user_id: req.user.id, site_id: req.scopedSiteId,
+      eylem: 'sil', tablo_adi: 'report_schedules', kayit_id: id,
+      eski_deger: existing, ip_adres: req.ip,
+    });
+    res.status(204).end();
   } catch (e) { next(e); }
 });
 
