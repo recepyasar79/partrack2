@@ -24,6 +24,7 @@ const ocrStatsRoutes = require('./routes/ocrStats');
 const sitesRoutes = require('./routes/sites');
 const siteUsageRoutes = require('./routes/siteUsage');
 const subscriptionRoutes = require('./routes/subscription');
+const webhookRoutes = require('./routes/webhooks');
 const { isR2Configured } = require('./services/storage');
 
 const { notFound, errorHandler } = require('./middleware/errorHandler');
@@ -40,6 +41,11 @@ app.use(
 );
 app.use(cors({ origin: FRONTEND_URL, credentials: true }));
 app.use(sentryTracingMiddleware());
+
+// Webhook'lar — signature verify için raw body gerekli; json middleware'den
+// ve rate limit'ten ÖNCE mount edilir (provider retry'lar engellenmesin).
+app.use('/api/webhooks', express.raw({ type: '*/*', limit: '256kb' }), webhookRoutes);
+
 app.use(express.json({ limit: '1mb' }));
 
 const generalLimiter = rateLimit({

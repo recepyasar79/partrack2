@@ -42,10 +42,11 @@
  */
 
 const mock = require('./mock');
+const iyzico = require('./iyzico');
 
 const REGISTRY = {
   mock,
-  // iyzico: require('./iyzico'),  // Ü3.5'te eklenecek
+  iyzico,
   // paytr:  require('./paytr'),   // Ü3.6'da eklenecek
 };
 
