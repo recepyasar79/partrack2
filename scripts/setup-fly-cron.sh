@@ -21,9 +21,10 @@ set -euo pipefail
 
 APP=parktrack-backend
 REGION=fra
-IMAGE_REF=$(flyctl image show -a "$APP" --json | jq -r '.[0].Ref // ""' 2>/dev/null || echo "")
+IMAGE_JSON=$(flyctl image show -a "$APP" --json 2>/dev/null || echo "[]")
+IMAGE_REF=$(echo "$IMAGE_JSON" | jq -r '.[0] | (.Registry + "/" + .Repository + ":" + .Tag)' 2>/dev/null || echo "")
 
-if [ -z "$IMAGE_REF" ]; then
+if [ -z "$IMAGE_REF" ] || [ "$IMAGE_REF" = "null" ] || [ "$IMAGE_REF" = "/:" ]; then
   echo "HATA: $APP için deploy edilmiş image bulunamadı. Önce 'flyctl deploy' çalıştırın."
   exit 1
 fi

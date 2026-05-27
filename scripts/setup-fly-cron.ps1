@@ -8,12 +8,12 @@ $APP = 'parktrack-backend'
 $REGION = 'fra'
 
 $imageJson = flyctl image show -a $APP --json | ConvertFrom-Json
-$IMAGE_REF = $imageJson[0].Ref
-
-if (-not $IMAGE_REF) {
+$img = $imageJson[0]
+if (-not $img -or -not $img.Registry) {
   Write-Error "HATA: $APP için deploy edilmiş image bulunamadı. Önce 'flyctl deploy' çalıştırın."
   exit 1
 }
+$IMAGE_REF = "$($img.Registry)/$($img.Repository):$($img.Tag)"
 
 Write-Host "Image: $IMAGE_REF"
 
