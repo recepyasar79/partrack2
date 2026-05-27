@@ -47,7 +47,10 @@ function makeHandler(providerName) {
 }
 
 async function dispatchEvent(providerName, evt) {
-  const { event_type, provider_subscription_id, provider_payment_id, status, raw } = evt;
+  // Dispatch tamamen event_type üzerinden — verifyWebhook'tan dönen `status`
+  // alanı payment context'i için bilgilendiricidir, cancellation event'lerini
+  // yanlışlıkla "failed" branch'ine düşürmemek için fallback olarak kullanılmaz.
+  const { event_type, provider_subscription_id, provider_payment_id, raw } = evt;
 
   // Sub'ı bulurken hem provider sub id hem token (createSubscription'da
   // token kaydedildi; activated event'i gelene kadar gerçek subRefCode yok).
@@ -69,7 +72,7 @@ async function dispatchEvent(providerName, evt) {
   }
 
   // 2) Recurring payment success
-  if (event_type === 'payment.success' || event_type === 'PAYMENT_SUCCESS' || status === 'success') {
+  if (event_type === 'payment.success' || event_type === 'PAYMENT_SUCCESS') {
     if (!sub) return;
     // En son pending invoice'i paid yap
     const inv = await db('invoices')
@@ -109,7 +112,7 @@ async function dispatchEvent(providerName, evt) {
   }
 
   // 3) Recurring payment failure → past_due (cron'da grace period ilerletir)
-  if (event_type === 'payment.failure' || event_type === 'PAYMENT_FAILURE' || status === 'failed') {
+  if (event_type === 'payment.failure' || event_type === 'PAYMENT_FAILURE') {
     if (!sub) return;
     const grace = new Date();
     grace.setDate(grace.getDate() + 7);
