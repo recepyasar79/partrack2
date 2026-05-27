@@ -12,7 +12,8 @@ import {
   LockClosedIcon,
   LogoutIcon,
   SunIcon,
-  MoonIcon
+  MoonIcon,
+  CreditCardIcon
 } from './ui/Icons';
 
 const navItems = [
@@ -26,6 +27,7 @@ const navItems = [
 const adminItems = [
   { to: '/kullanicilar', label: 'Kullanıcılar', Icon: UsersIcon },
   { to: '/audit', label: 'Audit Log', Icon: ShieldIcon },
+  { to: '/abonelik', label: 'Abonelik', Icon: CreditCardIcon },
 ];
 
 // Sadece superadmin (platform sahibi) için ek menü.

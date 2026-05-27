@@ -20,6 +20,7 @@ import Raporlar from './pages/Raporlar';
 import Kvkk from './pages/Kvkk';
 import OcrIstatistik from './pages/OcrIstatistik';
 import SuperadminSiteler from './pages/SuperadminSiteler';
+import Abonelik from './pages/Abonelik';
 
 export default function App() {
   return (
@@ -93,6 +94,14 @@ export default function App() {
             element={
               <RoleRoute roller={['superadmin']}>
                 <Layout><SuperadminSiteler /></Layout>
+              </RoleRoute>
+            }
+          />
+          <Route
+            path="/abonelik"
+            element={
+              <RoleRoute roller={['site_yonetici']}>
+                <Layout><Abonelik /></Layout>
               </RoleRoute>
             }
           />
