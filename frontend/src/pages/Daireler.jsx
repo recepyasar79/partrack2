@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import DaireForm from '../components/DaireForm';
 import PlakaListesi from '../components/PlakaListesi';
 import SahipDegistirModal from '../components/SahipDegistirModal';
+import SahipTarihce from '../components/SahipTarihce';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 // BLOKLAR artık site'nin blok_yapisi'sından dinamik gelir (Ü1.11).
@@ -260,6 +261,7 @@ export default function Daireler() {
             onChanged={() => loadDetail(selected.id)}
             canEdit={isYonetici}
           />
+          <SahipTarihce daireId={selected.id} />
           {isYonetici && (
             <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
               <Button variant="secondary" onClick={() => setSahipDegistir(selected)}>

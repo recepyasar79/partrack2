@@ -38,6 +38,29 @@ router.get('/:id', async (req, res) => {
   res.json({ daire, araclar });
 });
 
+/**
+ * GET /api/daireler/:id/sahip-tarihce (Faz Ü4)
+ *
+ * Daire'nin eski sahipleri — bitis_tarihi sırasıyla. Tüm site rolleri
+ * görebilir (gizlilik açısından sahip telefonu maskelenir; site_yonetici
+ * audit için tam görür).
+ */
+router.get('/:id/sahip-tarihce', async (req, res) => {
+  const id = parseInt(req.params.id, 10);
+  const daire = await db('daireler').where({ id, site_id: req.scopedSiteId }).first();
+  if (!daire) return res.status(404).json({ error: 'Daire bulunamadı.' });
+  const tarihce = await db('daire_sahip_tarihce')
+    .where({ daire_id: id, site_id: req.scopedSiteId })
+    .orderBy('bitis_tarihi', 'desc');
+
+  const maskTel = req.user.rol !== 'site_yonetici';
+  const safe = tarihce.map((r) => ({
+    ...r,
+    sahip_tel: maskTel ? r.sahip_tel.replace(/(\d{3})\d{4}(\d{2})$/, '$1****$2') : r.sahip_tel,
+  }));
+  res.json({ tarihce: safe });
+});
+
 router.post('/', requireSiteAdmin, async (req, res) => {
   const { daire_no, sahip_ad, sahip_tel, kvkk_riza, bildirim_opt_in } = req.body || {};
   if (!sahip_ad || sahip_ad.length < 2) return res.status(400).json({ error: 'Sahip adı zorunlu.' });

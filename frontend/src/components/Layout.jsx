@@ -142,6 +142,12 @@ export default function Layout({ children }) {
 
       <main className="animate-fade-in">{children}</main>
 
+      <footer className="px-4 py-3 text-center text-xs text-slate-400 dark:text-slate-500">
+        <Link to="/kvkk" className="hover:text-brand-600 dark:hover:text-brand-400 underline-offset-2 hover:underline">
+          KVKK Aydınlatma Metni
+        </Link>
+      </footer>
+
       {user && !isSuperadmin && (
         <nav className="fixed bottom-0 inset-x-0 bg-white dark:bg-slate-900 border-t border-slate-200 dark:border-slate-800 shadow-[0_-4px_6px_-1px_rgb(0_0_0_/_0.1)] z-20">
           <div className="max-w-3xl mx-auto flex">

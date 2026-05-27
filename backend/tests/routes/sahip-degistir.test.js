@@ -84,3 +84,56 @@ describe('POST /api/daireler/:id/sahip-degistir', () => {
     expect(tarihce[0].sahip_ad).toBe('Ihlal Sahibi');
   });
 });
+
+describe('GET /api/daireler/:id/sahip-tarihce', () => {
+  test('yonetici tarihçeyi tam telefonla görür', async () => {
+    const daire = await createTestDaire({ daire_no: 'B1', sahip_ad: 'Eski', sahip_tel: '05551112233' });
+    await request(app)
+      .post(`/api/daireler/${daire.id}/sahip-degistir`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        yeni_sahip_ad: 'Yeni',
+        yeni_sahip_tel: '05554445566',
+        kvkk_riza: true,
+      });
+    const res = await request(app)
+      .get(`/api/daireler/${daire.id}/sahip-tarihce`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.tarihce).toHaveLength(1);
+    expect(res.body.tarihce[0].sahip_ad).toBe('Eski');
+    expect(res.body.tarihce[0].sahip_tel).toBe('05551112233');
+  });
+
+  test('guvenlik rolü görür ama telefon maskelenir', async () => {
+    const guvenlik = await createTestUser({ kullanici_adi: 'guv1', rol: 'guvenlik' });
+    const guvToken = makeToken({ id: guvenlik.id, kullanici_adi: 'guv1', rol: 'guvenlik' });
+    const daire = await createTestDaire({ daire_no: 'B2', sahip_ad: 'Eski', sahip_tel: '05551112233' });
+    await request(app)
+      .post(`/api/daireler/${daire.id}/sahip-degistir`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ yeni_sahip_ad: 'Yeni', yeni_sahip_tel: '05554445566', kvkk_riza: true });
+    const res = await request(app)
+      .get(`/api/daireler/${daire.id}/sahip-tarihce`)
+      .set('Authorization', `Bearer ${guvToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.tarihce[0].sahip_ad).toBe('Eski');
+    expect(res.body.tarihce[0].sahip_tel).toMatch(/\*{4}/);
+  });
+
+  test('hiç tarihçe yoksa boş liste', async () => {
+    const daire = await createTestDaire({ daire_no: 'B3' });
+    const res = await request(app)
+      .get(`/api/daireler/${daire.id}/sahip-tarihce`)
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.tarihce).toEqual([]);
+  });
+
+  test('olmayan daire için 404', async () => {
+    const res = await request(app)
+      .get('/api/daireler/9999/sahip-tarihce')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(404);
+  });
+});

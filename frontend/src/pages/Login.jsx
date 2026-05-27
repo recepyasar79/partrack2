@@ -138,6 +138,11 @@ export default function Login() {
         <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-6">
           © {new Date().getFullYear()} ParkTrack. Tüm hakları saklıdır.
         </p>
+        <p className="text-center text-xs text-slate-400 dark:text-slate-500 mt-1">
+          <a href="/kvkk" className="hover:text-brand-600 dark:hover:text-brand-400 hover:underline">
+            KVKK Aydınlatma Metni
+          </a>
+        </p>
       </div>
     </div>
   );
