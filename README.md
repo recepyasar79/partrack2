@@ -112,7 +112,31 @@ Servisler:
 - `parktrack-backend` (Fly.io web service)
 - `parktrack-ocr` (Fly.io Python OCR mikroservis)
 - `parktrack-db` (Neon managed PostgreSQL)
-- Cron işleri için Fly Machines veya GitHub Actions scheduled workflows kullanılabilir
+
+### 5b. Cron'ları Fly.io scheduled machines'e bağla (Faz Ü6)
+
+Backend deploy bittikten sonra bir kez çalıştırılır; her cron job için
+ayrı ephemeral machine oluşturur:
+
+```bash
+# Linux/Mac
+./scripts/setup-fly-cron.sh
+
+# Windows PowerShell
+.\scripts\setup-fly-cron.ps1
+```
+
+Kurulan job'lar:
+| Job                       | Schedule | Komut                            |
+| ------------------------- | -------- | -------------------------------- |
+| data-retention            | daily    | `npm run job:data-retention`     |
+| foto-temizle              | daily    | `npm run job:foto-temizle`       |
+| parasut-sync              | daily    | `npm run job:parasut-sync`       |
+| subscription-lifecycle    | daily    | `npm run job:subscription-lifecycle` |
+| bildirim-retry            | hourly   | `npm run job:bildirim-retry`     |
+
+Script idempotent: tekrar çalıştırılırsa eski `cron-*` machines temizlenir
+ve yeniden oluşturulur. Image değiştiğinde yeniden çalıştırın.
 
 ### 6. Vercel'e frontend deploy
 ```bash

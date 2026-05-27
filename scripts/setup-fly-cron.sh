@@ -1,0 +1,68 @@
+#!/usr/bin/env bash
+# Fly.io scheduled machines kurulumu (Faz Ü6).
+#
+# Her cron job ayrı bir ephemeral machine olarak çalışır — Fly otomatik
+# tetikler, iş biter, machine kapanır. Schedule seçenekleri:
+#   hourly, daily, weekly, monthly
+#
+# Bu script idempotent: yeniden çalıştırılırsa eski scheduled machines'i
+# bulup günceller (önce listele, varsa destroy, sonra yeniden create).
+#
+# Kullanım:
+#   ./scripts/setup-fly-cron.sh
+#
+# Önkoşul:
+#   - flyctl auth login (kullanıcı oturumu)
+#   - fly.toml ile bağlı parktrack-backend app (deploy edilmiş image)
+#
+# Region: fra (app'in primary_region'u ile aynı).
+
+set -euo pipefail
+
+APP=parktrack-backend
+REGION=fra
+IMAGE_REF=$(flyctl image show -a "$APP" --json | jq -r '.[0].Ref // ""' 2>/dev/null || echo "")
+
+if [ -z "$IMAGE_REF" ]; then
+  echo "HATA: $APP için deploy edilmiş image bulunamadı. Önce 'flyctl deploy' çalıştırın."
+  exit 1
+fi
+
+echo "Image: $IMAGE_REF"
+
+# Job tanımları: name | schedule | npm-script
+JOBS=(
+  "data-retention|daily|job:data-retention"
+  "foto-temizle|daily|job:foto-temizle"
+  "parasut-sync|daily|job:parasut-sync"
+  "subscription-lifecycle|daily|job:subscription-lifecycle"
+  "bildirim-retry|hourly|job:bildirim-retry"
+)
+
+# Eski scheduled machines'i temizle (idempotency)
+echo "Eski cron makineleri taranıyor..."
+EXISTING=$(flyctl machines list -a "$APP" --json | jq -r '.[] | select(.config.metadata.fly_process_group=="cron") | .id' || true)
+if [ -n "$EXISTING" ]; then
+  for ID in $EXISTING; do
+    echo "  destroy: $ID"
+    flyctl machine destroy -a "$APP" --force "$ID" || true
+  done
+fi
+
+# Her job için yeni scheduled machine oluştur
+for ENTRY in "${JOBS[@]}"; do
+  IFS='|' read -r NAME SCHEDULE NPM_SCRIPT <<< "$ENTRY"
+  echo "Schedule: $NAME ($SCHEDULE) → npm run $NPM_SCRIPT"
+  flyctl machine run "$IMAGE_REF" \
+    -a "$APP" \
+    --region "$REGION" \
+    --schedule "$SCHEDULE" \
+    --name "cron-$NAME" \
+    --vm-size shared-cpu-1x \
+    --vm-memory 512 \
+    --metadata "fly_process_group=cron" \
+    --command "npm" "run" "$NPM_SCRIPT"
+done
+
+echo "✓ Cron kurulumu tamam. Liste:"
+flyctl machines list -a "$APP" | grep -E "cron-|NAME"
