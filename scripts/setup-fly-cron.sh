@@ -21,8 +21,11 @@ set -euo pipefail
 
 APP=parktrack-backend
 REGION=fra
+# En yeni deployment'ı bul: cron makineleri eski image'da takılı kalmasın.
+# Tag formatı ULID (`deployment-<ULID>`) — leksikografik sırada zaman sırasına
+# uyar. Max ile en güncel olanı seçeriz.
 IMAGE_JSON=$(flyctl image show -a "$APP" --json 2>/dev/null || echo "[]")
-IMAGE_REF=$(echo "$IMAGE_JSON" | jq -r '.[0] | (.Registry + "/" + .Repository + ":" + .Tag)' 2>/dev/null || echo "")
+IMAGE_REF=$(echo "$IMAGE_JSON" | jq -r 'sort_by(.Tag) | last | (.Registry + "/" + .Repository + ":" + .Tag)' 2>/dev/null || echo "")
 
 if [ -z "$IMAGE_REF" ] || [ "$IMAGE_REF" = "null" ] || [ "$IMAGE_REF" = "/:" ]; then
   echo "HATA: $APP için deploy edilmiş image bulunamadı. Önce 'flyctl deploy' çalıştırın."

@@ -7,13 +7,16 @@ $ErrorActionPreference = 'Stop'
 $APP = 'parktrack-backend'
 $REGION = 'fra'
 
+# En yeni deployment'ı bul: cron makineleri eski image'da takılı kalmasın.
+# Tag formatı ULID (`deployment-<ULID>`) — leksikografik sırada zaman sırasına
+# uyar. Sort -Descending ile en güncel olanı seçeriz.
 $imageJson = flyctl image show -a $APP --json | ConvertFrom-Json
-$img = $imageJson[0]
-if (-not $img -or -not $img.Registry) {
+$latest = $imageJson | Sort-Object Tag -Descending | Select-Object -First 1
+if (-not $latest -or -not $latest.Registry) {
   Write-Error "HATA: $APP için deploy edilmiş image bulunamadı. Önce 'flyctl deploy' çalıştırın."
   exit 1
 }
-$IMAGE_REF = "$($img.Registry)/$($img.Repository):$($img.Tag)"
+$IMAGE_REF = "$($latest.Registry)/$($latest.Repository):$($latest.Tag)"
 
 Write-Host "Image: $IMAGE_REF"
 
