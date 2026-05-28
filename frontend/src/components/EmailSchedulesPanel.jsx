@@ -3,6 +3,7 @@ import { api, apiError } from '../services/api';
 import { useToast } from './ui/Toast';
 import { Button } from './ui/Button';
 import { Input } from './ui/Input';
+import { ExclamationTriangleIcon } from './ui/Icons';
 import { useAuth } from '../auth/AuthContext';
 
 const FREQ_LABEL = { daily: 'Günlük', weekly: 'Haftalık', monthly: 'Aylık' };
@@ -68,6 +69,17 @@ export default function EmailSchedulesPanel() {
           Belirttiğiniz e-postaya günlük/haftalık/aylık özet rapor otomatik gönderilir.
           Haftalık raporlar Pazartesi, aylık raporlar ayın 1'inde iletilir (Türkiye saati).
         </p>
+
+        <div className="mb-4 flex gap-3 items-start rounded-lg border border-amber-200 dark:border-amber-900/60 bg-amber-50 dark:bg-amber-950/30 p-3">
+          <ExclamationTriangleIcon className="w-5 h-5 flex-shrink-0 text-amber-600 dark:text-amber-400 mt-0.5" />
+          <div className="text-sm text-amber-800 dark:text-amber-200">
+            <strong className="font-semibold">Test ortamı:</strong> Şu anda doğrulanmış
+            bir e-posta domain'i tanımlı değil. Mailler yalnızca Resend hesap
+            sahibinin e-posta adresine teslim edilir; diğer alıcılara gönderim
+            sessizce düşer. Tüm alıcılara teslim için yöneticiye verified domain
+            ekletin.
+          </div>
+        </div>
 
         {isAdmin ? (
           <form onSubmit={addSchedule} className="flex flex-wrap gap-3 items-end">
