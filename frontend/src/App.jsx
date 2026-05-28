@@ -6,6 +6,7 @@ import { ProtectedRoute, RoleRoute } from './auth/ProtectedRoute';
 import Layout from './components/Layout';
 
 import Login from './pages/Login';
+import Landing from './pages/Landing';
 import Home from './pages/Home';
 import Daireler from './pages/Daireler';
 import AracListesi from './pages/AracListesi';
@@ -28,12 +29,13 @@ export default function App() {
     <AuthProvider>
       <ToastProvider>
         <Routes>
+          <Route path="/" element={<Landing />} />
           <Route path="/login" element={<Login />} />
           <Route path="/kvkk" element={<Kvkk />} />
           <Route path="/yetkisiz" element={<Layout><Yetkisiz /></Layout>} />
 
           <Route
-            path="/"
+            path="/panel"
             element={<ProtectedRoute><Layout><Home /></Layout></ProtectedRoute>}
           />
           <Route

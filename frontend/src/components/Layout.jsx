@@ -66,7 +66,7 @@ export default function Layout({ children }) {
   return (
     <div className="min-h-full pb-20 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
       <header className="bg-gradient-to-r from-brand-900 to-brand-800 dark:from-slate-900 dark:to-slate-800 text-white px-4 py-4 flex items-center justify-between sticky top-0 z-20 shadow-lg">
-        <Link to="/" className="flex items-center gap-2 min-w-0">
+        <Link to="/panel" className="flex items-center gap-2 min-w-0">
           <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0">
             <span className="text-lg">🅿️</span>
           </div>

@@ -30,8 +30,8 @@ export default function Login() {
         site_slug.trim().toLowerCase() || undefined
       );
       toast.success('Hoş geldiniz.');
-      // Superadmin /sites'a, diğerleri /'a
-      const dest = kullanici.rol === 'superadmin' ? '/sites' : (loc.state?.from || '/');
+      // Superadmin /sites'a, diğerleri /panel'e (login öncesi gidilen sayfa varsa oraya)
+      const dest = kullanici.rol === 'superadmin' ? '/sites' : (loc.state?.from || '/panel');
       nav(dest, { replace: true });
     } catch (e2) {
       setErr(apiError(e2));
