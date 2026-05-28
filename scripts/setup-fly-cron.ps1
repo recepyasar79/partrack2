@@ -41,6 +41,12 @@ foreach ($m in $existing) {
 
 foreach ($job in $JOBS) {
   Write-Host "Schedule: $($job.Name) ($($job.Schedule)) → npm run $($job.NpmScript)"
+  # Komutu positional args olarak ver: --command tek string aliyor;
+  # `--command 'npm' 'run' $script` PS'de 'run' ve script'i positional
+  # arg yapiyor, flyctl --command'i ezerek CMD=["run", $script] kuruyor
+  # → docker-entrypoint "run" sistem komutu olmadigi icin `node run`
+  # prepend ediyor → MODULE_NOT_FOUND. `--` separator + positional ile
+  # CMD=["npm","run",$script] dogru kurulur.
   flyctl machine run $IMAGE_REF `
     -a $APP `
     --region $REGION `
@@ -49,7 +55,7 @@ foreach ($job in $JOBS) {
     --vm-size shared-cpu-1x `
     --vm-memory 512 `
     --metadata 'fly_process_group=cron' `
-    --command 'npm' 'run' $job.NpmScript
+    -- npm run $($job.NpmScript)
 }
 
 Write-Host '✓ Cron kurulumu tamam. Liste:'

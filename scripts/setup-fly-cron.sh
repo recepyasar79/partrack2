@@ -58,6 +58,12 @@ fi
 for ENTRY in "${JOBS[@]}"; do
   IFS='|' read -r NAME SCHEDULE NPM_SCRIPT <<< "$ENTRY"
   echo "Schedule: $NAME ($SCHEDULE) → npm run $NPM_SCRIPT"
+  # Komutu positional args olarak ver: --command tek string alıyor;
+  # `--command "npm" "run" $NPM` bash'te "run" ve script'i positional
+  # arg yapıyor, flyctl --command'i ezerek CMD=["run", $NPM] kuruyor →
+  # docker-entrypoint "run" sistem komutu olmadığı için `node run`
+  # prepend ediyor → MODULE_NOT_FOUND. `--` separator + positional ile
+  # CMD=["npm","run",$NPM] doğru kurulur.
   flyctl machine run "$IMAGE_REF" \
     -a "$APP" \
     --region "$REGION" \
@@ -66,7 +72,7 @@ for ENTRY in "${JOBS[@]}"; do
     --vm-size shared-cpu-1x \
     --vm-memory 512 \
     --metadata "fly_process_group=cron" \
-    --command "npm" "run" "$NPM_SCRIPT"
+    -- npm run "$NPM_SCRIPT"
 done
 
 echo "✓ Cron kurulumu tamam. Liste:"
