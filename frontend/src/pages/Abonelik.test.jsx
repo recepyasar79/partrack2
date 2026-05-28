@@ -43,12 +43,11 @@ describe('Abonelik', () => {
     vi.spyOn(window, 'confirm').mockReturnValue(true);
   });
 
-  test('site_yonetici dışındaki rol uyarı görür', async () => {
+  test('site_yonetici dışındaki rol uyarı görür ve fetch atılmaz', async () => {
     setUser('guvenlik');
     renderAbonelik();
     expect(await screen.findByText(/yalnızca site yöneticilerine açıktır/i)).toBeInTheDocument();
-    // Component useEffect'te fetch eder (rol render'da kontrol ediliyor) —
-    // backend tarafında 403 döner, frontend uyarıyı gösterir.
+    expect(apiMock.get).not.toHaveBeenCalled();
   });
 
   test('subscription yokken plan kartları + "Abone Ol" butonları', async () => {

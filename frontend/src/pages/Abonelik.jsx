@@ -83,13 +83,17 @@ export default function Abonelik() {
   const currentCycle = data?.subscription?.billing_cycle || 'monthly';
 
   useEffect(() => {
+    if (user?.rol !== 'site_yonetici') {
+      setLoading(false);
+      return;
+    }
     let cancelled = false;
     api.get('/site/subscription')
       .then((r) => { if (!cancelled) setData(r.data); })
       .catch((e) => toast.error(apiError(e)))
       .finally(() => { if (!cancelled) setLoading(false); });
     return () => { cancelled = true; };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [user?.rol]); // eslint-disable-line react-hooks/exhaustive-deps
 
   async function reload() {
     const r = await api.get('/site/subscription');
