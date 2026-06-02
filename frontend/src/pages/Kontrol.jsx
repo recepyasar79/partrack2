@@ -311,7 +311,7 @@ export default function Kontrol() {
                       </div>
                     )}
 
-                    <div className="flex gap-2 items-end mt-auto">
+                    <div className="flex flex-col sm:flex-row gap-2 sm:items-end mt-auto">
                       <Input
                         value={it.plaka}
                         onChange={(e) => updateItem(it.id, { plaka: e.target.value.toUpperCase() })}
@@ -319,20 +319,23 @@ export default function Kontrol() {
                         containerClassName="flex-1"
                         className="font-mono"
                       />
-                      <Button
-                        size="md"
-                        variant={it.durum === 'onaylandı' ? 'success' : 'primary'}
-                        onClick={() => onaylaPlaka(it)}
-                        disabled={!it.kontrolId || it.durum === 'onaylandı'}
-                      >
-                        <CheckIcon className="w-4 h-4 mr-1" />
-                        Onayla
-                      </Button>
-                      {it.kontrolId && (
-                        <Button size="md" variant="ghost" onClick={() => silKontrol(it.kontrolId, it.id)}>
-                          <XMarkIcon className="w-4 h-4" />
+                      <div className="flex gap-2">
+                        <Button
+                          size="md"
+                          variant={it.durum === 'onaylandı' ? 'success' : 'primary'}
+                          onClick={() => onaylaPlaka(it)}
+                          disabled={!it.kontrolId || it.durum === 'onaylandı'}
+                          className="flex-1 sm:flex-none"
+                        >
+                          <CheckIcon className="w-4 h-4 mr-1" />
+                          Onayla
                         </Button>
-                      )}
+                        {it.kontrolId && (
+                          <Button size="md" variant="ghost" onClick={() => silKontrol(it.kontrolId, it.id)}>
+                            <XMarkIcon className="w-4 h-4" />
+                          </Button>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

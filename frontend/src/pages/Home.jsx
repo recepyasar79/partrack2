@@ -76,7 +76,7 @@ function UsageStat({ label, current, max, accent }) {
   const warn = !limitless && ratio >= 0.8 && !danger;
   const color = danger ? DANGER_CLASSES : warn ? WARN_CLASSES : (ACCENT_CLASSES[accent] || ACCENT_CLASSES.brand);
   return (
-    <div className={`w-28 bg-gradient-to-br ${color} rounded-xl px-2 py-[5px] border text-center flex-shrink-0`}>
+    <div className={`flex-1 sm:flex-none sm:w-28 min-w-0 bg-gradient-to-br ${color} rounded-xl px-2 py-[5px] border text-center`}>
       <div className="text-xl font-bold tabular-nums leading-tight">
         {current}{limitless ? '' : <span className="text-sm font-medium opacity-70"> / {max}</span>}
       </div>
@@ -102,7 +102,7 @@ export default function Home() {
   return (
     <div className="p-4 max-w-3xl mx-auto">
       {/* Welcome + istatistikler aynı satırda */}
-      <div className="mb-6 flex items-center justify-between gap-3">
+      <div className="mb-6 flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <div className="flex items-center gap-3 min-w-0">
           <div className="w-12 h-12 bg-gradient-to-br from-brand-500 to-brand-600 rounded-2xl flex items-center justify-center shadow-lg shadow-brand-500/25 flex-shrink-0">
             <span className="text-2xl">🅿️</span>
@@ -120,7 +120,7 @@ export default function Home() {
         </div>
 
         {usage && (
-          <div className="flex gap-2 flex-shrink-0">
+          <div className="flex gap-2 w-full sm:w-auto sm:flex-shrink-0">
             <UsageStat label="Daireler" current={usage.daire.current} max={usage.daire.max} accent="accent" />
             <UsageStat label="Araçlar" current={usage.arac?.current || 0} max={usage.arac?.max ?? null} accent="brand" />
             <UsageStat label="Kullanıcılar" current={usage.user.current} max={usage.user.max} accent="orange" />
