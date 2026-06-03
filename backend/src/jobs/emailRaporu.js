@@ -76,6 +76,21 @@ function frequencyToDays(freq) {
   return 1;
 }
 
+/**
+ * Rapor dönemini hesaplar. Cron sabah (Fly `daily` = 00:00 UTC = 03:00 TR)
+ * çalıştığı için dönem **dün** biter — bugünün akşam kontrolü (20:00) henüz
+ * yapılmadığından bugünü dahil etmek tüm rakamları 0 gösteriyordu.
+ *
+ *   daily   → [dün, dün]                (son tamamlanmış gün)
+ *   weekly  → [dün-6, dün]              (7 günlük tamamlanmış pencere)
+ *   monthly → [dün-29, dün]             (30 günlük tamamlanmış pencere)
+ */
+function reportWindow(frequency, now = dayjs().tz(TR_TZ)) {
+  const bitis = now.subtract(1, 'day').format('YYYY-MM-DD');
+  const baslangic = now.subtract(frequencyToDays(frequency), 'day').format('YYYY-MM-DD');
+  return { baslangic, bitis };
+}
+
 function frequencyLabel(freq) {
   return { daily: 'Günlük', weekly: 'Haftalık', monthly: 'Aylık' }[freq] || freq;
 }
@@ -156,8 +171,7 @@ async function runEmailRaporu(now = dayjs().tz(TR_TZ)) {
   for (const s of schedules) {
     if (!isDueToday(s, now)) { result.skipped++; continue; }
 
-    const bitis = now.format('YYYY-MM-DD');
-    const baslangic = now.subtract(frequencyToDays(s.frequency) - 1, 'day').format('YYYY-MM-DD');
+    const { baslangic, bitis } = reportWindow(s.frequency, now);
 
     try {
       const site = await db('sites').where({ id: s.site_id }).select('ad').first();
@@ -210,4 +224,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { runEmailRaporu, isDueToday, buildHtml, frequencyLabel };
+module.exports = { runEmailRaporu, isDueToday, buildHtml, frequencyLabel, reportWindow };

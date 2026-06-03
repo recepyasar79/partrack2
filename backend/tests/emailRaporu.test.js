@@ -9,7 +9,7 @@ const timezone = require('dayjs/plugin/timezone');
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-const { isDueToday, buildHtml, frequencyLabel } = require('../src/jobs/emailRaporu');
+const { isDueToday, buildHtml, frequencyLabel, reportWindow } = require('../src/jobs/emailRaporu');
 
 const TR = 'Europe/Istanbul';
 
@@ -52,6 +52,33 @@ describe('emailRaporu.isDueToday', () => {
 
   test('bilinmeyen frequency → false', () => {
     expect(isDueToday({ frequency: 'never', last_sent_at: null }, pazartesi)).toBe(false);
+  });
+});
+
+describe('emailRaporu.reportWindow', () => {
+  // 2026-06-03 Çarşamba 03:00 TR — cron bu saatte çalışır.
+  const now = dayjs.tz('2026-06-03 03:00', TR);
+
+  test('daily — dönem dün biter, dün başlar ([dün, dün])', () => {
+    // Bugünü dahil etmemeli: bugünün akşam kontrolü henüz yapılmadı → 0 olurdu.
+    expect(reportWindow('daily', now)).toEqual({
+      baslangic: '2026-06-02',
+      bitis: '2026-06-02',
+    });
+  });
+
+  test('weekly — 7 günlük tamamlanmış pencere ([dün-6, dün])', () => {
+    expect(reportWindow('weekly', now)).toEqual({
+      baslangic: '2026-05-27',
+      bitis: '2026-06-02',
+    });
+  });
+
+  test('monthly — 30 günlük tamamlanmış pencere ([dün-29, dün])', () => {
+    expect(reportWindow('monthly', now)).toEqual({
+      baslangic: '2026-05-04',
+      bitis: '2026-06-02',
+    });
   });
 });
 
