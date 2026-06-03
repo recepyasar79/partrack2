@@ -41,6 +41,7 @@ async function collectOzet(siteId, baslangic, bitis) {
       .select(
         db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN 1 ELSE 0 END),0)::int as coklu_arac`),
         db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='kayitsiz' THEN 1 ELSE 0 END),0)::int as kayitsiz`),
+        db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='kayitsiz' THEN jsonb_array_length(plaka_listesi) ELSE 0 END),0)::int as kayitsiz_plaka`),
         db.raw(`(COUNT(DISTINCT daire_id) FILTER (WHERE daire_id IS NOT NULL))::int as etkilenen_daire`)
       ).first(),
     db('bildirimler')
@@ -217,16 +218,22 @@ function buildHtml({ siteAd, frequency, baslangic, bitis, ihlalRow, bildirimRow,
   <table style="width:100%;border-collapse:collapse;margin-bottom:20px;">
     <tr>
       <td style="background:#f1f5f9;padding:12px;border-radius:8px;">
-        <div style="font-size:11px;color:#64748b;text-transform:uppercase;">Toplam İhlal</div>
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;">İhlal Kaydı</div>
         <div style="font-size:28px;font-weight:bold;color:#dc2626;">${toplam}</div>
         <div style="font-size:11px;color:#64748b;">${ihlalRow.coklu_arac} çoklu • ${ihlalRow.kayitsiz} kayıtsız</div>
       </td>
-      <td style="padding:0 8px;"></td>
+      <td style="padding:0 6px;"></td>
+      <td style="background:#f1f5f9;padding:12px;border-radius:8px;">
+        <div style="font-size:11px;color:#64748b;text-transform:uppercase;">Kayıtsız Plaka</div>
+        <div style="font-size:28px;font-weight:bold;color:#d97706;">${ihlalRow.kayitsiz_plaka || 0}</div>
+        <div style="font-size:11px;color:#64748b;">toplam araç</div>
+      </td>
+      <td style="padding:0 6px;"></td>
       <td style="background:#f1f5f9;padding:12px;border-radius:8px;">
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;">Etkilenen Daire</div>
         <div style="font-size:28px;font-weight:bold;color:#d97706;">${ihlalRow.etkilenen_daire}</div>
       </td>
-      <td style="padding:0 8px;"></td>
+      <td style="padding:0 6px;"></td>
       <td style="background:#f1f5f9;padding:12px;border-radius:8px;">
         <div style="font-size:11px;color:#64748b;text-transform:uppercase;">Bildirim Başarı</div>
         <div style="font-size:28px;font-weight:bold;color:#059669;">%${basari_orani}</div>
@@ -279,7 +286,7 @@ async function runEmailRaporu(now = dayjs().tz(TR_TZ)) {
         ...data,
       });
       const subject = `ParkTrack ${frequencyLabel(s.frequency)} Özet — ${site?.ad || ''} (${bitis})`;
-      const text = `${subject}\n\nDönem: ${baslangic} → ${bitis}\nToplam ihlal: ${(data.ihlalRow.coklu_arac || 0) + (data.ihlalRow.kayitsiz || 0)}\nEtkilenen daire: ${data.ihlalRow.etkilenen_daire}\nBildirim başarı: ${data.bildirimRow.toplam ? Math.round((data.bildirimRow.gonderildi / data.bildirimRow.toplam) * 100) : 0}%\n${buildDetayText(data.detay)}`;
+      const text = `${subject}\n\nDönem: ${baslangic} → ${bitis}\nİhlal kaydı: ${(data.ihlalRow.coklu_arac || 0) + (data.ihlalRow.kayitsiz || 0)} (${data.ihlalRow.coklu_arac || 0} çoklu • ${data.ihlalRow.kayitsiz || 0} kayıtsız)\nKayıtsız plaka: ${data.ihlalRow.kayitsiz_plaka || 0}\nEtkilenen daire: ${data.ihlalRow.etkilenen_daire}\nBildirim başarı: ${data.bildirimRow.toplam ? Math.round((data.bildirimRow.gonderildi / data.bildirimRow.toplam) * 100) : 0}%\n${buildDetayText(data.detay)}`;
 
       const r = await sendMail({ to: s.email, subject, html, text });
       if (r.ok) {

@@ -88,7 +88,7 @@ describe('emailRaporu.buildHtml', () => {
     frequency: 'weekly',
     baslangic: '2026-05-21',
     bitis: '2026-05-27',
-    ihlalRow: { coklu_arac: 5, kayitsiz: 2, etkilenen_daire: 3 },
+    ihlalRow: { coklu_arac: 5, kayitsiz: 2, kayitsiz_plaka: 27, etkilenen_daire: 3 },
     bildirimRow: { toplam: 4, gonderildi: 3 },
     top: [
       { daire_no: 'B5', sahip_ad: 'Ayşe', ihlal_sayisi: 3 },
@@ -113,6 +113,14 @@ describe('emailRaporu.buildHtml', () => {
   test('HTML başarı yüzdesini doğru hesaplar', () => {
     const html = buildHtml(data);
     expect(html).toMatch(/%75/);
+  });
+
+  test('"İhlal Kaydı" etiketi + ayrı "Kayıtsız Plaka" göstergesi (kayıt vs plaka karışmasın)', () => {
+    const html = buildHtml(data);
+    expect(html).toContain('İhlal Kaydı');
+    expect(html).not.toContain('Toplam İhlal');
+    expect(html).toContain('Kayıtsız Plaka');
+    expect(html).toMatch(/>27</); // kayitsiz_plaka ayrı gösterilir
   });
 
   test('Top listesi boş ise alternatif mesaj', () => {
