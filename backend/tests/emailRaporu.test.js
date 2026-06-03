@@ -9,7 +9,7 @@ const timezone = require('dayjs/plugin/timezone');
 dayjs.extend(utc);
 dayjs.extend(timezone);
 
-const { isDueToday, buildHtml, frequencyLabel, reportWindow } = require('../src/jobs/emailRaporu');
+const { isDueToday, buildHtml, frequencyLabel, reportWindow, buildDetay } = require('../src/jobs/emailRaporu');
 
 const TR = 'Europe/Istanbul';
 
@@ -124,6 +124,45 @@ describe('emailRaporu.buildHtml', () => {
     const html = buildHtml({ ...data, siteAd: '<script>alert(1)</script>', top: [] });
     expect(html).not.toContain('<script>alert(1)</script>');
     expect(html).toContain('&lt;script&gt;');
+  });
+});
+
+describe('emailRaporu.buildDetay', () => {
+  const detay = [
+    { kontrol_tarihi: '2026-06-02', ihlal_tipi: 'coklu_arac', daire_no: 'B5', sahip_ad: 'Ayşe', plaka_listesi: ['34ABC123', '06XYZ99'] },
+    { kontrol_tarihi: '2026-06-02', ihlal_tipi: 'kayitsiz', daire_no: null, sahip_ad: null, plaka_listesi: ['35ZZZ01'] },
+  ];
+
+  test('çoklu araç detayında daire + sahip + plakalar görünür', () => {
+    const html = buildDetay(detay);
+    expect(html).toContain('Çoklu Araç İhlalleri');
+    expect(html).toContain('B5');
+    expect(html).toContain('Ayşe');
+    expect(html).toContain('34ABC123');
+    expect(html).toContain('06XYZ99');
+  });
+
+  test('kayıtsız plaka detayı ayrı tabloda', () => {
+    const html = buildDetay(detay);
+    expect(html).toContain('Kayıtsız Plakalar');
+    expect(html).toContain('35ZZZ01');
+  });
+
+  test('plaka_listesi JSON string ise de parse eder', () => {
+    const html = buildDetay([{ kontrol_tarihi: '2026-06-02', ihlal_tipi: 'coklu_arac', daire_no: 'A1', sahip_ad: 'Ali', plaka_listesi: '["34AA11","34BB22"]' }]);
+    expect(html).toContain('34AA11');
+    expect(html).toContain('34BB22');
+  });
+
+  test('plaka XSS escape edilir', () => {
+    const html = buildDetay([{ kontrol_tarihi: '2026-06-02', ihlal_tipi: 'kayitsiz', plaka_listesi: ['<script>x</script>'] }]);
+    expect(html).not.toContain('<script>x</script>');
+    expect(html).toContain('&lt;script&gt;');
+  });
+
+  test('boş detay → boş string (bölüm render edilmez)', () => {
+    expect(buildDetay([])).toBe('');
+    expect(buildDetay()).toBe('');
   });
 });
 

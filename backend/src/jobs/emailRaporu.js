@@ -67,7 +67,23 @@ async function collectOzet(siteId, baslangic, bitis) {
     )
     .orderBy('ihlal_sayisi', 'desc')
     .limit(5);
-  return { ihlalRow, bildirimRow, top };
+  // Detay: dönemdeki tüm ihlal kayıtları (daire + plakalar).
+  const detay = await db('ihlaller')
+    .leftJoin('daireler', 'ihlaller.daire_id', 'daireler.id')
+    .where('ihlaller.site_id', siteId)
+    .whereBetween('ihlaller.kontrol_tarihi', [baslangic, bitis])
+    .select(
+      'ihlaller.kontrol_tarihi',
+      'ihlaller.ihlal_tipi',
+      'ihlaller.plaka_listesi',
+      db.raw('COALESCE(daireler.daire_no, ihlaller.daire_no_snapshot) as daire_no'),
+      'daireler.sahip_ad'
+    )
+    .orderBy([
+      { column: 'ihlaller.kontrol_tarihi', order: 'desc' },
+      { column: 'daireler.daire_no', order: 'asc' },
+    ]);
+  return { ihlalRow, bildirimRow, top, detay };
 }
 
 function frequencyToDays(freq) {
@@ -102,7 +118,85 @@ function escapeHtml(s) {
     .replaceAll('"', '&quot;').replaceAll("'", '&#39;');
 }
 
-function buildHtml({ siteAd, frequency, baslangic, bitis, ihlalRow, bildirimRow, top }) {
+function parsePlakalar(v) {
+  if (Array.isArray(v)) return v;
+  try { return JSON.parse(v || '[]'); } catch { return []; }
+}
+
+function fmtTarih(t) {
+  if (!t) return '';
+  return dayjs(t).tz(TR_TZ).format('YYYY-MM-DD');
+}
+
+function buildDetay(detay = []) {
+  const coklu = detay.filter((d) => d.ihlal_tipi === 'coklu_arac');
+  const kayitsiz = detay.filter((d) => d.ihlal_tipi === 'kayitsiz');
+  if (!coklu.length && !kayitsiz.length) return '';
+
+  const td = 'padding:6px 10px;border-bottom:1px solid #eee;';
+  const cokluRows = coklu.map((d) => {
+    const plakalar = parsePlakalar(d.plaka_listesi);
+    return `
+    <tr>
+      <td style="${td}white-space:nowrap;color:#64748b;">${fmtTarih(d.kontrol_tarihi)}</td>
+      <td style="${td}font-family:monospace;font-weight:bold;">${escapeHtml(d.daire_no || '—')}</td>
+      <td style="${td}">${escapeHtml(d.sahip_ad || '—')}</td>
+      <td style="${td}font-family:monospace;">${plakalar.map((p) => escapeHtml(p)).join(', ')}</td>
+    </tr>`;
+  }).join('');
+
+  const kayitsizRows = kayitsiz.map((d) => {
+    const plakalar = parsePlakalar(d.plaka_listesi);
+    return `
+    <tr>
+      <td style="${td}white-space:nowrap;color:#64748b;">${fmtTarih(d.kontrol_tarihi)}</td>
+      <td style="${td}font-family:monospace;">${plakalar.map((p) => escapeHtml(p)).join(', ')}</td>
+    </tr>`;
+  }).join('');
+
+  const cokluTablo = coklu.length ? `
+    <h3 style="margin:24px 0 8px;color:#0f172a;">Çoklu Araç İhlalleri (Detay)</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <thead><tr style="background:#dc2626;color:white;">
+        <th style="padding:8px 10px;text-align:left;">Tarih</th>
+        <th style="padding:8px 10px;text-align:left;">Daire</th>
+        <th style="padding:8px 10px;text-align:left;">Sahip</th>
+        <th style="padding:8px 10px;text-align:left;">Plakalar</th>
+      </tr></thead>
+      <tbody>${cokluRows}</tbody>
+    </table>` : '';
+
+  const kayitsizTablo = kayitsiz.length ? `
+    <h3 style="margin:24px 0 8px;color:#0f172a;">Kayıtsız Plakalar (Detay)</h3>
+    <table style="width:100%;border-collapse:collapse;font-size:14px;">
+      <thead><tr style="background:#d97706;color:white;">
+        <th style="padding:8px 10px;text-align:left;">Tarih</th>
+        <th style="padding:8px 10px;text-align:left;">Plakalar</th>
+      </tr></thead>
+      <tbody>${kayitsizRows}</tbody>
+    </table>` : '';
+
+  return cokluTablo + kayitsizTablo;
+}
+
+function buildDetayText(detay = []) {
+  const coklu = detay.filter((d) => d.ihlal_tipi === 'coklu_arac');
+  const kayitsiz = detay.filter((d) => d.ihlal_tipi === 'kayitsiz');
+  let out = '';
+  if (coklu.length) {
+    out += '\nÇoklu araç ihlalleri:\n';
+    out += coklu.map((d) => `  ${fmtTarih(d.kontrol_tarihi)} ${d.daire_no || '—'} (${d.sahip_ad || '—'}): ${parsePlakalar(d.plaka_listesi).join(', ')}`).join('\n');
+    out += '\n';
+  }
+  if (kayitsiz.length) {
+    out += '\nKayıtsız plakalar:\n';
+    out += kayitsiz.map((d) => `  ${fmtTarih(d.kontrol_tarihi)}: ${parsePlakalar(d.plaka_listesi).join(', ')}`).join('\n');
+    out += '\n';
+  }
+  return out;
+}
+
+function buildHtml({ siteAd, frequency, baslangic, bitis, ihlalRow, bildirimRow, top, detay }) {
   const toplam = (ihlalRow.coklu_arac || 0) + (ihlalRow.kayitsiz || 0);
   const basari_orani = bildirimRow.toplam > 0
     ? Math.round((bildirimRow.gonderildi / bildirimRow.toplam) * 1000) / 10 : 0;
@@ -154,6 +248,8 @@ function buildHtml({ siteAd, frequency, baslangic, bitis, ihlalRow, bildirimRow,
     </table>
   ` : '<p style="color:#64748b;">Bu dönemde ihlal kaydı yok.</p>'}
 
+  ${buildDetay(detay)}
+
   <p style="color:#94a3b8;font-size:12px;margin-top:24px;">
     Bu rapor otomatik olarak gönderildi. Aboneliği yönetmek için Raporlar
     sayfasındaki "Email Aboneliği" bölümünü kullanın.
@@ -183,7 +279,7 @@ async function runEmailRaporu(now = dayjs().tz(TR_TZ)) {
         ...data,
       });
       const subject = `ParkTrack ${frequencyLabel(s.frequency)} Özet — ${site?.ad || ''} (${bitis})`;
-      const text = `${subject}\n\nDönem: ${baslangic} → ${bitis}\nToplam ihlal: ${(data.ihlalRow.coklu_arac || 0) + (data.ihlalRow.kayitsiz || 0)}\nEtkilenen daire: ${data.ihlalRow.etkilenen_daire}\nBildirim başarı: ${data.bildirimRow.toplam ? Math.round((data.bildirimRow.gonderildi / data.bildirimRow.toplam) * 100) : 0}%\n`;
+      const text = `${subject}\n\nDönem: ${baslangic} → ${bitis}\nToplam ihlal: ${(data.ihlalRow.coklu_arac || 0) + (data.ihlalRow.kayitsiz || 0)}\nEtkilenen daire: ${data.ihlalRow.etkilenen_daire}\nBildirim başarı: ${data.bildirimRow.toplam ? Math.round((data.bildirimRow.gonderildi / data.bildirimRow.toplam) * 100) : 0}%\n${buildDetayText(data.detay)}`;
 
       const r = await sendMail({ to: s.email, subject, html, text });
       if (r.ok) {
@@ -224,4 +320,4 @@ if (require.main === module) {
   })();
 }
 
-module.exports = { runEmailRaporu, isDueToday, buildHtml, frequencyLabel, reportWindow };
+module.exports = { runEmailRaporu, isDueToday, buildHtml, frequencyLabel, reportWindow, buildDetay };
