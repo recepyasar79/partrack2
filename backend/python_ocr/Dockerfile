@@ -17,10 +17,12 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     curl \
  && rm -rf /var/lib/apt/lists/*
 
-# PaddlePaddle CPU wheel: official PyPI'da yok, Baidu kendi index'inde
-# yayınlıyor. Bu wheel'i ayrı bir adımda çekiyoruz ki torch/easyocr resolution'a
+# PaddlePaddle CPU wheel ayrı bir adımda — torch/easyocr resolution'a
 # karışmasın (PaddlePaddle protobuf/numpy çakışmaları sevmiyor).
-RUN pip install paddlepaddle==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
+# Önce PyPI (CPU wheel'leri orada da yayınlanıyor); Baidu index'i fallback —
+# 2026-06-11'de www.paddlepaddle.org.cn DNS çözmedi ve build'i kırdı.
+RUN pip install paddlepaddle==3.0.0 \
+ || pip install paddlepaddle==3.0.0 -i https://www.paddlepaddle.org.cn/packages/stable/cpu/
 
 # Install Python deps in a single resolution pass so pip can pick mutually
 # compatible versions of torch/numpy/easyocr. Pinning torch==2.2.2 here while
