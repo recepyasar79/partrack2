@@ -55,3 +55,6 @@ uploads/
 Screenshot*.png
 Screenshot*.jpg
 Screenshot*.jpeg
+
+# Claude Code lokal ayarlari
+.claude/
