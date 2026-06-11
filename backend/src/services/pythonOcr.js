@@ -16,6 +16,13 @@ const FormData = require('form-data');
 const DEFAULT_URL = process.env.PYTHON_OCR_URL || 'http://python-ocr:5000';
 const TIMEOUT_MS = parseInt(process.env.PYTHON_OCR_TIMEOUT_MS || '20000', 10);
 
+// Shared secret — OCR servisi public URL'de, OCR_API_KEY her iki app'te de
+// set edilince /ocr yalnız bu header'la çalışır (app.py _check_api_key).
+function authHeaders() {
+  const key = process.env.OCR_API_KEY;
+  return key ? { 'X-OCR-KEY': key } : {};
+}
+
 // Short-lived agents — keep-alive was causing stuck-socket timeouts when the
 // OCR machine restarted (backend was reusing dead TCP connections that hung
 // silently for 180s). The 50-200ms handshake savings per request aren't
@@ -40,7 +47,7 @@ async function recognizePlate(buffer, { filename = 'plate.jpg', mimeType = 'imag
   const url = `${DEFAULT_URL.replace(/\/$/, '')}/ocr${debug ? '?debug=true' : ''}`;
   try {
     const response = await axios.post(url, form, {
-      headers: form.getHeaders(),
+      headers: { ...form.getHeaders(), ...authHeaders() },
       timeout: TIMEOUT_MS,
       maxBodyLength: 15 * 1024 * 1024,
       maxContentLength: 15 * 1024 * 1024,

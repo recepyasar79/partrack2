@@ -259,9 +259,25 @@ router.post('/bulk-import', requireSiteAdmin, async (req, res) => {
   const site = await db('sites').where({ id: req.scopedSiteId }).first();
   const blokYapisi = site?.blok_yapisi || [];
 
+  // Plan limit kontrolü (Ü2) — tekil POST'taki kontrolün aynısı. Bulk-import
+  // bunu atlarsa CSV ile limit bypass edilir. Mevcut sayıyı bir kez çekip
+  // döngüde insert başına artırıyoruz; başarısız satırlar sayacı artırmaz.
+  const limits = getEffectiveLimits(site);
+  let aktifDaireSayisi = 0;
+  if (limits.daire_max != null) {
+    const aktifCount = await db('daireler')
+      .where({ site_id: req.scopedSiteId, aktif: true })
+      .count('* as c')
+      .first();
+    aktifDaireSayisi = parseInt(aktifCount.c, 10) || 0;
+  }
+
   for (let i = 0; i < satirlar.length; i++) {
     const s = satirlar[i];
     try {
+      if (isLimitReached(limits.daire_max, aktifDaireSayisi)) {
+        throw new Error(`Plan limiti doldu (${aktifDaireSayisi}/${limits.daire_max} daire)`);
+      }
       const parsed = parseDaireNoFlexible(s.daire_no);
       if (!parsed || !isValidDaireInSite(parsed, blokYapisi)) {
         throw new Error('Geçersiz daire_no (site yapısına uymuyor)');
@@ -283,6 +299,7 @@ router.post('/bulk-import', requireSiteAdmin, async (req, res) => {
         site_id: req.scopedSiteId,
       }).returning(['id', 'daire_no']);
       eklenenler.push(created);
+      aktifDaireSayisi += 1;
     } catch (err) {
       hatalar.push({ satir: i + 1, daire_no: s.daire_no, hata: err.message });
     }

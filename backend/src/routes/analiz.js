@@ -203,7 +203,10 @@ router.get('/ihlaller', async (req, res, next) => {
     if (bitis) qb = qb.where('ihlaller.kontrol_tarihi', '<=', bitis);
     if (daire_id) qb = qb.where('ihlaller.daire_id', daire_id);
     if (tipi) qb = qb.where('ihlaller.ihlal_tipi', tipi);
-    const ihlaller = await qb.orderBy('ihlaller.kontrol_tarihi', 'desc');
+    // Sınırsız liste zamanla büyür (her satırda JSONB plaka listesi) —
+    // bildirimler'deki gibi üst sınır. ?limit ile düşürülebilir, 1000'i aşamaz.
+    const limit = Math.min(parseInt(req.query.limit, 10) || 500, 1000);
+    const ihlaller = await qb.orderBy('ihlaller.kontrol_tarihi', 'desc').limit(limit);
     res.json({ ihlaller });
   } catch (e) { next(e); }
 });

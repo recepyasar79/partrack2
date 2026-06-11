@@ -13,7 +13,7 @@ from typing import List, Optional, Tuple
 
 import cv2
 import numpy as np
-from fastapi import FastAPI, File, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
 
 import easyocr
@@ -586,6 +586,26 @@ def recognize(image_bytes: bytes, debug: bool = False):
 # ---------------------------------------------------------------------------
 app = FastAPI(title="ParkTrack OCR", version="2.0.0")
 
+# ---------------------------------------------------------------------------
+# Auth — shared secret
+# ---------------------------------------------------------------------------
+# Servis public URL'de (parktrack-ocr.fly.dev) yaşıyor; OCR_API_KEY set
+# edildiğinde /ocr yalnız doğru X-OCR-KEY header'ı ile çağrılabilir. Aksi
+# halde herkes CPU'yu kullanabilir (maliyet + tek worker'ı doldurma riski).
+# /health açık kalır — Fly health check'leri header gönderemiyor.
+# Rollout: önce her iki app'e secret'ı koy, sonra enforce otomatik başlar.
+OCR_API_KEY = os.environ.get("OCR_API_KEY", "")
+if not OCR_API_KEY:
+    log.warning("OCR_API_KEY tanımlı değil — /ocr endpoint'i kimlik doğrulamasız çalışıyor!")
+
+
+def _check_api_key(provided: Optional[str]) -> None:
+    if not OCR_API_KEY:
+        return  # enforce kapalı (lokal dev / henüz secret atanmamış)
+    import hmac
+    if not provided or not hmac.compare_digest(provided, OCR_API_KEY):
+        raise HTTPException(status_code=401, detail="Invalid or missing X-OCR-KEY")
+
 
 @app.get("/health")
 def health():
@@ -599,7 +619,12 @@ def health():
 
 
 @app.post("/ocr")
-async def ocr(file: UploadFile = File(...), debug: bool = False):
+async def ocr(
+    file: UploadFile = File(...),
+    debug: bool = False,
+    x_ocr_key: Optional[str] = Header(default=None),
+):
+    _check_api_key(x_ocr_key)
     if not file:
         raise HTTPException(status_code=400, detail="No file uploaded")
     content = await file.read()

@@ -40,44 +40,86 @@ router.get('/dashboard', async (req, res, next) => {
       .startOf('month')
       .format('YYYY-MM-DD');
 
-    const ihlalAgg = await db('ihlaller')
-      .where({ site_id: siteId })
-      .whereBetween('kontrol_tarihi', [baslangic, bitis])
-      .select(
-        db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN 1 ELSE 0 END),0)::int as coklu_arac`),
-        db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='kayitsiz' THEN 1 ELSE 0 END),0)::int as kayitsiz`),
-        db.raw(`COUNT(DISTINCT daire_id) FILTER (WHERE daire_id IS NOT NULL)::int as etkilenen_daire`)
-      )
-      .first();
-
-    const kontrolGunRow = await db('gunluk_kontroller')
-      .join('users', 'gunluk_kontroller.yukleyen_user_id', 'users.id')
-      .where('users.site_id', siteId)
-      .whereBetween('kontrol_tarihi', [baslangic, bitis])
-      .countDistinct({ c: 'kontrol_tarihi' })
-      .first();
+    // 7 sorgu birbirinden bağımsız — seri await yerine tek dalgada çalıştır.
+    // Neon'a RTT başına ~20-40ms; seri haliyle dashboard 150-250ms ekstra
+    // bekliyordu. Knex query builder'ları thenable — Promise.all direkt alır.
+    const [
+      ihlalAgg,
+      kontrolGunRow,
+      bildirimAgg,
+      gunlukRows,
+      aylikRows,
+      blokRows,
+      topRows,
+    ] = await Promise.all([
+      db('ihlaller')
+        .where({ site_id: siteId })
+        .whereBetween('kontrol_tarihi', [baslangic, bitis])
+        .select(
+          db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN 1 ELSE 0 END),0)::int as coklu_arac`),
+          db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='kayitsiz' THEN 1 ELSE 0 END),0)::int as kayitsiz`),
+          db.raw(`COUNT(DISTINCT daire_id) FILTER (WHERE daire_id IS NOT NULL)::int as etkilenen_daire`)
+        )
+        .first(),
+      db('gunluk_kontroller')
+        .join('users', 'gunluk_kontroller.yukleyen_user_id', 'users.id')
+        .where('users.site_id', siteId)
+        .whereBetween('kontrol_tarihi', [baslangic, bitis])
+        .countDistinct({ c: 'kontrol_tarihi' })
+        .first(),
+      db('bildirimler')
+        .where({ site_id: siteId })
+        .whereBetween('olusturma_zamani', [baslangic, dayjs.tz(bitis, TR_TZ).endOf('day').toISOString()])
+        .select(
+          db.raw(`COUNT(*)::int as toplam`),
+          db.raw(`COALESCE(SUM(CASE WHEN gonderim_durumu='gonderildi' THEN 1 ELSE 0 END),0)::int as gonderildi`),
+          db.raw(`COALESCE(SUM(CASE WHEN gonderim_durumu='basarisiz' THEN 1 ELSE 0 END),0)::int as basarisiz`),
+          db.raw(`COALESCE(SUM(CASE WHEN gonderim_durumu='beklemede' THEN 1 ELSE 0 END),0)::int as beklemede`)
+        )
+        .first(),
+      db('ihlaller')
+        .where({ site_id: siteId })
+        .whereBetween('kontrol_tarihi', [baslangic, bitis])
+        .groupBy('kontrol_tarihi', 'ihlal_tipi')
+        .select(
+          db.raw(`to_char(kontrol_tarihi, 'YYYY-MM-DD') as tarih`),
+          'ihlal_tipi',
+          db.raw(`COUNT(*)::int as adet`)
+        ),
+      db('ihlaller')
+        .where({ site_id: siteId })
+        .whereBetween('kontrol_tarihi', [aylik_baslangic, aylik_bitis])
+        .groupByRaw(`to_char(kontrol_tarihi, 'YYYY-MM'), ihlal_tipi`)
+        .select(
+          db.raw(`to_char(kontrol_tarihi, 'YYYY-MM') as ay`),
+          'ihlal_tipi',
+          db.raw(`COUNT(*)::int as adet`)
+        ),
+      db('ihlaller')
+        .join('daireler', 'ihlaller.daire_id', 'daireler.id')
+        .where('ihlaller.site_id', siteId)
+        .whereBetween('ihlaller.kontrol_tarihi', [baslangic, bitis])
+        .andWhere('ihlaller.ihlal_tipi', 'coklu_arac')
+        .groupBy('daireler.blok')
+        .select('daireler.blok', db.raw(`COUNT(*)::int as ihlal`))
+        .orderBy('daireler.blok', 'asc'),
+      db('ihlaller')
+        .join('daireler', 'ihlaller.daire_id', 'daireler.id')
+        .where('ihlaller.site_id', siteId)
+        .whereBetween('ihlaller.kontrol_tarihi', [baslangic, bitis])
+        .andWhere('ihlaller.ihlal_tipi', 'coklu_arac')
+        .groupBy('daireler.id', 'daireler.daire_no', 'daireler.sahip_ad')
+        .select(
+          'daireler.daire_no',
+          'daireler.sahip_ad',
+          db.raw(`COUNT(*)::int as ihlal_sayisi`),
+          db.raw(`MAX(ihlaller.kontrol_tarihi) as son_ihlal`)
+        )
+        .orderBy('ihlal_sayisi', 'desc')
+        .limit(10),
+    ]);
     const kontrol_yapilan_gun = parseInt(kontrolGunRow?.c || 0, 10);
 
-    const bildirimAgg = await db('bildirimler')
-      .where({ site_id: siteId })
-      .whereBetween('olusturma_zamani', [baslangic, dayjs.tz(bitis, TR_TZ).endOf('day').toISOString()])
-      .select(
-        db.raw(`COUNT(*)::int as toplam`),
-        db.raw(`COALESCE(SUM(CASE WHEN gonderim_durumu='gonderildi' THEN 1 ELSE 0 END),0)::int as gonderildi`),
-        db.raw(`COALESCE(SUM(CASE WHEN gonderim_durumu='basarisiz' THEN 1 ELSE 0 END),0)::int as basarisiz`),
-        db.raw(`COALESCE(SUM(CASE WHEN gonderim_durumu='beklemede' THEN 1 ELSE 0 END),0)::int as beklemede`)
-      )
-      .first();
-
-    const gunlukRows = await db('ihlaller')
-      .where({ site_id: siteId })
-      .whereBetween('kontrol_tarihi', [baslangic, bitis])
-      .groupBy('kontrol_tarihi', 'ihlal_tipi')
-      .select(
-        db.raw(`to_char(kontrol_tarihi, 'YYYY-MM-DD') as tarih`),
-        'ihlal_tipi',
-        db.raw(`COUNT(*)::int as adet`)
-      );
     const gunlukMap = new Map();
     for (const r of gunlukRows) {
       if (!gunlukMap.has(r.tarih)) gunlukMap.set(r.tarih, { tarih: r.tarih, coklu_arac: 0, kayitsiz: 0 });
@@ -85,15 +127,6 @@ router.get('/dashboard', async (req, res, next) => {
     }
     const gunluk_trend = Array.from(gunlukMap.values()).sort((a, b) => a.tarih.localeCompare(b.tarih));
 
-    const aylikRows = await db('ihlaller')
-      .where({ site_id: siteId })
-      .whereBetween('kontrol_tarihi', [aylik_baslangic, aylik_bitis])
-      .groupByRaw(`to_char(kontrol_tarihi, 'YYYY-MM'), ihlal_tipi`)
-      .select(
-        db.raw(`to_char(kontrol_tarihi, 'YYYY-MM') as ay`),
-        'ihlal_tipi',
-        db.raw(`COUNT(*)::int as adet`)
-      );
     const aylikMap = new Map();
     for (const r of aylikRows) {
       if (!aylikMap.has(r.ay)) aylikMap.set(r.ay, { ay: r.ay, coklu_arac: 0, kayitsiz: 0 });
@@ -101,30 +134,8 @@ router.get('/dashboard', async (req, res, next) => {
     }
     const aylik_trend = Array.from(aylikMap.values()).sort((a, b) => a.ay.localeCompare(b.ay));
 
-    const blokRows = await db('ihlaller')
-      .join('daireler', 'ihlaller.daire_id', 'daireler.id')
-      .where('ihlaller.site_id', siteId)
-      .whereBetween('ihlaller.kontrol_tarihi', [baslangic, bitis])
-      .andWhere('ihlaller.ihlal_tipi', 'coklu_arac')
-      .groupBy('daireler.blok')
-      .select('daireler.blok', db.raw(`COUNT(*)::int as ihlal`))
-      .orderBy('daireler.blok', 'asc');
     const blok_dagilim = blokRows.map((r) => ({ blok: r.blok, ihlal: r.ihlal }));
 
-    const topRows = await db('ihlaller')
-      .join('daireler', 'ihlaller.daire_id', 'daireler.id')
-      .where('ihlaller.site_id', siteId)
-      .whereBetween('ihlaller.kontrol_tarihi', [baslangic, bitis])
-      .andWhere('ihlaller.ihlal_tipi', 'coklu_arac')
-      .groupBy('daireler.id', 'daireler.daire_no', 'daireler.sahip_ad')
-      .select(
-        'daireler.daire_no',
-        'daireler.sahip_ad',
-        db.raw(`COUNT(*)::int as ihlal_sayisi`),
-        db.raw(`MAX(ihlaller.kontrol_tarihi) as son_ihlal`)
-      )
-      .orderBy('ihlal_sayisi', 'desc')
-      .limit(10);
     const top_daireler = topRows.map((r) => ({
       daire_no: r.daire_no,
       sahip_ad: r.sahip_ad,

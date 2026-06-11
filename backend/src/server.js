@@ -30,6 +30,12 @@ const { isR2Configured } = require('./services/storage');
 
 const { notFound, errorHandler } = require('./middleware/errorHandler');
 
+// Fail-fast: production'da JWT_SECRET yoksa hiç ayağa kalkma — utils/auth.js
+// fallback'i yalnız dev içindir, prod'da bilinen secret = token sahteciliği.
+if (process.env.NODE_ENV === 'production' && !process.env.JWT_SECRET) {
+  throw new Error('JWT_SECRET env var production ortamında zorunlu. `fly secrets set JWT_SECRET=...` ile tanımlayın.');
+}
+
 const app = express();
 const PORT = process.env.PORT || 3000;
 const FRONTEND_URL = process.env.FRONTEND_URL || 'http://localhost:5173';
