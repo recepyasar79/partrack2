@@ -187,6 +187,57 @@ describe('GET /api/raporlar/dashboard', () => {
     expect(res.body.ozet.toplam_ihlal).toBe(0);
   });
 
+  test('arac-adedi metrikleri: kayitsiz_arac plaka sayar, coklu_fazla_arac k-1 sayar', async () => {
+    const daire = await createTestDaire({ daire_no: 'A1' });
+    const today = new Date().toISOString().slice(0, 10);
+    // 1 coklu_arac kaydı, 3 plakalı → fazla araç = 2
+    await seedIhlaller({
+      daireId: daire.id, dates: [today], tipi: 'coklu_arac',
+      plakalar: ['34X001', '34X002', '34X003'],
+    });
+    // 1 kayitsiz kaydı, 4 plakalı → kayıtsız araç = 4
+    await seedIhlaller({
+      dates: [today], tipi: 'kayitsiz',
+      plakalar: ['99A1', '99A2', '99A3', '99A4'],
+    });
+    // foto sayısı
+    await db('gunluk_kontroller').insert([
+      { kontrol_tarihi: today, plaka: '34X001', site_id: 1, yukleyen_user_id: admin.id },
+      { kontrol_tarihi: today, plaka: '34X002', site_id: 1, yukleyen_user_id: admin.id },
+    ]);
+
+    const res = await request(app)
+      .get('/api/raporlar/dashboard')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.ozet.kayitsiz_arac).toBe(4);
+    expect(res.body.ozet.coklu_fazla_arac).toBe(2);
+    expect(res.body.ozet.toplam_foto).toBe(2);
+    // Eski alanlar (kayıt sayısı) geriye uyumlu kalır
+    expect(res.body.ozet.coklu_arac).toBe(1);
+    expect(res.body.ozet.kayitsiz).toBe(1);
+  });
+
+  test('donem_ozet bugun/bu_hafta/bu_ay dondurur (secili aralıktan bagimsiz)', async () => {
+    const daire = await createTestDaire({ daire_no: 'A1' });
+    // donem_ozet TR gününe göre hesaplanır (UTC değil) — TR = UTC+3 sabit.
+    const todayTr = new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
+    await seedIhlaller({
+      daireId: daire.id, dates: [todayTr], tipi: 'coklu_arac',
+      plakalar: ['34X001', '34X002'], // fazla araç = 1
+    });
+
+    // Geçmiş bir aralık seçilse bile donem_ozet bugünü gösterir
+    const res = await request(app)
+      .get('/api/raporlar/dashboard?baslangic=2026-01-01&bitis=2026-01-31')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.donem_ozet.bugun.coklu_fazla_arac).toBe(1);
+    expect(res.body.donem_ozet.bu_hafta.coklu_fazla_arac).toBeGreaterThanOrEqual(1);
+    expect(res.body.donem_ozet.bu_ay.coklu_fazla_arac).toBeGreaterThanOrEqual(1);
+    expect(res.body.donem_ozet.bugun.kayitsiz_arac).toBe(0);
+  });
+
   test('aylik_trend son 12 ay dondurur', async () => {
     const daire = await createTestDaire({ daire_no: 'A1' });
     await seedIhlaller({ daireId: daire.id, dates: ['2026-01-15', '2026-02-20', '2026-03-10'] });

@@ -32,6 +32,14 @@ function dashboardPayload(overrides = {}) {
       kayitsiz: 3,
       etkilenen_daire: 4,
       kontrol_yapilan_gun: 26,
+      toplam_foto: 41,
+      kayitsiz_arac: 5,
+      coklu_fazla_arac: 11,
+    },
+    donem_ozet: {
+      bugun: { kayitsiz_arac: 1, coklu_fazla_arac: 2 },
+      bu_hafta: { kayitsiz_arac: 3, coklu_fazla_arac: 6 },
+      bu_ay: { kayitsiz_arac: 5, coklu_fazla_arac: 11 },
     },
     bildirim: {
       toplam: 8,
@@ -80,14 +88,24 @@ describe('RaporlarDashboard', () => {
     renderDashboard();
 
     await waitFor(() => {
-      expect(screen.getByText('12')).toBeInTheDocument();
+      expect(screen.getByText('41')).toBeInTheDocument(); // toplam_foto
     });
-    expect(screen.getByText(/9 çoklu/i)).toBeInTheDocument();
-    expect(screen.getByText(/3 kayıtsız/i)).toBeInTheDocument();
-    expect(screen.getByText('4')).toBeInTheDocument(); // etkilenen_daire
-    expect(screen.getByText('26')).toBeInTheDocument(); // kontrol_yapilan_gun
+    expect(screen.getByText('Yüklenen Foto')).toBeInTheDocument();
+    expect(screen.getByText('Kayıtsız Araç')).toBeInTheDocument();
+    expect(screen.getByText('Çoklu Araç')).toBeInTheDocument();
+    expect(screen.getByText(/4 dairede fazla araç/i)).toBeInTheDocument();
     expect(screen.getByText('%75')).toBeInTheDocument();
     expect(screen.getByText('6/8 gönderildi')).toBeInTheDocument();
+  });
+
+  test('dönem özeti (Bugün/Bu Hafta/Bu Ay) render edilir', async () => {
+    apiMock.get.mockResolvedValueOnce({ data: dashboardPayload() });
+    renderDashboard();
+
+    await waitFor(() => expect(screen.getByText('Dönem Özeti')).toBeInTheDocument());
+    expect(screen.getByText('Bugün')).toBeInTheDocument();
+    expect(screen.getByText('Bu Hafta')).toBeInTheDocument();
+    expect(screen.getByText('Bu Ay')).toBeInTheDocument();
   });
 
   test('bos veri bos state mesajlari gosterir', async () => {

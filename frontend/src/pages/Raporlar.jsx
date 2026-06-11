@@ -27,7 +27,9 @@ export default function Raporlar() {
   const toast = useToast();
   const [tab, setTab] = useState('dashboard');
   const [filt, setFilt] = useState({
-    baslangic: bugunMinusGun(30),
+    // Default: bugün → bugün. Güvenlik/yönetici önce "bugün ne oldu"ya bakar;
+    // geçmiş için tarihleri elle genişletir.
+    baslangic: bugunMinusGun(0),
     bitis: bugunMinusGun(0),
     durum: '',
   });
@@ -113,9 +115,9 @@ export default function Raporlar() {
         pdf.addTable({
           head: [['Metrik', 'Değer']],
           body: [
-            ['Toplam İhlal', String(data.ozet.toplam_ihlal)],
-            ['Çoklu Araç', String(data.ozet.coklu_arac)],
-            ['Kayıtsız Plaka', String(data.ozet.kayitsiz)],
+            ['Yüklenen Foto', String(data.ozet.toplam_foto)],
+            ['Kayıtsız Araç', String(data.ozet.kayitsiz_arac)],
+            ['Çoklu Araç (Fazla)', String(data.ozet.coklu_fazla_arac)],
             ['Etkilenen Daire', String(data.ozet.etkilenen_daire)],
             ['Kontrol Günü', String(data.ozet.kontrol_yapilan_gun)],
             ['Bildirim Toplam', String(data.bildirim.toplam)],

@@ -43,14 +43,25 @@ router.get('/dashboard', async (req, res, next) => {
     // 7 sorgu birbirinden bağımsız — seri await yerine tek dalgada çalıştır.
     // Neon'a RTT başına ~20-40ms; seri haliyle dashboard 150-250ms ekstra
     // bekliyordu. Knex query builder'ları thenable — Promise.all direkt alır.
+    // Dönem özeti (Bugün / Bu Hafta / Bu Ay) — üst tarih filtresinden
+    // bağımsız. Hafta Pazartesi başlar; ay başı ile hafta başının erken
+    // olanından itibaren tek sorguda çek, JS'te 3 pencereye ayır.
+    const bugun = todayTR();
+    const bugunD = dayjs.tz(bugun, TR_TZ);
+    const haftaBasi = bugunD.subtract((bugunD.day() + 6) % 7, 'day').format('YYYY-MM-DD');
+    const ayBasi = bugunD.startOf('month').format('YYYY-MM-DD');
+    const donemBasi = haftaBasi < ayBasi ? haftaBasi : ayBasi;
+
     const [
       ihlalAgg,
       kontrolGunRow,
+      fotoCountRow,
       bildirimAgg,
       gunlukRows,
       aylikRows,
       blokRows,
       topRows,
+      donemRows,
     ] = await Promise.all([
       db('ihlaller')
         .where({ site_id: siteId })
@@ -58,7 +69,13 @@ router.get('/dashboard', async (req, res, next) => {
         .select(
           db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN 1 ELSE 0 END),0)::int as coklu_arac`),
           db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='kayitsiz' THEN 1 ELSE 0 END),0)::int as kayitsiz`),
-          db.raw(`COUNT(DISTINCT daire_id) FILTER (WHERE daire_id IS NOT NULL)::int as etkilenen_daire`)
+          db.raw(`COUNT(DISTINCT daire_id) FILTER (WHERE daire_id IS NOT NULL)::int as etkilenen_daire`),
+          // Araç-adedi metrikleri: ihlal KAYDI sayısı kullanıcıyı yanıltıyordu
+          // (4 foto yükleyip "Toplam İhlal 1" görüyordu — 1 kayıtsız kaydında
+          // N plaka). Kayıtsız = listedeki plaka adedi; çoklu = daire başına
+          // fazla araç adedi (listede k araç → k-1 fazla).
+          db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='kayitsiz' THEN jsonb_array_length(plaka_listesi) ELSE 0 END),0)::int as kayitsiz_arac`),
+          db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN GREATEST(jsonb_array_length(plaka_listesi) - 1, 0) ELSE 0 END),0)::int as coklu_fazla_arac`)
         )
         .first(),
       db('gunluk_kontroller')
@@ -66,6 +83,13 @@ router.get('/dashboard', async (req, res, next) => {
         .where('users.site_id', siteId)
         .whereBetween('kontrol_tarihi', [baslangic, bitis])
         .countDistinct({ c: 'kontrol_tarihi' })
+        .first(),
+      // Yüklenen foto adedi — gunluk_kontroller'in kendi site_id'si var,
+      // users join'ine gerek yok.
+      db('gunluk_kontroller')
+        .where({ site_id: siteId })
+        .whereBetween('kontrol_tarihi', [baslangic, bitis])
+        .count('* as c')
         .first(),
       db('bildirimler')
         .where({ site_id: siteId })
@@ -117,8 +141,30 @@ router.get('/dashboard', async (req, res, next) => {
         )
         .orderBy('ihlal_sayisi', 'desc')
         .limit(10),
+      db('ihlaller')
+        .where({ site_id: siteId })
+        .where('kontrol_tarihi', '>=', donemBasi)
+        .select(
+          db.raw(`to_char(kontrol_tarihi, 'YYYY-MM-DD') as tarih`),
+          'ihlal_tipi',
+          db.raw(`jsonb_array_length(plaka_listesi)::int as arac`)
+        ),
     ]);
     const kontrol_yapilan_gun = parseInt(kontrolGunRow?.c || 0, 10);
+
+    // donemRows → Bugün / Bu Hafta / Bu Ay araç sayıları
+    const donemOzetBos = () => ({ kayitsiz_arac: 0, coklu_fazla_arac: 0 });
+    const donem_ozet = { bugun: donemOzetBos(), bu_hafta: donemOzetBos(), bu_ay: donemOzetBos() };
+    for (const r of donemRows) {
+      const hedefler = [];
+      if (r.tarih >= ayBasi) hedefler.push(donem_ozet.bu_ay);
+      if (r.tarih >= haftaBasi) hedefler.push(donem_ozet.bu_hafta);
+      if (r.tarih === bugun) hedefler.push(donem_ozet.bugun);
+      for (const h of hedefler) {
+        if (r.ihlal_tipi === 'kayitsiz') h.kayitsiz_arac += r.arac;
+        else if (r.ihlal_tipi === 'coklu_arac') h.coklu_fazla_arac += Math.max(r.arac - 1, 0);
+      }
+    }
 
     const gunlukMap = new Map();
     for (const r of gunlukRows) {
@@ -157,7 +203,12 @@ router.get('/dashboard', async (req, res, next) => {
         kayitsiz: ihlalAgg.kayitsiz || 0,
         etkilenen_daire: ihlalAgg.etkilenen_daire || 0,
         kontrol_yapilan_gun,
+        // Araç-adedi metrikleri (kart başlıkları bunları gösterir)
+        toplam_foto: parseInt(fotoCountRow?.c || 0, 10),
+        kayitsiz_arac: ihlalAgg.kayitsiz_arac || 0,
+        coklu_fazla_arac: ihlalAgg.coklu_fazla_arac || 0,
       },
+      donem_ozet,
       bildirim: {
         toplam: bildirim_toplam,
         gonderildi: bildirimAgg.gonderildi || 0,

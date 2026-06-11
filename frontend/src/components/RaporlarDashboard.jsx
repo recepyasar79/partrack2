@@ -60,25 +60,26 @@ export default function RaporlarDashboard({ baslangic, bitis }) {
 
   return (
     <div className="flex flex-col gap-4">
-      {/* Stat kartları */}
+      {/* Stat kartları — araç adedi bazlı: "Toplam İhlal" kayıt sayısıydı ve
+          yanıltıyordu (4 foto → 1 kayıtsız KAYDI içinde N plaka). */}
       <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
         <StatCard
-          label="Toplam İhlal"
-          value={data.ozet.toplam_ihlal}
-          sub={`${data.ozet.coklu_arac} çoklu · ${data.ozet.kayitsiz} kayıtsız`}
-          color="rose"
+          label="Yüklenen Foto"
+          value={data.ozet.toplam_foto ?? 0}
+          sub="seçili dönemde"
+          color="brand"
         />
         <StatCard
-          label="Etkilenen Daire"
-          value={data.ozet.etkilenen_daire}
-          sub="benzersiz daire"
+          label="Kayıtsız Araç"
+          value={data.ozet.kayitsiz_arac ?? 0}
+          sub="kayda rastlanmayan plaka"
           color="amber"
         />
         <StatCard
-          label="Kontrol Günü"
-          value={data.ozet.kontrol_yapilan_gun}
-          sub="foto yüklenen gün"
-          color="brand"
+          label="Çoklu Araç"
+          value={data.ozet.coklu_fazla_arac ?? 0}
+          sub={`${data.ozet.etkilenen_daire} dairede fazla araç`}
+          color="rose"
         />
         <StatCard
           label="Bildirim Başarı"
@@ -113,26 +114,36 @@ export default function RaporlarDashboard({ baslangic, bitis }) {
         )}
       </div>
 
-      {/* Aylık trend + Blok dağılım yan yana */}
+      {/* Dönem özeti + Blok dağılım yan yana */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-slate-100 dark:border-slate-800 p-4">
-          <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">Aylık Trend (son 12 ay)</h3>
+          <h3 className="font-semibold text-slate-900 dark:text-slate-100 mb-1">Dönem Özeti</h3>
           <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">Üst seçili dönem aralığından bağımsız.</p>
-          {data.aylik_trend.length === 0 ? (
-            <div className="py-12 text-center text-slate-500 dark:text-slate-400 text-sm">Veri yok.</div>
-          ) : (
-            <ResponsiveContainer width="100%" height={240}>
-              <BarChart data={data.aylik_trend} margin={{ top: 5, right: 20, left: 0, bottom: 5 }}>
-                <CartesianGrid strokeDasharray="3 3" stroke={grid} />
-                <XAxis dataKey="ay" stroke={axis} tick={{ fontSize: 11 }} />
-                <YAxis stroke={axis} tick={{ fontSize: 11 }} allowDecimals={false} />
-                <Tooltip contentStyle={{ backgroundColor: tipBg, border: `1px solid ${tipBorder}`, borderRadius: 8 }} />
-                <Legend wrapperStyle={{ fontSize: 12 }} />
-                <Bar dataKey="coklu_arac" name="Çoklu Araç" fill="#f43f5e" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="kayitsiz" name="Kayıtsız" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
-          )}
+          <div className="flex flex-col gap-2">
+            {[
+              { key: 'bugun', label: 'Bugün' },
+              { key: 'bu_hafta', label: 'Bu Hafta' },
+              { key: 'bu_ay', label: 'Bu Ay' },
+            ].map(({ key, label }) => {
+              const d = data.donem_ozet?.[key] || { kayitsiz_arac: 0, coklu_fazla_arac: 0 };
+              return (
+                <div
+                  key={key}
+                  className="flex items-center justify-between rounded-xl bg-slate-50 dark:bg-slate-800/60 px-4 py-3"
+                >
+                  <span className="font-medium text-slate-700 dark:text-slate-200">{label}</span>
+                  <span className="flex gap-4 tabular-nums text-sm">
+                    <span className="text-amber-600 dark:text-amber-400 font-semibold">
+                      {d.kayitsiz_arac} <span className="font-normal text-slate-500 dark:text-slate-400">kayıtsız</span>
+                    </span>
+                    <span className="text-rose-600 dark:text-rose-400 font-semibold">
+                      {d.coklu_fazla_arac} <span className="font-normal text-slate-500 dark:text-slate-400">çoklu araç</span>
+                    </span>
+                  </span>
+                </div>
+              );
+            })}
+          </div>
         </div>
 
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-slate-100 dark:border-slate-800 p-4">
