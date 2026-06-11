@@ -34,7 +34,13 @@ module.exports = {
     ...sharedConfig,
     connection: {
       connectionString: process.env.DATABASE_URL,
-      ssl: { rejectUnauthorized: false },
+      // Sertifika doğrulaması varsayılan AÇIK — rejectUnauthorized:false DB
+      // trafiğini MITM'e açar. Neon sertifikaları public CA imzalı (ISRG),
+      // Node'un sistem CA'larıyla doğrulanır. Doğrulamanın imkansız olduğu
+      // bir provider'a geçilirse PGSSL_NO_VERIFY=1 escape hatch.
+      ssl: process.env.PGSSL_NO_VERIFY === '1'
+        ? { rejectUnauthorized: false }
+        : { rejectUnauthorized: true },
     },
     pool: { min: 2, max: 20 },
     // Neon: pool mode 'transaction' kullanılıyorsa max 1-2 önerilir.

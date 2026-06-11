@@ -71,7 +71,9 @@ app.get('/health', async (_req, res) => {
   } catch (err) {
     out.status = 'degraded';
     out.db = 'down';
-    out.db_error = err.message;
+    // Hata detayı yalnız sunucu log'una — err.message connection string
+    // host'u/kullanıcı adı içerebilir, public endpoint'te sızdırma.
+    console.error('[health] db ping fail:', err.message);
   }
   out.storage = isR2Configured() ? 'r2' : 'disk';
   out.whatsapp = process.env.WHATSAPP_API_TOKEN ? 'configured' : 'mock';

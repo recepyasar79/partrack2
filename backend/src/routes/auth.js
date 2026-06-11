@@ -5,6 +5,7 @@ const { hashPassword, verifyPassword, signToken } = require('../utils/auth');
 const { authRequired, requireRole, requireSiteAdmin, requireSuperadmin } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { getEffectiveLimits, isLimitReached } = require('../utils/planLimits');
+const lockout = require('../utils/loginLockout');
 
 const router = express.Router();
 
@@ -28,6 +29,21 @@ router.post('/login', loginLimiter, async (req, res) => {
     return res.status(400).json({ error: 'Kullanıcı adı ve şifre zorunlu.' });
   }
 
+  // Brute-force lockout: rate limit'e ek olarak 10 başarısız deneme →
+  // 15dk IP kilidi (Faz 7 planı). Test'te kapalı — suite boyunca aynı
+  // IP'den biriken bilinçli hatalı denemeler sonraki testleri kilitlemesin.
+  const lockoutAktif = process.env.NODE_ENV !== 'test';
+  if (lockoutAktif) {
+    const lock = lockout.isLocked(req.ip);
+    if (lock.locked) {
+      res.set('Retry-After', String(lock.retryAfterSec));
+      return res.status(429).json({
+        error: 'Çok fazla başarısız deneme. Lütfen daha sonra tekrar deneyin.',
+      });
+    }
+  }
+  const loginFail = () => { if (lockoutAktif) lockout.recordFail(req.ip); };
+
   // 3 alanlı login: site_slug varsa o site'nin user'ını ara (site-bağlı
   // kullanıcılar). Yoksa superadmin pool'una bak (site_id IS NULL).
   // Aynı kullanici_adi farklı sitelerde olabilir → composite unique
@@ -38,6 +54,7 @@ router.post('/login', loginLimiter, async (req, res) => {
       .where({ slug: String(site_slug).trim().toLowerCase() })
       .first();
     if (!site || !site.aktif) {
+      loginFail();
       await constantTimeFail();
       return res.status(401).json({ error: 'Site adı veya kullanıcı bilgileri hatalı.' });
     }
@@ -53,13 +70,16 @@ router.post('/login', loginLimiter, async (req, res) => {
   }
 
   if (!user || !user.aktif) {
+    loginFail();
     await constantTimeFail();
     return res.status(401).json({ error: 'Site adı veya kullanıcı bilgileri hatalı.' });
   }
   const ok = await verifyPassword(sifre, user.sifre_hash);
   if (!ok) {
+    loginFail();
     return res.status(401).json({ error: 'Site adı veya kullanıcı bilgileri hatalı.' });
   }
+  if (lockoutAktif) lockout.clearFails(req.ip);
   await db('users').where({ id: user.id }).update({ son_giris: db.fn.now() });
   const token = signToken({
     id: user.id,
@@ -150,7 +170,7 @@ router.post('/register', authRequired, requireSiteAdmin, async (req, res) => {
     .returning(['id', 'kullanici_adi', 'rol', 'site_id']);
   await writeAudit({
     user_id: req.user.id,
-    site_id: req.user.site_id ?? req.body?.site_id ?? null,
+    site_id: req.user.site_id,
     eylem: 'kayit',
     tablo_adi: 'users',
     kayit_id: created.id,
@@ -176,7 +196,7 @@ router.post('/sifre-sifirla', authRequired, requireSiteAdmin, async (req, res) =
   await db('users').where({ id: kullanici_id }).update({ sifre_hash });
   await writeAudit({
     user_id: req.user.id,
-    site_id: req.user.site_id ?? req.body?.site_id ?? null,
+    site_id: req.user.site_id,
     eylem: 'sifre_sifirla',
     tablo_adi: 'users',
     kayit_id: kullanici_id,
@@ -198,6 +218,7 @@ router.post('/sifre-degistir', authRequired, async (req, res) => {
   await db('users').where({ id: user.id }).update({ sifre_hash });
   await writeAudit({
     user_id: user.id,
+    site_id: user.site_id ?? null,
     eylem: 'sifre_degistir',
     tablo_adi: 'users',
     kayit_id: user.id,
@@ -230,7 +251,7 @@ router.patch('/kullanicilar/:id', authRequired, requireSiteAdmin, async (req, re
   await db('users').where({ id }).update({ aktif });
   await writeAudit({
     user_id: req.user.id,
-    site_id: req.user.site_id ?? req.body?.site_id ?? null,
+    site_id: req.user.site_id,
     eylem: aktif ? 'aktif' : 'deaktif',
     tablo_adi: 'users',
     kayit_id: id,

@@ -58,6 +58,32 @@ router.get('/', async (_req, res, next) => {
   } catch (e) { next(e); }
 });
 
+/**
+ * Platform audit listesi (superadmin). Tüm sitelerin + platform-seviyesi
+ * (site_id NULL) olayların denetim izi. ?site_id=N ile tek site'ye,
+ * ?platform=1 ile yalnız platform olaylarına daraltılır.
+ *
+ * NOT: '/:id' route'undan ÖNCE tanımlı olmalı — aksi halde 'audit-log'
+ * string'i :id olarak yakalanır.
+ */
+router.get('/audit-log', async (req, res, next) => {
+  try {
+    const { site_id, tablo, baslangic, bitis, platform, limit = 200 } = req.query;
+    let qb = db('audit_log')
+      .leftJoin('users', 'audit_log.user_id', 'users.id')
+      .select('audit_log.*', 'users.kullanici_adi');
+    if (platform === '1') qb = qb.whereNull('audit_log.site_id');
+    else if (site_id) qb = qb.where('audit_log.site_id', parseInt(site_id, 10));
+    if (tablo) qb = qb.where('audit_log.tablo_adi', tablo);
+    if (baslangic) qb = qb.where('audit_log.zaman', '>=', baslangic);
+    if (bitis) qb = qb.where('audit_log.zaman', '<=', bitis);
+    const kayitlar = await qb
+      .orderBy('audit_log.zaman', 'desc')
+      .limit(Math.min(parseInt(limit, 10) || 200, 1000));
+    res.json({ kayitlar });
+  } catch (e) { next(e); }
+});
+
 router.post('/', async (req, res, next) => {
   try {
     const { ad, plan = 'baslangic' } = req.body || {};
@@ -351,9 +377,18 @@ router.delete('/:id', async (req, res, next) => {
       await trx('sites').where({ id }).del();
     });
 
-    // audit_log'da site_id NOT NULL — silme olayı için DB'ye yazamayız.
-    // Sunucu log'una düş; Fly.io logs'ta görülür, platform sahibi için
-    // kalıcı bir iz kalır.
+    // Platform-seviyesi audit: site_id NULL (sitenin kendi audit satırları
+    // az önce silindi; bu kayıt site bağlamından bağımsız yaşamalı).
+    await writeAudit({
+      user_id: req.user.id,
+      site_id: null,
+      eylem: 'site_sil',
+      tablo_adi: 'sites',
+      kayit_id: id,
+      eski_deger: { id, ad: eski.ad, slug: eski.slug, plan: eski.plan },
+      ip_adres: req.ip,
+    });
+    // Fly.io logs'ta da görünsün — DB'ye ek olarak ikinci iz.
     console.warn('[sites.delete] site kalıcı silindi:', {
       site_id: id,
       site_ad: eski.ad,

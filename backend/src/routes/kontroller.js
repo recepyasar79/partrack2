@@ -24,33 +24,6 @@ const storage = buildUpload();
 // Tüm endpoint'ler için site_id zorunlu
 router.use(authRequired, requireScopedSite);
 
-let s3ClientPromise = null;
-async function getS3() {
-  if (!s3ClientPromise) {
-    s3ClientPromise = (async () => {
-      const { S3Client } = require('@aws-sdk/client-s3');
-      return new S3Client({
-        region: 'auto',
-        endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-        },
-      });
-    })();
-  }
-  return s3ClientPromise;
-}
-
-function extractR2Key(fotoUrl) {
-  try {
-    const u = new URL(fotoUrl);
-    return u.pathname.replace(/^\//, '');
-  } catch {
-    return null;
-  }
-}
-
 router.get('/', async (req, res) => {
   const tarih = req.query.tarih || todayTR();
   const list = await db('gunluk_kontroller')
