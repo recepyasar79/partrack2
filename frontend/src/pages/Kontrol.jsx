@@ -6,7 +6,7 @@ import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { isValidPlaka, normalizePlaka } from '../utils/validation';
-import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon } from '../components/ui/Icons';
+import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon, PlusIcon, CarCartoonIcon } from '../components/ui/Icons';
 import AuthImage from '../components/AuthImage';
 
 const DURUM_MAP = {
@@ -22,6 +22,7 @@ export default function Kontrol() {
   const toast = useToast();
   const [bugun, setBugun] = useState([]);
   const [arama, setArama] = useState('');
+  const [manuelAcik, setManuelAcik] = useState(false);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
@@ -231,6 +232,10 @@ export default function Kontrol() {
             Galeriden Yükle
           </Button>
         </div>
+        <Button variant="outline" size="xl" className="w-full" onClick={() => setManuelAcik(true)}>
+          <PlusIcon className="w-6 h-6 mr-2" />
+          Manuel Plaka Ekle
+        </Button>
         <Link to="/kontrol/aksam" className="contents">
           <Button as="span" variant="success" size="xl" className="w-full cursor-pointer">
             <CheckIcon className="w-6 h-6 mr-2" />
@@ -397,8 +402,11 @@ export default function Kontrol() {
                         />
                       </button>
                     ) : (
-                      <div className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center text-slate-300 dark:text-slate-600">
-                        <CameraIcon className="w-5 h-5" />
+                      <div
+                        className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center"
+                        title="Manuel giriş — foto yok"
+                      >
+                        <CarCartoonIcon className="w-12 h-12" />
                       </div>
                     )}
                   </td>
@@ -448,6 +456,14 @@ export default function Kontrol() {
         </div>
       )}
 
+      {manuelAcik && (
+        <ManuelPlakaModal
+          onClose={() => setManuelAcik(false)}
+          onSaved={() => { setManuelAcik(false); loadBugun(); }}
+        />
+      )}
+
+      {/* zoomImage modal */}
       {zoomImage && (
         <div
           className="fixed inset-0 z-50 bg-black/85 flex items-center justify-center p-4 animate-fade-in"
@@ -484,6 +500,70 @@ export default function Kontrol() {
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+// Foto çekilemeyen durumlar için manuel plaka girişi. Kayıt foto olmadan
+// oluşur; listede karikatür araba placeholder'ı ile görünür ve akşam
+// analizine normal kayıt gibi dahil olur.
+function ManuelPlakaModal({ onClose, onSaved }) {
+  const toast = useToast();
+  const [plaka, setPlaka] = useState('');
+  const [busy, setBusy] = useState(false);
+
+  async function kaydet() {
+    const p = normalizePlaka(plaka);
+    if (!isValidPlaka(p)) return toast.error('Plaka formatı geçersiz.');
+    setBusy(true);
+    try {
+      await api.post('/kontroller/manuel', { plaka: p });
+      toast.success(`${p} manuel olarak eklendi.`);
+      onSaved();
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+      onClick={onClose}
+    >
+      <div
+        className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl w-full max-w-md p-5 flex flex-col gap-4 border border-transparent dark:border-slate-800 animate-scale-in"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex justify-between items-center">
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Manuel Plaka Ekle</h2>
+          <Button variant="ghost" size="sm" onClick={onClose}>
+            <XMarkIcon className="w-5 h-5" />
+          </Button>
+        </div>
+        <div className="flex justify-center py-2 bg-slate-50 dark:bg-slate-800 rounded-xl">
+          <CarCartoonIcon className="w-28 h-20" />
+        </div>
+        <p className="text-sm text-slate-500 dark:text-slate-400">
+          Fotoğraf çekilemeyen araçlar için plakayı elle girin. Kayıt akşam
+          kontrolü analizine dahil edilir.
+        </p>
+        <Input
+          value={plaka}
+          onChange={(e) => setPlaka(e.target.value.toUpperCase())}
+          onKeyDown={(e) => { if (e.key === 'Enter') kaydet(); }}
+          placeholder="34ABC123"
+          className="font-mono text-lg"
+          autoFocus
+        />
+        <div className="flex gap-2 justify-end">
+          <Button variant="secondary" onClick={onClose}>İptal</Button>
+          <Button onClick={kaydet} disabled={busy} loading={busy}>
+            {busy ? 'Kaydediliyor…' : 'Kaydet'}
+          </Button>
+        </div>
+      </div>
     </div>
   );
 }

@@ -151,6 +151,29 @@ export const CreditCardIcon = ({ className = 'w-6 h-6' }) => (
   </svg>
 );
 
+// Manuel (fotosuz) plaka girişlerinde foto yerine gösterilen karikatür araba.
+// Renkleri sabit (currentColor değil) — placeholder olduğu her yerde aynı
+// sevimli görünümü versin.
+export const CarCartoonIcon = ({ className = 'w-6 h-6' }) => (
+  <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 44" fill="none" className={className}>
+    {/* gövde */}
+    <path d="M7 25c0-2.4 1.4-4.5 3.6-5.4l3.9-8.1A6 6 0 0 1 19.9 8h22.6a6 6 0 0 1 5.4 3.4l3.9 8.2A6 6 0 0 1 57 25v7a3 3 0 0 1-3 3H10a3 3 0 0 1-3-3v-7Z" fill="#3b82f6" />
+    {/* camlar */}
+    <path d="M20.5 12h8.5v7H17.2l2.1-4.9A2.5 2.5 0 0 1 20.5 12Z" fill="#bfdbfe" />
+    <path d="M33 12h8.9a2.5 2.5 0 0 1 2.3 1.5l2.4 5.5H33v-7Z" fill="#bfdbfe" />
+    {/* tampon çizgisi */}
+    <rect x="7" y="27" width="50" height="2.5" rx="1.25" fill="#2563eb" />
+    {/* farlar */}
+    <rect x="52" y="22.5" width="4.5" height="3.5" rx="1.75" fill="#fde047" />
+    <rect x="7.5" y="22.5" width="4.5" height="3.5" rx="1.75" fill="#fca5a5" />
+    {/* tekerlekler */}
+    <circle cx="19" cy="35" r="6" fill="#1e293b" />
+    <circle cx="19" cy="35" r="2.5" fill="#cbd5e1" />
+    <circle cx="45" cy="35" r="6" fill="#1e293b" />
+    <circle cx="45" cy="35" r="2.5" fill="#cbd5e1" />
+  </svg>
+);
+
 export const LoadingSpinner = ({ className = 'w-6 h-6' }) => (
   <svg className={`animate-spin ${className}`} xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
     <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4"></circle>

@@ -1,4 +1,5 @@
 const { app, request, makeToken, createTestUser, createTestDaire, createTestArac, db, cleanupTables } = require('../helpers');
+const { todayTR } = require('../../src/utils/timezone');
 
 let adminToken;
 let admin;
@@ -45,11 +46,43 @@ describe('POST /api/kontroller/foto-upload', () => {
   });
 });
 
+describe('POST /api/kontroller/manuel', () => {
+  test('gecerli plaka fotosuz kontrol kaydi olusturur', async () => {
+    const res = await request(app)
+      .post('/api/kontroller/manuel')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ plaka: '34 man 123' });
+    expect(res.status).toBe(201);
+    expect(res.body.kontrol.plaka).toBe('34MAN123');
+    expect(res.body.kontrol.foto_url).toBeNull();
+
+    const listRes = await request(app)
+      .get('/api/kontroller')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(listRes.body.kontroller.some((k) => k.plaka === '34MAN123')).toBe(true);
+  });
+
+  test('gecersiz plaka 400 doner', async () => {
+    const res = await request(app)
+      .post('/api/kontroller/manuel')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ plaka: 'GECERSIZ' });
+    expect(res.status).toBe(400);
+  });
+
+  test('token olmadan 401 doner', async () => {
+    const res = await request(app)
+      .post('/api/kontroller/manuel')
+      .send({ plaka: '34MAN999' });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('GET /api/kontroller', () => {
   test('bugunk kontroller listelenir', async () => {
     await db('gunluk_kontroller').insert({
       site_id: 1,
-      kontrol_tarihi: new Date().toISOString().slice(0, 10),
+      kontrol_tarihi: todayTR(),
       plaka: '34LIST01',
       foto_url: '/uploads/test.jpg',
     });
@@ -66,7 +99,7 @@ describe('PATCH /api/kontroller/:id/plaka', () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
         site_id: 1,
-        kontrol_tarihi: new Date().toISOString().slice(0, 10),
+        kontrol_tarihi: todayTR(),
         plaka: '',
         foto_url: '/uploads/fix.jpg',
       })
@@ -108,7 +141,7 @@ describe('OCR metrics', () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
         site_id: 1,
-        kontrol_tarihi: new Date().toISOString().slice(0, 10),
+        kontrol_tarihi: todayTR(),
         plaka: '34WRONG1',
         foto_url: '/uploads/m.jpg',
       })
@@ -176,7 +209,7 @@ describe('DELETE /api/kontroller/:id', () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
         site_id: 1,
-        kontrol_tarihi: new Date().toISOString().slice(0, 10),
+        kontrol_tarihi: todayTR(),
         plaka: '34DELETE',
         foto_url: '/uploads/del.jpg',
       })
@@ -195,7 +228,7 @@ describe('POST /api/kontroller/analiz-et', () => {
     const daire = await createTestDaire({ daire_no: 'A1' });
     await createTestArac({ daire_id: daire.id, plaka: '34ANA001' });
     await createTestArac({ daire_id: daire.id, plaka: '34ANA002' });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayTR();
     await db('gunluk_kontroller').insert([
       { site_id: 1, kontrol_tarihi: today, plaka: '34ANA001', foto_url: '/uploads/a1.jpg' },
       { site_id: 1, kontrol_tarihi: today, plaka: '34ANA002', foto_url: '/uploads/a2.jpg' },
@@ -210,7 +243,7 @@ describe('POST /api/kontroller/analiz-et', () => {
   });
 
   test('kayitsiz plaka ihlal verir', async () => {
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayTR();
     await db('gunluk_kontroller').insert({
       site_id: 1,
       kontrol_tarihi: today,
@@ -230,7 +263,7 @@ describe('POST /api/kontroller/analiz-et', () => {
     await createTestArac({ daire_id: daire.id, plaka: '34IDEM01' });
     await createTestArac({ daire_id: daire.id, plaka: '34IDEM02' });
     await createTestArac({ daire_id: daire.id, plaka: '34IDEM03' });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayTR();
     await db('gunluk_kontroller').insert([
       { site_id: 1, kontrol_tarihi: today, plaka: '34IDEM01', foto_url: '/uploads/i1.jpg' },
       { site_id: 1, kontrol_tarihi: today, plaka: '34IDEM02', foto_url: '/uploads/i2.jpg' },
@@ -264,7 +297,7 @@ describe('GET /api/kontroller/ihlaller', () => {
     const daire = await createTestDaire({ daire_no: 'A1' });
     await createTestArac({ daire_id: daire.id, plaka: '34IHLL01' });
     await createTestArac({ daire_id: daire.id, plaka: '34IHLL02' });
-    const today = new Date().toISOString().slice(0, 10);
+    const today = todayTR();
     await db('gunluk_kontroller').insert([
       { site_id: 1, kontrol_tarihi: today, plaka: '34IHLL01', foto_url: '/uploads/h1.jpg' },
       { site_id: 1, kontrol_tarihi: today, plaka: '34IHLL02', foto_url: '/uploads/h2.jpg' },

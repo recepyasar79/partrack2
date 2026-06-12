@@ -6,7 +6,7 @@ const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { buildUpload, isR2Configured } = require('../services/storage');
 const { todayTR } = require('../utils/timezone');
-const { normalizePlaka } = require('../utils/validators');
+const { normalizePlaka, isValidPlaka } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
 const { recognizePlate } = require('../services/pythonOcr');
 const plateRecognizer = require('../services/plateRecognizer');
@@ -227,6 +227,39 @@ router.post('/foto-upload', (req, res, next) => {
       next(insertErr);
     }
   });
+});
+
+// Manuel plaka girişi — foto çekilemeyen durumlar için (kapalı otopark
+// köşesi, kirli/okunamayan plaka vs.). Foto olmadan kontrol kaydı oluşturur;
+// akşam analizine normal kayıt gibi dahil olur.
+router.post('/manuel', async (req, res, next) => {
+  try {
+    const plaka = normalizePlaka(req.body.plaka || '');
+    if (!isValidPlaka(plaka)) {
+      return res.status(400).json({ error: 'Plaka formatı geçersiz.' });
+    }
+    const [row] = await db('gunluk_kontroller')
+      .insert({
+        kontrol_tarihi: todayTR(),
+        plaka,
+        foto_url: null,
+        yukleyen_user_id: req.user?.id || null,
+        site_id: req.scopedSiteId,
+      })
+      .returning('*');
+    await writeAudit({
+      user_id: req.user.id,
+      site_id: req.scopedSiteId,
+      eylem: 'manuel_plaka_ekle',
+      tablo_adi: 'gunluk_kontroller',
+      kayit_id: row.id,
+      yeni_deger: { plaka },
+      ip_adres: req.ip,
+    });
+    res.status(201).json({ kontrol: row });
+  } catch (err) {
+    next(err);
+  }
 });
 
 router.patch('/:id/plaka', async (req, res) => {
