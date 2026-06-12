@@ -27,6 +27,16 @@ function isValidPlaka(input) {
   return PLAKA_PATTERNS.some((re) => re.test(p));
 }
 
+// İnsan teyidinden geçen girişler (plaka onaylama/düzeltme, manuel ekleme)
+// için esnek kural: sitede yabancı plakalı araçlar var (örn. CB8950HE) ve
+// TR desenleri onları reddediyor. Kullanıcı plakayı gözüyle doğruladığı için
+// 5-10 alfanümerik + en az 1 harf + 1 rakam yeterli. OCR otomatik akışları
+// ve frontend'teki TR ipuçları isValidPlaka (sıkı) ile kalır.
+function isValidPlakaSerbest(input) {
+  const p = normalizePlaka(input);
+  return /^[A-Z0-9]{5,10}$/.test(p) && /[A-Z]/.test(p) && /[0-9]/.test(p);
+}
+
 function isValidTelefon(t) {
   return typeof t === 'string' && TEL_REGEX.test(t);
 }
@@ -53,6 +63,7 @@ module.exports = {
   normalizePlaka,
   isValidDaireNo,
   isValidPlaka,
+  isValidPlakaSerbest,
   isValidTelefon,
   isValidRenk,
   isValidMarka,

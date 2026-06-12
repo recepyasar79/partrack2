@@ -6,7 +6,7 @@ const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { buildUpload, isR2Configured } = require('../services/storage');
 const { todayTR } = require('../utils/timezone');
-const { normalizePlaka, isValidPlaka } = require('../utils/validators');
+const { normalizePlaka, isValidPlakaSerbest } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
 const { recognizePlate } = require('../services/pythonOcr');
 const plateRecognizer = require('../services/plateRecognizer');
@@ -240,7 +240,7 @@ router.post('/foto-upload', (req, res, next) => {
 router.post('/manuel', async (req, res, next) => {
   try {
     const plaka = normalizePlaka(req.body.plaka || '');
-    if (!isValidPlaka(plaka)) {
+    if (!isValidPlakaSerbest(plaka)) {
       return res.status(400).json({ error: 'Plaka formatı geçersiz.' });
     }
     const [row] = await db('gunluk_kontroller')
@@ -271,6 +271,9 @@ router.patch('/:id/plaka', async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const newPlaka = normalizePlaka(req.body.plaka || '');
   if (!newPlaka) return res.status(400).json({ error: 'Plaka zorunlu.' });
+  if (!isValidPlakaSerbest(newPlaka)) {
+    return res.status(400).json({ error: 'Plaka formatı geçersiz.' });
+  }
   const eski = await db('gunluk_kontroller')
     .where({ id, site_id: req.scopedSiteId })
     .first();

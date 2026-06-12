@@ -44,9 +44,22 @@ async function createTestUser(overrides = {}) {
   const site_id = overrides.site_id !== undefined
     ? overrides.site_id
     : (rol === 'superadmin' ? null : 1);
+  // --forceExit ile yarıda kesilen bir koşu aynı kullanıcıyı bırakmış
+  // olabilir; düz insert users_site_username_uniq'e takılıp TÜM suite'i
+  // düşürüyordu (index partial olduğu için ON CONFLICT da kullanılamıyor).
+  // Aynı isimli kalıntıyı FK bağımlılıklarıyla birlikte temizleyip ekle.
+  const kullanici_adi = overrides.kullanici_adi || 'testuser';
+  const eskiIds = await db('users').where({ kullanici_adi }).pluck('id');
+  if (eskiIds.length) {
+    await db('audit_log').whereIn('user_id', eskiIds).del();
+    await db('misafir_araclar').whereIn('ekleyen_user_id', eskiIds).del();
+    await db('gunluk_kontroller').whereIn('yukleyen_user_id', eskiIds).del();
+    await db('report_schedules').whereIn('created_by_user_id', eskiIds).del();
+    await db('users').whereIn('id', eskiIds).del();
+  }
   const [user] = await db('users')
     .insert({
-      kullanici_adi: overrides.kullanici_adi || 'testuser',
+      kullanici_adi,
       sifre_hash: hash,
       rol,
       site_id,

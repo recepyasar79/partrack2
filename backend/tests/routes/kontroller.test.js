@@ -70,6 +70,15 @@ describe('POST /api/kontroller/manuel', () => {
     expect(res.status).toBe(400);
   });
 
+  test('yabanci plaka (insan teyitli) kabul edilir', async () => {
+    const res = await request(app)
+      .post('/api/kontroller/manuel')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ plaka: 'CB 8950 HE' });
+    expect(res.status).toBe(201);
+    expect(res.body.kontrol.plaka).toBe('CB8950HE');
+  });
+
   test('token olmadan 401 doner', async () => {
     const res = await request(app)
       .post('/api/kontroller/manuel')
@@ -110,6 +119,39 @@ describe('PATCH /api/kontroller/:id/plaka', () => {
       .send({ plaka: '34FIXED' });
     expect(res.status).toBe(200);
     expect(res.body.kontrol.plaka).toBe('34FIXED');
+  });
+
+  test('yabanci plakaya duzeltme kabul edilir', async () => {
+    const [kontrol] = await db('gunluk_kontroller')
+      .insert({
+        site_id: 1,
+        kontrol_tarihi: todayTR(),
+        plaka: '',
+        foto_url: '/uploads/foreign.jpg',
+      })
+      .returning('*');
+    const res = await request(app)
+      .patch(`/api/kontroller/${kontrol.id}/plaka`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ plaka: 'CB8950HE' });
+    expect(res.status).toBe(200);
+    expect(res.body.kontrol.plaka).toBe('CB8950HE');
+  });
+
+  test('anlamsiz plaka duzeltmesi 400 doner', async () => {
+    const [kontrol] = await db('gunluk_kontroller')
+      .insert({
+        site_id: 1,
+        kontrol_tarihi: todayTR(),
+        plaka: '34OLD123',
+        foto_url: '/uploads/bad.jpg',
+      })
+      .returning('*');
+    const res = await request(app)
+      .patch(`/api/kontroller/${kontrol.id}/plaka`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ plaka: 'AB' });
+    expect(res.status).toBe(400);
   });
 });
 

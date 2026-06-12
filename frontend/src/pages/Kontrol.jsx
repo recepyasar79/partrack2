@@ -5,7 +5,7 @@ import { api, apiError } from '../services/api';
 import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { isValidPlaka, normalizePlaka } from '../utils/validation';
+import { isValidPlakaSerbest, normalizePlaka } from '../utils/validation';
 import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon, CarCartoonIcon, PhotoIcon, PencilSquareIcon, ClipboardDocumentCheckIcon } from '../components/ui/Icons';
 import AuthImage from '../components/AuthImage';
 
@@ -181,7 +181,7 @@ export default function Kontrol() {
 
   async function onaylaPlaka(item) {
     const p = normalizePlaka(item.plaka);
-    if (!isValidPlaka(p)) return toast.error('Plaka formatı geçersiz.');
+    if (!isValidPlakaSerbest(p)) return toast.error('Plaka formatı geçersiz.');
     if (!item.kontrolId) return toast.error('Kontrol kaydı henüz oluşmadı.');
     try {
       await api.patch(`/kontroller/${item.kontrolId}/plaka`, { plaka: p });
@@ -561,7 +561,7 @@ function ManuelPlakaModal({ onClose, onSaved }) {
 
   async function kaydet() {
     const p = normalizePlaka(plaka);
-    if (!isValidPlaka(p)) return toast.error('Plaka formatı geçersiz.');
+    if (!isValidPlakaSerbest(p)) return toast.error('Plaka formatı geçersiz.');
     setBusy(true);
     try {
       await api.post('/kontroller/manuel', { plaka: p });
