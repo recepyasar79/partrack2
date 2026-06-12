@@ -29,10 +29,10 @@ export default function Raporlar() {
   const toast = useToast();
   const [tab, setTab] = useState('dashboard');
   const [filt, setFilt] = useState({
-    // Default: dün → yarın. Akşam kontrolü gece yarısını geçebildiği için
-    // dünün kayıtları da kapsansın; yarın da dahil ki gece 00:00 sonrası
-    // girilenler pencere dışında kalmasın.
-    baslangic: tarihOffset(-1),
+    // Default: 2 gün önce → yarın. Akşam kontrolü gece yarısını geçebildiği
+    // için son günlerin kayıtları kapsansın; yarın da dahil ki gece 00:00
+    // sonrası girilenler pencere dışında kalmasın.
+    baslangic: tarihOffset(-2),
     bitis: tarihOffset(1),
     durum: '',
   });
