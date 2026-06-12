@@ -230,48 +230,56 @@ export default function Daireler() {
         )}
       </div>
 
-      {/* Detail Panel */}
+      {/* Detail Modal */}
       {selected && (
-        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-lg border border-brand-200 dark:border-brand-800 p-6 flex flex-col gap-4 animate-slide-up">
-          <div className="flex justify-between items-start">
-            <div>
-              <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
-                <span className="w-10 h-10 bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 rounded-xl flex items-center justify-center font-mono text-lg">
-                  {selected.daire_no}
-                </span>
-                {selected.sahip_ad}
-              </h2>
-              <div className="flex gap-4 mt-2 text-sm text-slate-500 dark:text-slate-400">
-                <span>📞 {selected.sahip_tel}</span>
-                <span className={selected.kvkk_riza ? 'text-green-600 dark:text-green-400' : ''}>
-                  KVKK: {selected.kvkk_riza ? '✓ Onaylı' : '—'}
-                </span>
-                <span className={selected.bildirim_opt_in ? 'text-green-600 dark:text-green-400' : ''}>
-                  WhatsApp: {selected.bildirim_opt_in ? '✓ Aktif' : '—'}
-                </span>
+        <div
+          className="fixed inset-0 z-40 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setSelected(null)}
+        >
+          <div
+            className="bg-white dark:bg-slate-900 rounded-2xl shadow-xl border border-brand-200 dark:border-brand-800 p-6 flex flex-col gap-4 animate-scale-in w-full max-w-2xl max-h-[85vh] overflow-y-auto"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex justify-between items-start">
+              <div>
+                <h2 className="text-xl font-bold text-slate-900 dark:text-slate-100 flex items-center gap-2">
+                  <span className="w-10 h-10 bg-brand-100 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 rounded-xl flex items-center justify-center font-mono text-lg">
+                    {selected.daire_no}
+                  </span>
+                  {selected.sahip_ad}
+                </h2>
+                <div className="flex gap-4 mt-2 text-sm text-slate-500 dark:text-slate-400">
+                  <span>📞 {selected.sahip_tel}</span>
+                  <span className={selected.kvkk_riza ? 'text-green-600 dark:text-green-400' : ''}>
+                    KVKK: {selected.kvkk_riza ? '✓ Onaylı' : '—'}
+                  </span>
+                  <span className={selected.bildirim_opt_in ? 'text-green-600 dark:text-green-400' : ''}>
+                    WhatsApp: {selected.bildirim_opt_in ? '✓ Aktif' : '—'}
+                  </span>
+                </div>
               </div>
+              <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>
+                <XMarkIcon className="w-5 h-5" />
+              </Button>
             </div>
-            <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>
-              <XMarkIcon className="w-5 h-5" />
-            </Button>
+            <PlakaListesi
+              daireId={selected.id}
+              araclar={araclar}
+              onChanged={() => loadDetail(selected.id)}
+              canEdit={isYonetici}
+            />
+            <SahipTarihce daireId={selected.id} />
+            {isYonetici && (
+              <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                <Button variant="secondary" onClick={() => setSahipDegistir(selected)}>
+                  Sahip Değiştir
+                </Button>
+                <Button variant="danger" onClick={() => onDelete(selected.id)}>
+                  Daireyi Sil
+                </Button>
+              </div>
+            )}
           </div>
-          <PlakaListesi
-            daireId={selected.id}
-            araclar={araclar}
-            onChanged={() => loadDetail(selected.id)}
-            canEdit={isYonetici}
-          />
-          <SahipTarihce daireId={selected.id} />
-          {isYonetici && (
-            <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">
-              <Button variant="secondary" onClick={() => setSahipDegistir(selected)}>
-                Sahip Değiştir
-              </Button>
-              <Button variant="danger" onClick={() => onDelete(selected.id)}>
-                Daireyi Sil
-              </Button>
-            </div>
-          )}
         </div>
       )}
 
