@@ -6,7 +6,7 @@ import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { isValidPlaka, normalizePlaka } from '../utils/validation';
-import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon, PlusIcon, CarCartoonIcon } from '../components/ui/Icons';
+import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon, CarCartoonIcon, PhotoIcon, PencilSquareIcon, ClipboardDocumentCheckIcon } from '../components/ui/Icons';
 import AuthImage from '../components/AuthImage';
 
 const DURUM_MAP = {
@@ -71,6 +71,9 @@ export default function Kontrol() {
     // worker'ı tıkamamak için); 2'ye çıkarttık çünkü artık donanım var.
     const MAX_CONCURRENT = 2;
     let cursor = 0;
+    // Toplu yükleme sonu özeti için yerel sayaç — items state'i closure'da
+    // bayat kaldığından sonuçları burada biriktiriyoruz.
+    const sonuc = { okunan: 0, okunamayan: 0 };
     async function worker() {
       while (cursor < yeni.length) {
         const idx = cursor++;
@@ -124,8 +127,11 @@ export default function Kontrol() {
           ocrNeedsReview: !!ocr.needs_manual_review,
           kontrolId: data.kontrol?.id || null,
         });
+        if (plaka) sonuc.okunan += 1;
+        else sonuc.okunamayan += 1;
       } catch (err) {
         updateItem(item.id, { durum: 'hata', hata: apiError(err) });
+        sonuc.okunamayan += 1;
       }
     }
 
@@ -133,6 +139,11 @@ export default function Kontrol() {
     await Promise.all(workers);
 
     setBusy(false);
+    if (yeni.length > 1) {
+      const mesaj = `${yeni.length} fotoğraf işlendi: ${sonuc.okunan} okundu, ${sonuc.okunamayan} okunamadı.`;
+      if (sonuc.okunamayan > 0) toast.warning(mesaj);
+      else toast.success(mesaj);
+    }
     loadBugun();
   }
 
@@ -146,6 +157,12 @@ export default function Kontrol() {
   const bugunFiltreli = aramaNorm
     ? bugun.filter((k) => (k.plaka || '').includes(aramaNorm))
     : bugun;
+
+  // Toplu yüklemede sabit bildirimdeki canlı sayaç — 100 fotoda durum
+  // görmek için kaydırmak gerekmesin.
+  const islenen = items.filter((i) => ['kontrol bekliyor', 'onaylandı', 'hata'].includes(i.durum));
+  const okunanSayi = islenen.filter((i) => i.plaka).length;
+  const okunamayanSayi = islenen.length - okunanSayi;
 
   async function onaylaPlaka(item) {
     const p = normalizePlaka(item.plaka);
@@ -228,17 +245,17 @@ export default function Kontrol() {
             size="xl"
             className="cursor-pointer"
           >
-            <CameraIcon className="w-6 h-6 mr-2" />
+            <PhotoIcon className="w-6 h-6 mr-2" />
             Galeriden Yükle
           </Button>
         </div>
         <Button variant="outline" size="xl" className="w-full" onClick={() => setManuelAcik(true)}>
-          <PlusIcon className="w-6 h-6 mr-2" />
+          <PencilSquareIcon className="w-6 h-6 mr-2" />
           Manuel Plaka Ekle
         </Button>
         <Link to="/kontrol/aksam" className="contents">
           <Button as="span" variant="success" size="xl" className="w-full cursor-pointer">
-            <CheckIcon className="w-6 h-6 mr-2" />
+            <ClipboardDocumentCheckIcon className="w-6 h-6 mr-2" />
             Akşam Kontrolünü Tamamla
           </Button>
         </Link>
@@ -450,9 +467,13 @@ export default function Kontrol() {
       </div>
 
       {busy && (
-        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-900/90 backdrop-blur-sm text-white text-sm px-5 py-3 rounded-full shadow-xl flex items-center gap-2 animate-fade-in">
-          <LoadingSpinner className="w-5 h-5" />
-          OCR çalışıyor…
+        <div className="fixed bottom-24 left-1/2 -translate-x-1/2 bg-brand-900/90 backdrop-blur-sm text-white text-sm px-5 py-3 rounded-full shadow-xl flex items-center gap-3 animate-fade-in whitespace-nowrap">
+          <LoadingSpinner className="w-5 h-5 shrink-0" />
+          <span className="tabular-nums font-medium">{islenen.length}/{items.length}</span>
+          <span className="text-green-300 tabular-nums">✓ {okunanSayi} okundu</span>
+          {okunamayanSayi > 0 && (
+            <span className="text-red-300 tabular-nums">✕ {okunamayanSayi} okunamadı</span>
+          )}
         </div>
       )}
 
