@@ -263,17 +263,17 @@ export default function Kontrol() {
             <PhotoIcon className="w-6 h-6 mr-2" />
             Galeriden Yükle
           </Button>
-        </div>
-        <Button variant="outline" size="xl" className="w-full" onClick={() => setManuelAcik(true)}>
-          <PencilSquareIcon className="w-6 h-6 mr-2" />
-          Manuel Plaka Ekle
-        </Button>
-        <Link to="/kontrol/aksam" className="contents">
-          <Button as="span" variant="success" size="xl" className="w-full cursor-pointer">
-            <ClipboardDocumentCheckIcon className="w-6 h-6 mr-2" />
-            Akşam Kontrolünü Tamamla
+          <Button variant="outline" size="xl" onClick={() => setManuelAcik(true)}>
+            <PencilSquareIcon className="w-6 h-6 mr-2" />
+            Elle Plaka Ekle
           </Button>
-        </Link>
+          <Link to="/kontrol/aksam" className="contents">
+            <Button as="span" variant="success" size="xl" className="cursor-pointer">
+              <ClipboardDocumentCheckIcon className="w-6 h-6 mr-2" />
+              Akşam Kontrolünü Tamamla
+            </Button>
+          </Link>
+        </div>
       </div>
 
       {/* Session Uploads */}
@@ -447,7 +447,7 @@ export default function Kontrol() {
                     ) : (
                       <div
                         className="w-16 h-16 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center"
-                        title="Manuel giriş — foto yok"
+                        title="Elle giriş — foto yok"
                       >
                         <CarCartoonIcon className="w-12 h-12" />
                       </div>
@@ -565,7 +565,7 @@ function ManuelPlakaModal({ onClose, onSaved }) {
     setBusy(true);
     try {
       await api.post('/kontroller/manuel', { plaka: p });
-      toast.success(`${p} manuel olarak eklendi.`);
+      toast.success(`${p} elle eklendi.`);
       onSaved();
     } catch (e) {
       toast.error(apiError(e));
@@ -584,7 +584,7 @@ function ManuelPlakaModal({ onClose, onSaved }) {
         onClick={(e) => e.stopPropagation()}
       >
         <div className="flex justify-between items-center">
-          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Manuel Plaka Ekle</h2>
+          <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">Elle Plaka Ekle</h2>
           <Button variant="ghost" size="sm" onClick={onClose}>
             <XMarkIcon className="w-5 h-5" />
           </Button>

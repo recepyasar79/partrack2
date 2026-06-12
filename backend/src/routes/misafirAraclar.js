@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
-const { isValidPlaka, normalizePlaka } = require('../utils/validators');
+const { isValidPlakaSerbest, normalizePlaka } = require('../utils/validators');
 const { normalizeMisafirZaman } = require('../utils/timezone');
 
 const router = express.Router();
@@ -33,7 +33,7 @@ router.post('/', async (req, res) => {
   const { daire_id, plaka, baslangic_tarihi, bitis_tarihi, aciklama } = req.body || {};
   if (!daire_id) return res.status(400).json({ error: 'daire_id zorunlu.' });
   const p = normalizePlaka(plaka);
-  if (!isValidPlaka(p)) return res.status(400).json({ error: 'Plaka formatı geçersiz.' });
+  if (!isValidPlakaSerbest(p)) return res.status(400).json({ error: 'Plaka formatı geçersiz.' });
   if (!baslangic_tarihi || !bitis_tarihi) {
     return res.status(400).json({ error: 'Başlangıç ve bitiş tarihi zorunlu.' });
   }

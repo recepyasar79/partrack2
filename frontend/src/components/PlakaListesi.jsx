@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Input } from './ui/Input';
 import { Button } from './ui/Button';
-import { isValidPlaka, normalizePlaka } from '../utils/validation';
+import { isValidPlakaSerbest, normalizePlaka } from '../utils/validation';
 import { api, apiError } from '../services/api';
 import { useToast } from './ui/Toast';
 
@@ -12,7 +12,7 @@ export default function PlakaListesi({ daireId, araclar, onChanged, canEdit }) {
 
   async function ekle() {
     const p = normalizePlaka(plaka);
-    if (!isValidPlaka(p)) return toast.error('Plaka formatı geçersiz.');
+    if (!isValidPlakaSerbest(p)) return toast.error('Plaka formatı geçersiz.');
     setBusy(true);
     try {
       await api.post('/araclar', { daire_id: daireId, plaka: p });

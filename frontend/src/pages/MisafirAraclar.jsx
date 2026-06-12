@@ -4,7 +4,7 @@ import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
-import { isValidPlaka, normalizePlaka } from '../utils/validation';
+import { isValidPlakaSerbest, normalizePlaka } from '../utils/validation';
 
 function nowLocal() {
   const d = new Date();
@@ -59,7 +59,7 @@ export default function MisafirAraclar() {
   async function gonder() {
     const p = normalizePlaka(form.plaka);
     if (!form.daire_id) return toast.error('Daire seçin.');
-    if (!isValidPlaka(p)) return toast.error('Plaka formatı geçersiz.');
+    if (!isValidPlakaSerbest(p)) return toast.error('Plaka formatı geçersiz.');
     setBusy(true);
     try {
       await api.post('/misafir-araclar', { ...form, plaka: p });

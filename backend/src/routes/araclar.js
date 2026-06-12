@@ -2,7 +2,7 @@ const express = require('express');
 const db = require('../db');
 const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
-const { isValidPlaka, normalizePlaka } = require('../utils/validators');
+const { isValidPlakaSerbest, normalizePlaka } = require('../utils/validators');
 
 const router = express.Router();
 
@@ -49,7 +49,7 @@ router.post('/', requireSiteAdmin, async (req, res) => {
   const { daire_id, plaka } = req.body || {};
   if (!daire_id) return res.status(400).json({ error: 'daire_id zorunlu.' });
   const p = normalizePlaka(plaka);
-  if (!isValidPlaka(p)) return res.status(400).json({ error: 'Plaka formatı geçersiz.' });
+  if (!isValidPlakaSerbest(p)) return res.status(400).json({ error: 'Plaka formatı geçersiz.' });
 
   const daire = await db('daireler')
     .where({ id: daire_id, site_id: req.scopedSiteId, aktif: true })

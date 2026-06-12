@@ -95,6 +95,16 @@ describe('POST /api/araclar', () => {
     expect(res.status).toBe(400);
   });
 
+  test('yabanci plaka kabul edilir (sitede yabanci plakali sakinler var)', async () => {
+    const daire = await createTestDaire({ daire_no: 'A5' });
+    const res = await request(app)
+      .post('/api/araclar')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ daire_id: daire.id, plaka: 'CB 8950 HE' });
+    expect(res.status).toBe(201);
+    expect(res.body.arac.plaka).toBe('CB8950HE');
+  });
+
   test('bir daireye sinirsiz plaka eklenebilir', async () => {
     const daire = await createTestDaire({ daire_no: 'A4' });
     for (let i = 1; i <= 5; i++) {
