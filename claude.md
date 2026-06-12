@@ -577,7 +577,7 @@ parktrack/
 - Loading state'leri, hata toast'ları (Türkçe)
 - Seed script: 5-10 örnek daire/araç + 1 yönetici + 1 güvenlik kullanıcısı
 - **Bakım cron'ları** (Render Cron Jobs):
-  - Günlük 03:00: 90 günden eski fotoğrafları R2'den ve `gunluk_kontroller`'dan sil (KVKK + maliyet)
+  - Günlük (foto-temizle, GUNCEL 2026-06-13): foto dosyaları **1 gün** sonra R2'den silinir + `foto_url` NULL yapılır (`FOTO_FILE_KEEP_DAYS`); `gunluk_kontroller` DB kayıtları **90 gün** sonra silinir (`FOTO_KEEP_DAYS`) — kontrol geçmişi/raporlar için plaka kayıtları yaşamaya devam eder
   - 5dk'da bir: `bildirimler` tablosunda `gonderim_durumu='beklemede'` olanları retry
   - Haftalık: DB backup export (Neon otomatik yapsa da ek güvenlik)
 - **KVKK aydınlatma metni** sayfası (`/kvkk`) — public, login gerektirmez
