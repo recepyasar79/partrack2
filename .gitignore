@@ -58,3 +58,10 @@ Screenshot*.jpeg
 
 # Claude Code lokal ayarlari
 .claude/
+
+# PLAKA.xlsx import - kisisel veri (KVKK) + tek seferlik import scriptleri
+PLAKA.xlsx
+scripts/plaka_clean.json
+scripts/plaka_extract.py
+scripts/plaka_inspect.py
+backend/scripts/
