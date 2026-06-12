@@ -6,7 +6,7 @@ import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { isValidPlaka, normalizePlaka } from '../utils/validation';
-import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner } from '../components/ui/Icons';
+import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon } from '../components/ui/Icons';
 import AuthImage from '../components/AuthImage';
 
 const DURUM_MAP = {
@@ -21,6 +21,7 @@ const DURUM_MAP = {
 export default function Kontrol() {
   const toast = useToast();
   const [bugun, setBugun] = useState([]);
+  const [arama, setArama] = useState('');
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
@@ -137,6 +138,13 @@ export default function Kontrol() {
   function updateItem(id, patch) {
     setItems((prev) => prev.map((i) => (i.id === id ? { ...i, ...patch } : i)));
   }
+
+  // Plakalar DB'de boşluksuz/büyük harf; aramayı da aynı forma sokarak
+  // "34 abc 123" gibi yazımlar da eşleşsin.
+  const aramaNorm = arama.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const bugunFiltreli = aramaNorm
+    ? bugun.filter((k) => (k.plaka || '').includes(aramaNorm))
+    : bugun;
 
   async function onaylaPlaka(item) {
     const p = normalizePlaka(item.plaka);
@@ -352,8 +360,15 @@ export default function Kontrol() {
       {/* Today's Uploads */}
       <div className="flex flex-col gap-3 mt-2">
         <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-          Bugünün tüm yüklemeleri ({bugun.length})
+          Bugünün tüm yüklemeleri ({arama ? `${bugunFiltreli.length}/${bugun.length}` : bugun.length})
         </h2>
+        <Input
+          placeholder="Plaka ara"
+          value={arama}
+          onChange={(e) => setArama(e.target.value)}
+          icon={MagnifyingGlassIcon}
+          className="font-mono uppercase"
+        />
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
           <table className="w-full text-base">
             <thead>
@@ -365,7 +380,7 @@ export default function Kontrol() {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
-              {bugun.map((k) => (
+              {bugunFiltreli.map((k) => (
                 <tr key={k.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                   <td className="p-2">
                     {k.foto_url ? (
@@ -402,12 +417,21 @@ export default function Kontrol() {
                   </td>
                 </tr>
               ))}
-              {bugun.length === 0 && (
+              {bugunFiltreli.length === 0 && (
                 <tr>
                   <td colSpan={4} className="p-8 text-center">
                     <div className="flex flex-col items-center gap-2 text-slate-400 dark:text-slate-500">
-                      <CameraIcon className="w-8 h-8" />
-                      <p>Henüz yükleme yok.</p>
+                      {arama ? (
+                        <>
+                          <MagnifyingGlassIcon className="w-8 h-8" />
+                          <p>"{arama.toUpperCase()}" ile eşleşen plaka yok.</p>
+                        </>
+                      ) : (
+                        <>
+                          <CameraIcon className="w-8 h-8" />
+                          <p>Henüz yükleme yok.</p>
+                        </>
+                      )}
                     </div>
                   </td>
                 </tr>
