@@ -221,6 +221,11 @@ router.post('/foto-upload', (req, res, next) => {
           needs_manual_review: !!ocrInfo.needsManualReview && !matchResult?.corrected,
           matched_to_registered: matchResult?.corrected ? matchResult.corrected : null,
           match_score: matchResult?.score ?? null,
+          // Otomatik onay kararı için eşleşme kaynağı: learned-exact /
+          // learned-signature / fuzzy-registered / fuzzy-learned /
+          // plate-recognizer. Fuzzy skoru PR skoruyla çakışabildiği için
+          // frontend skoru tek başına kullanamaz.
+          match_source: matchResult?.source ?? null,
         },
       });
     } catch (insertErr) {

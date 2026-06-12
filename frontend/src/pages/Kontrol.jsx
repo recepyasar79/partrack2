@@ -115,8 +115,23 @@ export default function Kontrol() {
         const ocr = data.ocr || {};
         const plaka = data.kontrol?.plaka || ocr.plate || '';
 
+        // Otomatik onay: plaka zaten DB'ye yazıldığı için onay yalnız UI
+        // teyidi. Yüksek güvenli eşleşmelerde kullanıcıyı bekletme:
+        //  - learned-exact / learned-signature (95-100): geçmişte onaylanmış
+        //  - plate-recognizer skor >= 80: sahada %96+ isabet ölçüldü
+        // Fuzzy eşleşmeler (benzer kayıtlı plakaya yapışma riski) ve düşük
+        // güvenli okumalar manuel onayda kalır; kullanıcı düzeltirse sistem
+        // öğrenmeye devam eder.
+        const matchSource = ocr.match_source || '';
+        const matchScore = ocr.match_score ?? 0;
+        const otoOnay = !!plaka && !ocr.needs_manual_review && (
+          matchSource.startsWith('learned')
+          || (matchSource === 'plate-recognizer' && matchScore >= 80)
+        );
+
         updateItem(item.id, {
-          durum: 'kontrol bekliyor',
+          durum: otoOnay ? 'onaylandı' : 'kontrol bekliyor',
+          otoOnay,
           plaka,
           ocrConfidence: ocr.confidence,
           ocrStrategy: ocr.strategy,
@@ -295,7 +310,7 @@ export default function Kontrol() {
                         {it.durum === 'OCR yapılıyor' && <ArrowPathIcon className="w-3 h-3 animate-spin" />}
                         {it.durum === 'onaylandı' && <CheckIcon className="w-3 h-3" />}
                         {it.durum === 'hata' && <XMarkIcon className="w-3 h-3" />}
-                        {durumInfo.label}
+                        {it.durum === 'onaylandı' && it.otoOnay ? 'Otomatik Onaylandı' : durumInfo.label}
                         {it.durum === 'yükleniyor' && typeof it.uploadPct === 'number' && (
                           <span className="ml-1 tabular-nums">%{it.uploadPct}</span>
                         )}
@@ -348,7 +363,18 @@ export default function Kontrol() {
                     <div className="flex flex-col sm:flex-row gap-2 sm:items-end mt-auto">
                       <Input
                         value={it.plaka}
-                        onChange={(e) => updateItem(it.id, { plaka: e.target.value.toUpperCase() })}
+                        onChange={(e) => {
+                          const v = e.target.value.toUpperCase();
+                          // Onaylanmış (otomatik dahil) kayıtta plaka değişirse
+                          // onay durumunu geri al ki Onayla tekrar basılabilsin
+                          // ve düzeltme PATCH ile öğrenmeye kaydedilsin.
+                          updateItem(it.id, {
+                            plaka: v,
+                            ...(it.durum === 'onaylandı' && v !== it.plaka
+                              ? { durum: 'kontrol bekliyor', otoOnay: false }
+                              : {}),
+                          });
+                        }}
                         placeholder="Plaka"
                         containerClassName="flex-1"
                         className="font-mono"
