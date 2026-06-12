@@ -4,6 +4,7 @@ ParkTrack Python OCR Microservice
 - OpenCV for plate localization with multiple strategies
 - FastAPI for HTTP layer
 """
+import asyncio
 import io
 import logging
 import os
@@ -15,6 +16,7 @@ import cv2
 import numpy as np
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import JSONResponse
+from starlette.concurrency import run_in_threadpool
 
 import easyocr
 
@@ -453,13 +455,20 @@ def extract_plate(detections):
 
 
 # Confidence eşikleri — sahada ayarlanabilir kalsın diye env ile override.
-# HIGH: bu seviyeyi geçtik mi region detection'a hiç inme (yarısı kadar hızlı).
+# ACCEPT: extract_plate zaten yalnız regex-geçerli TR plakası döndürüyor;
+# format geçerliyse 0.60 confidence pratikte doğru okumadır (yanlışsa fuzzy
+# matcher / kullanıcı onayı yakalar). Eski 0.85 eşiği EasyOCR'ın plakalarda
+# tipik 0.5-0.8 verdiği gerçeğiyle uyuşmuyordu → her foto tüm pipeline'ı
+# çalıştırıp ~36s sürüyordu (2026-06-12 saha testi, ocr_metrics p50=36s).
 # LOW: bunun altındaysa cevaba needs_manual_review=true koy, kullanıcı UI'da
 # uyarıyla göstersin (yanlış plaka tahminiyle onay almaktansa direkt iste).
 CONFIDENCE_HIGH = float(os.environ.get("OCR_CONFIDENCE_HIGH", "0.85"))
-CONFIDENCE_REGION_EXIT = float(os.environ.get("OCR_CONFIDENCE_REGION_EXIT", "0.75"))
-CONFIDENCE_MIN_AUTO = float(os.environ.get("OCR_CONFIDENCE_MIN_AUTO", "0.55"))
+CONFIDENCE_ACCEPT = float(os.environ.get("OCR_CONFIDENCE_ACCEPT", "0.60"))
 CONFIDENCE_MANUAL_REVIEW = float(os.environ.get("OCR_CONFIDENCE_MANUAL_REVIEW", "0.5"))
+
+# Toplam süre bütçesi — bütçe dolunca eldeki en iyi sonuçla dön. Backend
+# PYTHON_OCR_TIMEOUT_MS=30s beklediği için burada 15s güvenli tavan.
+TIME_BUDGET_S = float(os.environ.get("OCR_TIME_BUDGET_S", "15"))
 
 
 def recognize(image_bytes: bytes, debug: bool = False):
@@ -482,6 +491,12 @@ def recognize(image_bytes: bytes, debug: bool = False):
     debug_info = {"strategies": []}
     best = {"plate": None, "confidence": 0.0, "strategy": None, "raw": []}
 
+    def out_of_budget():
+        return (time.monotonic() - started) > TIME_BUDGET_S
+
+    def accepted():
+        return best["plate"] and best["confidence"] >= CONFIDENCE_ACCEPT
+
     def try_image(image_to_ocr, label):
         detections, avg_conf = run_easyocr(image_to_ocr)
         plate, conf, sub_strategy = extract_plate(detections)
@@ -498,48 +513,40 @@ def recognize(image_bytes: bytes, debug: bool = False):
             best["strategy"] = f"{label}/{sub_strategy}"
             best["raw"] = [t for t, _ in detections]
 
-    # Pass 1: full image with preprocess variants.
-    #
-    # Erken çıkış: confidence HIGH (default 0.85) geçildiyse Pass 2'ye hiç
-    # inme. Sahada bu durum %60-70 vakayı kapsıyor ve region detection +
-    # 3-4 ek EasyOCR çağrısını tamamen atlatıyor — gecikme yaklaşık yarıya
-    # iniyor.
-    for idx, variant in enumerate(preprocess_for_ocr(img)):
-        try_image(variant, f"full-{idx}")
-        if best["plate"] and best["confidence"] >= CONFIDENCE_HIGH:
-            break
-        if best["plate"] and best["confidence"] > CONFIDENCE_MIN_AUTO:
-            # Bir okuma var ama iyi değil — sonraki variant'larda biraz
-            # daha iyi olabilir. CONFIDENCE_HIGH'a kadar dene.
-            continue
-
-    # Pass 2: localised plate regions. Pass 1'de yüksek-confidence sonuç
-    # yoksa region detection + variants. Eskiye göre tek değişiklik:
-    # eşik HIGH değil CONFIDENCE_REGION_EXIT (default 0.75) — region'lar
-    # zaten daha temiz crop verir, eski 0.75 hedefiyle aynı.
+    # Pass 1: region-first. Plaka crop'larında EasyOCR çağrısı küçük görüntü
+    # sayesinde ~0.3-1s; tam görüntüde 5-15s. Önce ucuz yolu dene, geçerli
+    # plaka + yeterli confidence bulununca hemen dön. Tam-görüntü taramaları
+    # yalnız region'lar sonuç veremezse çalışır (Pass 2).
     used_paddle = False
-    if not (best["plate"] and best["confidence"] >= CONFIDENCE_HIGH):
-        # Önce PaddleOCR detection (Apache 2.0). Boş dönerse veya yüklü
-        # değilse Sobel fallback. Engine etiketi metric'te buradan ayarlanır.
-        regions = paddle_detect_regions(img)[:3]
-        if regions:
-            used_paddle = True
-            debug_info["detector"] = "paddle"
-        else:
-            regions = detect_plate_regions(img)[:3]
-            debug_info["detector"] = "sobel"
-        for r_idx, region in enumerate(regions):
-            box = expand_box(region, img.shape)
-            x, y, bw, bh = box
-            crop = img[y:y + bh, x:x + bw]
-            if crop.size == 0:
-                continue
-            crop = upscale_if_small(crop, target_height=80)
-            for v_idx, variant in enumerate(preprocess_for_ocr(crop)):
-                try_image(variant, f"region-{r_idx}-{v_idx}")
-                if best["plate"] and best["confidence"] > CONFIDENCE_REGION_EXIT:
-                    break
-            if best["plate"] and best["confidence"] > CONFIDENCE_REGION_EXIT:
+    regions = paddle_detect_regions(img)[:3]
+    if regions:
+        used_paddle = True
+        debug_info["detector"] = "paddle"
+    else:
+        regions = detect_plate_regions(img)[:3]
+        debug_info["detector"] = "sobel"
+    for r_idx, region in enumerate(regions):
+        box = expand_box(region, img.shape)
+        x, y, bw, bh = box
+        crop = img[y:y + bh, x:x + bw]
+        if crop.size == 0:
+            continue
+        crop = upscale_if_small(crop, target_height=80)
+        for v_idx, variant in enumerate(preprocess_for_ocr(crop)):
+            try_image(variant, f"region-{r_idx}-{v_idx}")
+            if accepted() or out_of_budget():
+                break
+        if accepted() or out_of_budget():
+            break
+
+    # Pass 2: full-image fallback. Region detection plakayı bulamadıysa
+    # (ör. plaka çok yakın çekilmiş, detection box'ı parçalamış) tam görüntü
+    # variant'larını dene. Her variant pahalı olduğu için bütçeyi her adımda
+    # kontrol et.
+    if not accepted() and not out_of_budget():
+        for idx, variant in enumerate(preprocess_for_ocr(img)):
+            try_image(variant, f"full-{idx}")
+            if accepted() or out_of_budget():
                 break
 
     elapsed = time.monotonic() - started
@@ -618,6 +625,15 @@ def health():
     }
 
 
+# OCR CPU-bound ve senkron — async endpoint içinde direkt çağrılırsa worker'ın
+# event loop'u OCR süresince bloklanır: yeni bağlantılar accept edilemez, Fly
+# proxy "os error 110" ile 502 üretir (2026-06-12 saha testinde her yüklemede
+# görüldü). Çözüm: recognize'ı threadpool'a at, event loop serbest kalsın.
+# Semaphore worker başına tek OCR'a izin verir — 2 shared vCPU'da paralel OCR
+# birbirini yavaşlatmaktan başka işe yaramıyor; fazlası sırada bekler.
+_ocr_semaphore = asyncio.Semaphore(int(os.environ.get("OCR_MAX_CONCURRENT", "1")))
+
+
 @app.post("/ocr")
 async def ocr(
     file: UploadFile = File(...),
@@ -633,7 +649,8 @@ async def ocr(
     if len(content) > 12 * 1024 * 1024:
         raise HTTPException(status_code=413, detail="File too large (max 12MB)")
     try:
-        result = recognize(content, debug=debug)
+        async with _ocr_semaphore:
+            result = await run_in_threadpool(recognize, content, debug)
     except HTTPException:
         raise
     except Exception as exc:

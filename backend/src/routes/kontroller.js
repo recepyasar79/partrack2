@@ -198,6 +198,13 @@ router.post('/foto-upload', (req, res, next) => {
         siteId,
       });
 
+      // Plaka herhangi bir katmandan çözüldüyse akış kullanıcı açısından
+      // başarılıdır — Python OCR'ın timeout/502'sini error olarak göstermek
+      // "hata verdi ama plakayı buldu" karmaşası yaratıyordu (2026-06-12 saha
+      // testi). Python hatası yalnız hiçbir katman plaka üretemediyse döner;
+      // çözülen durumlarda fallback bilgisi ayrı alanda gider.
+      const resolved = Boolean(plaka);
+      const pythonFailed = !ocrInfo.ok;
       res.status(201).json({
         kontrol: row,
         ocr: {
@@ -206,8 +213,9 @@ router.post('/foto-upload', (req, res, next) => {
           strategy: ocrInfo.strategy || null,
           elapsed_ms: ocrInfo.elapsedMs ?? null,
           raw_text: ocrInfo.rawText || '',
-          ok: ocrInfo.ok,
-          error: ocrInfo.error || null,
+          ok: resolved || ocrInfo.ok,
+          error: resolved ? null : (ocrInfo.error || null),
+          fallback_used: resolved && pythonFailed ? usedEngine : null,
           // Eğer kullanıcı düzeltirse fuzzy match plakayı override eder, ama
           // düzeltmedi → düşük confidence varsa frontend manuel onaya çeker.
           needs_manual_review: !!ocrInfo.needsManualReview && !matchResult?.corrected,

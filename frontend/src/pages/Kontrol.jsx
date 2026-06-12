@@ -95,6 +95,10 @@ export default function Kontrol() {
         fd.append('foto', compressed, item.file.name);
         const { data } = await api.post('/kontroller/foto-upload', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
+          // Sunucu tarafı OCR + fallback en kötü ~35s sürer; 2 dakika sonra
+          // hâlâ cevap yoksa bağlantı ölmüştür — sonsuz bekleme yerine
+          // anlamlı hata göster, kullanıcı tekrar denesin.
+          timeout: 120000,
           onUploadProgress: (e) => {
             if (e.total) {
               const pct = Math.round((e.loaded / e.total) * 100);
