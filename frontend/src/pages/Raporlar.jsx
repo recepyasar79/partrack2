@@ -17,20 +17,23 @@ const TABS = [
   { id: 'email', label: 'Email Aboneliği' },
 ];
 
-function bugunMinusGun(g) {
+function tarihOffset(gun) {
   const d = new Date();
-  d.setDate(d.getDate() - g);
-  return d.toISOString().slice(0, 10);
+  d.setDate(d.getDate() + gun);
+  // toISOString UTC'ye çevirir — TR'de gece 00:00-03:00 arası bir önceki
+  // günü verir. 'sv-SE' locale'i yerel saatte YYYY-MM-DD üretir.
+  return d.toLocaleDateString('sv-SE');
 }
 
 export default function Raporlar() {
   const toast = useToast();
   const [tab, setTab] = useState('dashboard');
   const [filt, setFilt] = useState({
-    // Default: bugün → bugün. Güvenlik/yönetici önce "bugün ne oldu"ya bakar;
-    // geçmiş için tarihleri elle genişletir.
-    baslangic: bugunMinusGun(0),
-    bitis: bugunMinusGun(0),
+    // Default: dün → yarın. Akşam kontrolü gece yarısını geçebildiği için
+    // dünün kayıtları da kapsansın; yarın da dahil ki gece 00:00 sonrası
+    // girilenler pencere dışında kalmasın.
+    baslangic: tarihOffset(-1),
+    bitis: tarihOffset(1),
     durum: '',
   });
   const [ihlaller, setIhlaller] = useState([]);
@@ -69,7 +72,7 @@ export default function Raporlar() {
   }, [tab, filt.baslangic, filt.bitis, filt.durum]); // eslint-disable-line
 
   function exportCsv() {
-    const tarih = new Date().toISOString().slice(0, 10);
+    const tarih = tarihOffset(0);
     if (tab === 'dashboard') return;
     if (tab === 'ihlal') {
       const csv = toCSV(ihlaller, [
@@ -102,7 +105,7 @@ export default function Raporlar() {
   }
 
   async function exportPdf() {
-    const tarih = new Date().toISOString().slice(0, 10);
+    const tarih = tarihOffset(0);
     const donem = `${filt.baslangic} → ${filt.bitis}`;
     try {
       const { newRaporPDF } = await import('../utils/pdf');
