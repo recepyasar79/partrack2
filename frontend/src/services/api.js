@@ -28,5 +28,18 @@ api.interceptors.response.use(
 );
 
 export function apiError(err) {
-  return err?.response?.data?.error || err?.message || 'Beklenmeyen hata.';
+  if (!err) return 'Beklenmeyen hata.';
+  // Backend'in yapısal hatası en açıklayıcı.
+  if (err.response?.data?.error) return err.response.data.error;
+  // Axios ağ/timeout hataları — err.code ile ayırt edilip anlamlı mesaj.
+  if (err.code === 'ECONNABORTED') {
+    return 'İstek zaman aşımına uğradı. Bağlantınızı kontrol edip tekrar deneyin.';
+  }
+  if (err.code === 'ERR_NETWORK' || err.message === 'Network Error') {
+    return 'Ağ hatası. İnternet bağlantınızı kontrol edip tekrar deneyin.';
+  }
+  if (err.message) return err.message;
+  // Error olmayan throw (ör. foto decode başarısızlığında gelen DOM Event'in
+  // message'ı yoktur) — eskiden "Beklenmeyen hata." dönüyordu.
+  return 'İşlem tamamlanamadı. Lütfen tekrar deneyin.';
 }

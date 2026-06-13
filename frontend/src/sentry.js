@@ -16,3 +16,16 @@ export function initSentry() {
 
   return Sentry;
 }
+
+/**
+ * Yutulmuş (try/catch'te yakalanıp kullanıcı akışını bozmayan) hataları
+ * Sentry'ye gönder. DSN yoksa Sentry.init çağrılmamış olur ama
+ * captureException yine güvenli no-op'tur. context → ek alanlar.
+ */
+export function captureException(err, context) {
+  try {
+    Sentry.captureException(err, context ? { extra: context } : undefined);
+  } catch {
+    /* Sentry hatasi kullanici akisini bozmamali */
+  }
+}

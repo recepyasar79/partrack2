@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import imageCompression from 'browser-image-compression';
 import { api, apiError } from '../services/api';
+import { captureException } from '../sentry';
 import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
@@ -88,17 +89,34 @@ export default function Kontrol() {
         // Compress aggressively — plates only need ~50px character height to
         // OCR reliably, so a 1200px-wide photo at quality 0.7 is plenty.
         // Going from 1.5MB to ~400KB triples upload speed on 3G/4G.
-        const compressed = await imageCompression(item.file, {
-          maxSizeMB: 0.4,
-          maxWidthOrHeight: 1200,
-          useWebWorker: true,
-          initialQuality: 0.7,
-        });
+        //
+        // Sıkıştırma bazı fotoğraflarda (iPhone HEIC, çok büyük dosya, bozuk
+        // görüntü, mobilde bellek baskısı) bir DOM Event ile reject ediyordu;
+        // bu message'sız hata "Beklenmeyen hata." olarak görünüyordu. Artık
+        // sıkıştırma başarısız olursa ORİJİNAL dosyayla devam ediyoruz
+        // (backend 10MB'a kadar kabul eder) — upload bloke olmasın.
+        let uploadFile;
+        try {
+          uploadFile = await imageCompression(item.file, {
+            maxSizeMB: 0.4,
+            maxWidthOrHeight: 1200,
+            useWebWorker: true,
+            initialQuality: 0.7,
+          });
+        } catch (compErr) {
+          captureException(compErr, {
+            asama: 'image-compression',
+            fileName: item.file?.name,
+            fileType: item.file?.type,
+            fileSize: item.file?.size,
+          });
+          uploadFile = item.file; // orijinalle devam
+        }
 
         updateItem(item.id, { durum: 'yükleniyor', uploadPct: 0 });
 
         const fd = new FormData();
-        fd.append('foto', compressed, item.file.name);
+        fd.append('foto', uploadFile, item.file.name);
         const { data } = await api.post('/kontroller/foto-upload', fd, {
           headers: { 'Content-Type': 'multipart/form-data' },
           // Sunucu tarafı OCR + fallback en kötü ~35s sürer; 2 dakika sonra
@@ -146,6 +164,9 @@ export default function Kontrol() {
         if (plaka) sonuc.okunan += 1;
         else sonuc.okunamayan += 1;
       } catch (err) {
+        // Gerçek hatayı Sentry'ye gönder — eskiden yutuluyordu, "Beklenmeyen
+        // hata." dışında bir iz kalmıyordu, kök neden teşhis edilemiyordu.
+        captureException(err, { asama: 'foto-upload', fileName: item.file?.name });
         updateItem(item.id, { durum: 'hata', hata: apiError(err) });
         sonuc.okunamayan += 1;
       }
