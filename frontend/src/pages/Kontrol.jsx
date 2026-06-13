@@ -6,7 +6,7 @@ import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { isValidPlakaSerbest, normalizePlaka } from '../utils/validation';
-import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon, CarCartoonIcon, PhotoIcon, PencilSquareIcon, ClipboardDocumentCheckIcon } from '../components/ui/Icons';
+import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon, CarCartoonIcon, PhotoIcon, PencilSquareIcon, ClipboardDocumentCheckIcon, BuildingIcon } from '../components/ui/Icons';
 import AuthImage from '../components/AuthImage';
 
 const DURUM_MAP = {
@@ -458,6 +458,15 @@ export default function Kontrol() {
                     <span className={`font-mono font-semibold ${k.plaka ? 'text-brand-700 dark:text-brand-300' : 'text-slate-400 dark:text-slate-500'}`}>
                       {k.plaka || '—'}
                     </span>
+                    {k.daire_no && (
+                      <span
+                        className="mt-1 flex w-fit items-center gap-1 text-[11px] font-medium bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800 rounded px-1.5 py-0.5"
+                        title="Plaka bu daireye kayıtlı"
+                      >
+                        <BuildingIcon className="w-3 h-3" />
+                        {k.daire_no}{k.daire_misafir ? ' · misafir' : ''}
+                      </span>
+                    )}
                   </td>
                   <td className="p-4 hidden sm:table-cell text-xs text-slate-500 dark:text-slate-400">
                     {new Date(k.yukleme_zamani).toLocaleTimeString('tr-TR')}

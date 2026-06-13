@@ -29,10 +29,43 @@ router.get('/', async (req, res) => {
   const list = await db('gunluk_kontroller')
     .where({ kontrol_tarihi: tarih, site_id: req.scopedSiteId })
     .orderBy('yukleme_zamani', 'desc');
+
+  // Plaka → daire eşlemesi: önce kayıtlı araç (araclar), o plaka kayıtlı
+  // değilse bugün aktif misafir kaydı. Süresi geçmiş misafir (ör. "İlk Kayıt"
+  // geçmişi) eşleşmez — sadece bugün geçerli olan daireye yazar.
+  const plakalar = [...new Set(list.map((k) => k.plaka).filter(Boolean))];
+  const daireByPlaka = {};
+  if (plakalar.length) {
+    const reg = await db('araclar')
+      .join('daireler', 'araclar.daire_id', 'daireler.id')
+      .where('araclar.site_id', req.scopedSiteId)
+      .andWhere('araclar.aktif', true)
+      .whereIn('araclar.plaka', plakalar)
+      .select('araclar.plaka', 'daireler.daire_no');
+    for (const r of reg) {
+      if (!daireByPlaka[r.plaka]) daireByPlaka[r.plaka] = { daire_no: r.daire_no, misafir: false };
+    }
+    const eksik = plakalar.filter((p) => !daireByPlaka[p]);
+    if (eksik.length) {
+      const mis = await db('misafir_araclar')
+        .join('daireler', 'misafir_araclar.daire_id', 'daireler.id')
+        .where('misafir_araclar.site_id', req.scopedSiteId)
+        .andWhere('baslangic_tarihi', '<=', tarih)
+        .andWhere('bitis_tarihi', '>=', tarih)
+        .whereIn('misafir_araclar.plaka', eksik)
+        .select('misafir_araclar.plaka', 'daireler.daire_no');
+      for (const r of mis) {
+        if (!daireByPlaka[r.plaka]) daireByPlaka[r.plaka] = { daire_no: r.daire_no, misafir: true };
+      }
+    }
+  }
+
   const kontroller = list.map((k) => ({
     ...k,
     foto_url_orig: k.foto_url,
     foto_url: k.foto_url ? `/kontroller/${k.id}/foto` : null,
+    daire_no: k.plaka ? (daireByPlaka[k.plaka]?.daire_no ?? null) : null,
+    daire_misafir: k.plaka ? (daireByPlaka[k.plaka]?.misafir ?? false) : false,
   }));
   res.json({ tarih, kontroller });
 });
