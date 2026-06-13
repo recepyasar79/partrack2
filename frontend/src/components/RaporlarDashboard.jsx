@@ -175,7 +175,7 @@ export default function RaporlarDashboard({ baslangic, bitis }) {
               <tr>
                 <th className="p-3">#</th>
                 <th className="p-3">Daire</th>
-                <th className="p-3 hidden sm:table-cell">Sahip</th>
+                <th className="p-3 hidden sm:table-cell">Adı Soyadı</th>
                 <th className="p-3">İhlal</th>
                 <th className="p-3 hidden md:table-cell">Son İhlal</th>
               </tr>

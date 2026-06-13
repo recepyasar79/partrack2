@@ -78,7 +78,7 @@ export default function Raporlar() {
       const csv = toCSV(ihlaller, [
         { key: 'kontrol_tarihi', label: 'Tarih', get: (r) => String(r.kontrol_tarihi).slice(0, 10) },
         { key: 'daire_no_snapshot', label: 'Daire' },
-        { key: 'sahip_ad', label: 'Sahip' },
+        { key: 'sahip_ad', label: 'Adı Soyadı' },
         { key: 'ihlal_tipi', label: 'Tip' },
         { key: 'plaka_listesi', label: 'Plakalar', get: (r) => (Array.isArray(r.plaka_listesi) ? r.plaka_listesi.join(' ') : r.plaka_listesi) },
       ]);
@@ -86,7 +86,7 @@ export default function Raporlar() {
     } else if (tab === 'ozet') {
       const csv = toCSV(ozet, [
         { key: 'daire_no', label: 'Daire' },
-        { key: 'sahip_ad', label: 'Sahip' },
+        { key: 'sahip_ad', label: 'Adı Soyadı' },
         { key: 'ihlal_sayisi', label: 'İhlal Sayısı' },
         { key: 'son_ihlal', label: 'Son İhlal', get: (r) => String(r.son_ihlal).slice(0, 10) },
       ]);
@@ -131,7 +131,7 @@ export default function Raporlar() {
         if (data.top_daireler?.length) {
           pdf.addTable({
             startY: pdf.doc.lastAutoTable.finalY + 20,
-            head: [['#', 'Daire', 'Sahip', 'İhlal', 'Son İhlal']],
+            head: [['#', 'Daire', 'Adı Soyadı', 'İhlal', 'Son İhlal']],
             body: data.top_daireler.map((d, i) => [
               String(i + 1),
               d.daire_no,
@@ -145,7 +145,7 @@ export default function Raporlar() {
       } else if (tab === 'ihlal') {
         const pdf = await newRaporPDF({ baslik: 'İhlal Geçmişi', altBaslik: `Dönem: ${donem} • ${ihlaller.length} kayıt` });
         pdf.addTable({
-          head: [['Tarih', 'Daire', 'Sahip', 'Tip', 'Plakalar']],
+          head: [['Tarih', 'Daire', 'Adı Soyadı', 'Tip', 'Plakalar']],
           body: ihlaller.map((i) => [
             String(i.kontrol_tarihi).slice(0, 10),
             i.daire_no_snapshot || '—',
@@ -158,7 +158,7 @@ export default function Raporlar() {
       } else if (tab === 'ozet') {
         const pdf = await newRaporPDF({ baslik: 'Daire Özeti', altBaslik: `Dönem: ${donem} • ${ozet.length} daire` });
         pdf.addTable({
-          head: [['Daire', 'Sahip', 'İhlal Sayısı', 'Son İhlal']],
+          head: [['Daire', 'Adı Soyadı', 'İhlal Sayısı', 'Son İhlal']],
           body: ozet.map((o) => [
             o.daire_no,
             o.sahip_ad || '—',
@@ -270,7 +270,7 @@ export default function Raporlar() {
               <tr>
                 <th className="p-3">Tarih</th>
                 <th className="p-3">Daire</th>
-                <th className="p-3 hidden sm:table-cell">Sahip</th>
+                <th className="p-3 hidden sm:table-cell">Adı Soyadı</th>
                 <th className="p-3">Tip</th>
                 <th className="p-3">Plakalar</th>
               </tr>
@@ -301,7 +301,7 @@ export default function Raporlar() {
             <thead className="bg-slate-100 dark:bg-slate-800 text-left text-slate-700 dark:text-slate-200">
               <tr>
                 <th className="p-3">Daire</th>
-                <th className="p-3">Sahip</th>
+                <th className="p-3">Adı Soyadı</th>
                 <th className="p-3">İhlal Sayısı</th>
                 <th className="p-3">Son İhlal</th>
               </tr>

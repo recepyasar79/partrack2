@@ -150,7 +150,7 @@ export default function Daireler() {
             <thead>
               <tr className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800 text-left">
                 <th className="p-4 font-semibold text-slate-700 dark:text-slate-200">Daire</th>
-                <th className="p-4 font-semibold text-slate-700 dark:text-slate-200">Sahip</th>
+                <th className="p-4 font-semibold text-slate-700 dark:text-slate-200">Adı Soyadı</th>
                 <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 hidden sm:table-cell">Telefon</th>
                 <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 hidden md:table-cell text-center">Opt-in</th>
                 <th className="p-4"></th>

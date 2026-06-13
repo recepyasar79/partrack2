@@ -42,7 +42,7 @@ export default function AracListesi() {
     const csv = toCSV(araclar, [
       { key: 'plaka', label: 'Plaka' },
       { key: 'daire_no', label: 'Daire' },
-      { key: 'sahip_ad', label: 'Sahip' },
+      { key: 'sahip_ad', label: 'Adı Soyadı' },
       { key: 'sahip_tel', label: 'Telefon' },
       { key: 'blok', label: 'Blok' },
     ]);
@@ -62,7 +62,7 @@ export default function AracListesi() {
 
       <div className="flex flex-wrap gap-2">
         <Input
-          placeholder="Ara: plaka / daire / sahip"
+          placeholder="Ara: plaka / daire / adı soyadı"
           value={q}
           onChange={(e) => setQ(e.target.value)}
           containerClassName="flex-1 min-w-[200px]"
@@ -85,7 +85,7 @@ export default function AracListesi() {
             <tr>
               <th className="p-3 text-slate-700 dark:text-slate-200">Plaka</th>
               <th className="p-3 text-slate-700 dark:text-slate-200">Daire</th>
-              <th className="p-3 text-slate-700 dark:text-slate-200 hidden sm:table-cell">Sahip</th>
+              <th className="p-3 text-slate-700 dark:text-slate-200 hidden sm:table-cell">Adı Soyadı</th>
               <th className="p-3 text-slate-700 dark:text-slate-200 hidden md:table-cell">Telefon</th>
             </tr>
           </thead>

@@ -73,7 +73,7 @@ export default function DaireForm({ initial = {}, onSubmit, busy }) {
         </div>
       )}
       <Input
-        label="Ad Soyad"
+        label="Adı Soyadı"
         value={sahip_ad}
         onChange={(e) => setSahipAd(e.target.value)}
         error={errors.sahip_ad}
