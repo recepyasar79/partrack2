@@ -458,15 +458,26 @@ export default function Kontrol() {
                     <span className={`font-mono font-semibold ${k.plaka ? 'text-brand-700 dark:text-brand-300' : 'text-slate-400 dark:text-slate-500'}`}>
                       {k.plaka || '—'}
                     </span>
-                    {k.daire_no && (
+                    {k.daire_no ? (
                       <span
-                        className="mt-1 flex w-fit items-center gap-1 text-[11px] font-medium bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 border border-brand-200 dark:border-brand-800 rounded px-1.5 py-0.5"
-                        title="Plaka bu daireye kayıtlı"
+                        className={`mt-1 flex w-fit items-center gap-1 text-[11px] font-medium rounded px-1.5 py-0.5 border ${
+                          k.daire_misafir
+                            ? 'bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800'
+                            : 'bg-brand-50 dark:bg-brand-900/40 text-brand-700 dark:text-brand-300 border-brand-200 dark:border-brand-800'
+                        }`}
+                        title={k.daire_misafir ? 'İçeride olan misafir aracı' : 'Plaka bu daireye kayıtlı'}
                       >
                         <BuildingIcon className="w-3 h-3" />
                         {k.daire_no}{k.daire_misafir ? ' · misafir' : ''}
                       </span>
-                    )}
+                    ) : k.plaka ? (
+                      <span
+                        className="mt-1 flex w-fit items-center text-[11px] font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5"
+                        title="Araç listesinde ve içerideki misafir listesinde yok"
+                      >
+                        kayıtsız
+                      </span>
+                    ) : null}
                   </td>
                   <td className="p-4 hidden sm:table-cell text-xs text-slate-500 dark:text-slate-400">
                     {new Date(k.yukleme_zamani).toLocaleTimeString('tr-TR')}
