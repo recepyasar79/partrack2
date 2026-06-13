@@ -65,3 +65,8 @@ scripts/plaka_clean.json
 scripts/plaka_extract.py
 scripts/plaka_inspect.py
 backend/scripts/
+
+# MisafirListesi.xlsx import - kisisel veri (KVKK) + tek seferlik import scriptleri
+MisafirListesi.xlsx
+scripts/misafir_*.py
+scripts/misafir_*.json
