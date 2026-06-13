@@ -39,7 +39,7 @@ describe('DaireForm', () => {
     const u = userEvent.setup();
     const { onSubmit } = setup();
     await u.selectOptions(screen.getByRole('combobox'), 'B5');
-    await u.type(screen.getByLabelText('Ad Soyad'), 'Ahmet Yılmaz');
+    await u.type(screen.getByLabelText('Adı Soyadı'), 'Ahmet Yılmaz');
     await u.type(screen.getByLabelText('Telefon'), '05551234567');
     await u.click(screen.getByLabelText(/KVKK Açık Rızası/i));
     await u.click(screen.getByRole('button', { name: /Daire Ekle/i }));
@@ -55,7 +55,7 @@ describe('DaireForm', () => {
     const u = userEvent.setup();
     const { onSubmit } = setup();
     await u.selectOptions(screen.getByRole('combobox'), 'B5');
-    await u.type(screen.getByLabelText('Ad Soyad'), 'Ali');
+    await u.type(screen.getByLabelText('Adı Soyadı'), 'Ali');
     await u.type(screen.getByLabelText('Telefon'), '05551234567');
     await u.click(screen.getByRole('button', { name: /Daire Ekle/i }));
     expect(await screen.findByText(/KVKK rızası zorunludur/i)).toBeInTheDocument();
