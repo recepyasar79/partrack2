@@ -5,6 +5,7 @@ import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { isValidPlakaSerbest, normalizePlaka } from '../utils/validation';
+import { bugunStr, icerideMi } from '../utils/misafir';
 
 function nowLocal() {
   const d = new Date();
@@ -18,20 +19,6 @@ function formatTarihSaat(iso) {
   if (Number.isNaN(d.getTime())) return iso;
   const pad = (n) => String(n).padStart(2, '0');
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
-function bugunStr() {
-  const d = new Date();
-  const pad = (n) => String(n).padStart(2, '0');
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-
-// "Halen içeride" = bugün tarih aralığı aktif olan misafir
-// (baslangic <= bugün <= bitis). Tarih bazlı karşılaştırma.
-function icerideMi(m, bugun) {
-  const b = (m.baslangic_tarihi || '').slice(0, 10);
-  const e = (m.bitis_tarihi || '').slice(0, 10);
-  return Boolean(b) && Boolean(e) && b <= bugun && bugun <= e;
 }
 
 export default function MisafirAraclar() {

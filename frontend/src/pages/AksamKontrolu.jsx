@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { api, apiError } from '../services/api';
 import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
+import { icerideMi } from '../utils/misafir';
 
 export default function AksamKontrolu() {
   const toast = useToast();
@@ -140,24 +141,42 @@ export default function AksamKontrolu() {
 
           {sonuc.misafir_gorulen?.length > 0 && (
             <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 p-4">
-              <h3 className="font-semibold mb-2 flex items-center gap-2 text-slate-900 dark:text-slate-100">
+              <h3 className="font-semibold mb-2 flex items-center gap-2 flex-wrap text-slate-900 dark:text-slate-100">
                 <span>Misafir Araçlar (Bugün Görülen)</span>
                 <span className="text-xs font-normal bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded px-2 py-0.5">
                   {sonuc.misafir_gorulen.length}
                 </span>
+                {sonuc.misafir_gorulen.some((m) => icerideMi(m)) && (
+                  <span className="inline-flex items-center gap-1 text-xs font-medium bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-full px-2 py-0.5">
+                    <span className="w-2 h-2 rounded-full bg-emerald-500" />
+                    İçeride: {sonuc.misafir_gorulen.filter((m) => icerideMi(m)).length}
+                  </span>
+                )}
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
                 Bu araçlar misafir muafiyeti kapsamındadır, ihlal sayılmaz.
               </p>
               <ul className="divide-y divide-slate-100 dark:divide-slate-800">
-                {sonuc.misafir_gorulen.map((m) => (
-                  <li key={`${m.daire_id}-${m.plaka}`} className="py-2 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2">
+                {sonuc.misafir_gorulen.map((m) => {
+                  const iceride = icerideMi(m);
+                  return (
+                  <li
+                    key={`${m.daire_id}-${m.plaka}`}
+                    className={`py-2 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-2 ${
+                      iceride ? 'border-l-4 border-l-emerald-500 bg-emerald-50/60 dark:bg-emerald-900/20 pl-2 -ml-px rounded-r' : ''
+                    }`}
+                  >
                     <div className="flex flex-col gap-0.5">
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2 flex-wrap">
                         <span className="font-mono font-semibold text-sm text-slate-900 dark:text-slate-100">{m.plaka}</span>
                         <span className="text-[11px] bg-blue-50 dark:bg-blue-900/40 text-blue-700 dark:text-blue-300 border border-blue-200 dark:border-blue-800 rounded px-1.5 py-0.5">
                           misafir
                         </span>
+                        {iceride && (
+                          <span className="text-[11px] bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded px-1.5 py-0.5">
+                            İçeride
+                          </span>
+                        )}
                         <span className="text-xs text-slate-600 dark:text-slate-300">→ {m.daire_no} ({m.sahip_ad})</span>
                       </div>
                       {(m.aciklama || m.olusturma_zamani) && (
@@ -178,7 +197,8 @@ export default function AksamKontrolu() {
                       {String(m.baslangic_tarihi).slice(0, 10)} → {String(m.bitis_tarihi).slice(0, 10)}
                     </div>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             </div>
           )}
