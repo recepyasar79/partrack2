@@ -55,11 +55,20 @@ app.use('/api/webhooks', express.raw({ type: '*/*', limit: '256kb' }), webhookRo
 
 app.use(express.json({ limit: '1mb' }));
 
+// Limit foto iş akışına göre ayarlı: akşam kontrolünde güvenlik görevlisi
+// 60-100 foto yükleyebiliyor; her foto = 1 upload isteği VE grid'deki her
+// thumbnail = 1 GET /kontroller/:id/foto isteği (AuthImage). Liste büyüdükçe
+// istek katlanıyor → eski 100/dk limiti tekrar yüklemede 429 veriyordu.
+// 600/dk gerçek kullanımı rahat karşılar, kötüye kullanımı yine sınırlar.
+// (Login'in kendi 5/dk limiti ayrı; brute-force koruması etkilenmez.)
 const generalLimiter = rateLimit({
   windowMs: 60 * 1000,
-  max: 100,
+  max: 600,
   standardHeaders: true,
   legacyHeaders: false,
+  // Obje message → express-rate-limit JSON döner; frontend apiError bunu
+  // okuyup net mesaj gösterir ("Beklenmeyen hata." yerine).
+  message: { error: 'Çok fazla istek gönderildi. Lütfen kısa bir süre bekleyip tekrar deneyin.' },
 });
 app.use('/api', generalLimiter);
 
