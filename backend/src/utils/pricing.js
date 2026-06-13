@@ -21,8 +21,8 @@ const YEARLY_DISCOUNT = 0.20; // %20 yıllık indirim
 // Aylık fiyatlar (kuruş, KDV hariç)
 const MONTHLY_PRICES = {
   baslangic: 0,
-  standart: 29900,   // 299 TL/ay
-  pro:      79900,   // 799 TL/ay
+  standart: 99900,   // 999 TL/ay
+  pro:      159900,  // 1599 TL/ay
   kurumsal: null,    // Özel anlaşma — kod yolu açma, sales-driven
 };
 

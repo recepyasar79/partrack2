@@ -47,8 +47,8 @@ describe('POST /api/site/subscription', () => {
     expect(r.body.subscription.billing_cycle).toBe('monthly');
     expect(r.body.subscription.status).toBe('active');
     expect(r.body.subscription.provider).toBe('mock');
-    expect(r.body.invoice.amount_excl_tax).toBe(29900);
-    expect(r.body.invoice.amount_incl_tax).toBe(35880); // %20 KDV
+    expect(r.body.invoice.amount_excl_tax).toBe(99900);
+    expect(r.body.invoice.amount_incl_tax).toBe(119880); // %20 KDV
     expect(r.body.invoice.status).toBe('paid');
   });
 

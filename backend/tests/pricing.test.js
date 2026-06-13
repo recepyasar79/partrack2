@@ -9,13 +9,13 @@ describe('pricing.getBaseAmount', () => {
     expect(getBaseAmount('baslangic', 'yearly')).toBe(0);
   });
 
-  test('standart aylık 29900 kuruş', () => {
-    expect(getBaseAmount('standart', 'monthly')).toBe(29900);
+  test('standart aylık 99900 kuruş', () => {
+    expect(getBaseAmount('standart', 'monthly')).toBe(99900);
   });
 
   test('standart yıllık = aylık × 12 × 0.8', () => {
-    // 29900 × 12 × 0.8 = 287040 kuruş
-    expect(getBaseAmount('standart', 'yearly')).toBe(287040);
+    // 99900 × 12 × 0.8 = 959040 kuruş
+    expect(getBaseAmount('standart', 'yearly')).toBe(959040);
   });
 
   test('pro yıllıkta da %20 indirim', () => {
@@ -77,8 +77,8 @@ describe('pricing.prorateChange', () => {
       fromPlan: 'standart', toPlan: 'pro', cycle: 'monthly',
       periodStart, periodEnd, now: periodStart,
     });
-    // (79900 - 29900) × 1.0 = 50000
-    expect(delta).toBe(50000);
+    // (159900 - 99900) × 1.0 = 60000
+    expect(delta).toBe(60000);
   });
 
   test('dönemin sonunda upgrade → ~0', () => {
@@ -95,9 +95,9 @@ describe('pricing.prorateChange', () => {
       fromPlan: 'standart', toPlan: 'pro', cycle: 'monthly',
       periodStart, periodEnd, now: mid,
     });
-    // 50000 × ~0.5 ≈ 25000 (±2000 tolerans, gün toleransıyla)
-    expect(delta).toBeGreaterThan(23000);
-    expect(delta).toBeLessThan(27000);
+    // 60000 × ~0.5 ≈ 30000 (±2000 tolerans, gün toleransıyla)
+    expect(delta).toBeGreaterThan(28000);
+    expect(delta).toBeLessThan(32000);
   });
 
   test('downgrade → negatif (credit)', () => {
@@ -105,7 +105,7 @@ describe('pricing.prorateChange', () => {
       fromPlan: 'pro', toPlan: 'standart', cycle: 'monthly',
       periodStart, periodEnd, now: periodStart,
     });
-    expect(delta).toBe(-50000);
+    expect(delta).toBe(-60000);
   });
 
   test('baslangica geçiş → eski tutar kadar credit', () => {
@@ -113,7 +113,7 @@ describe('pricing.prorateChange', () => {
       fromPlan: 'standart', toPlan: 'baslangic', cycle: 'monthly',
       periodStart, periodEnd, now: periodStart,
     });
-    expect(delta).toBe(-29900);
+    expect(delta).toBe(-99900);
   });
 
   test('geçersiz period → 0', () => {

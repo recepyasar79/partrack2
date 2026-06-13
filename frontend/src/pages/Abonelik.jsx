@@ -7,8 +7,8 @@ import { Button } from '../components/ui/Button';
 // Frontend ↔ backend pricing senkron — backend utils/pricing.js ile aynı sayılar.
 const PLAN_PRICES = {
   baslangic: { monthly: 0, yearly: 0 },
-  standart:  { monthly: 29900, yearly: 287040 },
-  pro:       { monthly: 79900, yearly: 767040 },
+  standart:  { monthly: 99900, yearly: 959040 },
+  pro:       { monthly: 159900, yearly: 1535040 },
   kurumsal:  { monthly: null,  yearly: null  },
 };
 

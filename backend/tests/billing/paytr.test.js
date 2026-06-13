@@ -40,7 +40,7 @@ describe('paytr.createSubscription', () => {
     expect(captured.url).toBe('https://www.paytr.com/odeme/api/get-token');
     // Recurring parametreleri body'de
     expect(captured.body).toContain('recurring_payment=1');
-    expect(captured.body).toContain('recurring_payment_amount=35880'); // 29900 + %20 KDV
+    expect(captured.body).toContain('recurring_payment_amount=119880'); // 99900 + %20 KDV
     expect(captured.body).toContain('recurring_payment_interval=1');   // monthly
   });
 
