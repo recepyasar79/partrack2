@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { Fragment, useEffect, useMemo, useState } from 'react';
 import { api, apiError } from '../services/api';
 import { useToast } from '../components/ui/Toast';
 import { useAuth } from '../auth/AuthContext';
@@ -20,6 +20,20 @@ function formatTarihSaat(iso) {
   return `${pad(d.getDate())}.${pad(d.getMonth() + 1)}.${d.getFullYear()} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
+function bugunStr() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
+}
+
+// "Halen içeride" = bugün tarih aralığı aktif olan misafir
+// (baslangic <= bugün <= bitis). Tarih bazlı karşılaştırma.
+function icerideMi(m, bugun) {
+  const b = (m.baslangic_tarihi || '').slice(0, 10);
+  const e = (m.bitis_tarihi || '').slice(0, 10);
+  return Boolean(b) && Boolean(e) && b <= bugun && bugun <= e;
+}
+
 export default function MisafirAraclar() {
   const toast = useToast();
   const { user } = useAuth();
@@ -35,6 +49,9 @@ export default function MisafirAraclar() {
     aciklama: '',
   });
   const [busy, setBusy] = useState(false);
+  const [q, setQ] = useState('');
+  const [page, setPage] = useState(1);
+  const PER_PAGE = 50;
 
   async function load() {
     try {
@@ -55,6 +72,61 @@ export default function MisafirAraclar() {
   }
 
   useEffect(() => { load(); loadDaireler(); }, []); // eslint-disable-line
+
+  // Seçili daireye daha önce gelmiş araçların benzersiz plakaları — kayıtlı
+  // misafir geçmişinden türetilir (backend'den ayrı istek gerekmez, list
+  // zaten sitenin tüm misafir kayıtlarını içerir).
+  const gecmisPlakalar = useMemo(() => {
+    if (!form.daire_id) return [];
+    const seen = new Set();
+    const out = [];
+    for (const m of list) {
+      if (String(m.daire_id) !== String(form.daire_id)) continue;
+      if (seen.has(m.plaka)) continue;
+      seen.add(m.plaka);
+      out.push(m);
+    }
+    return out;
+  }, [form.daire_id, list]);
+
+  const bugun = useMemo(() => bugunStr(), []);
+
+  // Arama + "içeridekiler üstte" sıralaması. Aktif misafirler listenin
+  // başına alınır; aralarına render'da bir ayraç konur.
+  const filtered = useMemo(() => {
+    const s = q.trim().toLocaleLowerCase('tr');
+    const base = !s
+      ? list
+      : list.filter((m) =>
+          [m.plaka, m.daire_no, m.sahip_ad, m.aciklama].some(
+            (v) => (v || '').toString().toLocaleLowerCase('tr').includes(s)
+          )
+        );
+    // Array.prototype.sort stabildir → grup içi mevcut sıra (baslangic desc) korunur.
+    return [...base].sort((a, b) => Number(icerideMi(b, bugun)) - Number(icerideMi(a, bugun)));
+  }, [list, q, bugun]);
+
+  const icerideSayisi = useMemo(
+    () => filtered.reduce((n, m) => n + (icerideMi(m, bugun) ? 1 : 0), 0),
+    [filtered, bugun]
+  );
+
+  const paged = useMemo(
+    () => filtered.slice((page - 1) * PER_PAGE, page * PER_PAGE),
+    [filtered, page]
+  );
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PER_PAGE));
+
+  useEffect(() => { setPage(1); }, [q]);
+
+  // Plakaya tıklayınca form plaka alanına yaz + panoya kopyala (hızlı kayıt).
+  function secPlaka(plaka) {
+    setForm((f) => ({ ...f, plaka }));
+    if (navigator.clipboard?.writeText) {
+      navigator.clipboard.writeText(plaka).catch(() => { /* pano erişimi yoksa yoksay */ });
+    }
+    toast.success(`${plaka} plaka alanına yazıldı`);
+  }
 
   async function gonder() {
     const p = normalizePlaka(form.plaka);
@@ -114,6 +186,41 @@ export default function MisafirAraclar() {
             </select>
           </div>
           <Input label="Plaka" value={form.plaka} onChange={(e) => setForm({ ...form, plaka: e.target.value.toUpperCase() })} />
+
+          {form.daire_id && (
+            <div className="flex flex-col gap-1.5 -mt-1">
+              <span className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                Bu daireye daha önce gelen araçlar
+                {gecmisPlakalar.length > 0 && ` (${gecmisPlakalar.length})`}
+                {gecmisPlakalar.length > 0 && ' — hızlı kayıt için tıkla'}
+              </span>
+              {gecmisPlakalar.length === 0 ? (
+                <span className="text-sm text-slate-400 dark:text-slate-500">Kayıt yok.</span>
+              ) : (
+                <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto">
+                  {gecmisPlakalar.map((m) => {
+                    const secili = m.plaka === form.plaka;
+                    return (
+                      <button
+                        type="button"
+                        key={m.id}
+                        onClick={() => secPlaka(m.plaka)}
+                        title="Plaka alanına yaz + panoya kopyala"
+                        className={`font-mono text-sm px-2.5 py-1 rounded-lg border transition-colors ${
+                          secili
+                            ? 'border-brand-500 bg-brand-50 text-brand-700 dark:bg-brand-900/40 dark:text-brand-200 dark:border-brand-600'
+                            : 'border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-200 hover:bg-brand-50 dark:hover:bg-slate-800'
+                        }`}
+                      >
+                        {m.plaka}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          )}
+
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
             <Input
               label="Başlangıç (tarih + saat)"
@@ -137,6 +244,22 @@ export default function MisafirAraclar() {
         </div>
       )}
 
+      <div className="flex flex-wrap items-center gap-2">
+        <Input
+          placeholder="Ara: plaka / daire / sahip / açıklama"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          containerClassName="flex-1 min-w-[200px]"
+        />
+        <span className="text-sm text-slate-600 dark:text-slate-400">{filtered.length} kayıt</span>
+        {icerideSayisi > 0 && (
+          <span className="inline-flex items-center gap-1 text-sm font-medium bg-emerald-50 dark:bg-emerald-900/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 rounded-full px-2.5 py-0.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500" />
+            Şu an içeride: {icerideSayisi}
+          </span>
+        )}
+      </div>
+
       <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 overflow-hidden border border-transparent dark:border-slate-800">
         <table className="w-full text-base">
           <thead className="bg-slate-100 dark:bg-slate-800 text-left">
@@ -149,24 +272,65 @@ export default function MisafirAraclar() {
             </tr>
           </thead>
           <tbody>
-            {list.map((m) => (
-              <tr key={m.id} className="border-t border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200">
-                <td className="p-3 font-mono">{m.plaka}</td>
-                <td className="p-3 font-mono">{m.daire_no}</td>
-                <td className="p-3 hidden sm:table-cell text-sm">{formatTarihSaat(m.baslangic_tarihi)} → {formatTarihSaat(m.bitis_tarihi)}</td>
-                <td className="p-3 hidden md:table-cell text-slate-600 dark:text-slate-400">{m.aciklama}</td>
-                {isYonetici && (
-                  <td className="p-3 text-right">
-                    <Button size="sm" variant="danger" onClick={() => sil(m.id)}>Sil</Button>
-                  </td>
-                )}
-              </tr>
-            ))}
-            {list.length === 0 && (
-              <tr><td colSpan={5} className="p-6 text-center text-slate-500 dark:text-slate-400">Misafir kayıt yok.</td></tr>
+            {paged.map((m, i) => {
+              const globalIndex = (page - 1) * PER_PAGE + i;
+              const iceride = icerideMi(m, bugun);
+              // Aktif (içeride) grup ile geçmiş kayıtlar arasına ayraç:
+              // global index aktif sayısına eşitse bu, ilk geçmiş kayıttır.
+              const ayrac = icerideSayisi > 0 && globalIndex === icerideSayisi;
+              const colSpan = isYonetici ? 5 : 4;
+              return (
+                <Fragment key={m.id}>
+                  {ayrac && (
+                    <tr>
+                      <td colSpan={colSpan} className="px-3 py-1.5 bg-slate-50 dark:bg-slate-800/60 text-xs font-medium text-slate-500 dark:text-slate-400 border-t border-slate-200 dark:border-slate-700">
+                        Geçmiş kayıtlar
+                      </td>
+                    </tr>
+                  )}
+                  <tr
+                    className={`border-t text-slate-800 dark:text-slate-200 ${
+                      iceride
+                        ? 'border-l-4 border-l-emerald-500 border-t-slate-100 dark:border-t-slate-800 bg-emerald-50/60 dark:bg-emerald-900/20'
+                        : 'border-slate-100 dark:border-slate-800'
+                    }`}
+                  >
+                    <td className="p-3 font-mono">
+                      <span className="inline-flex items-center gap-2">
+                        {m.plaka}
+                        {iceride && (
+                          <span className="font-sans text-[11px] bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700 rounded px-1.5 py-0.5">
+                            İçeride
+                          </span>
+                        )}
+                      </span>
+                    </td>
+                    <td className="p-3 font-mono">{m.daire_no}</td>
+                    <td className="p-3 hidden sm:table-cell text-sm">{formatTarihSaat(m.baslangic_tarihi)} → {formatTarihSaat(m.bitis_tarihi)}</td>
+                    <td className="p-3 hidden md:table-cell text-slate-600 dark:text-slate-400">{m.aciklama}</td>
+                    {isYonetici && (
+                      <td className="p-3 text-right">
+                        <Button size="sm" variant="danger" onClick={() => sil(m.id)}>Sil</Button>
+                      </td>
+                    )}
+                  </tr>
+                </Fragment>
+              );
+            })}
+            {filtered.length === 0 && (
+              <tr><td colSpan={isYonetici ? 5 : 4} className="p-6 text-center text-slate-500 dark:text-slate-400">
+                {q ? 'Arama sonucu bulunamadı.' : 'Misafir kayıt yok.'}
+              </td></tr>
             )}
           </tbody>
         </table>
+        {totalPages > 1 && (
+          <div className="flex justify-center gap-2 p-3 border-t border-slate-100 dark:border-slate-800">
+            <Button size="sm" variant="ghost" disabled={page === 1} onClick={() => setPage((p) => p - 1)}>‹ Önceki</Button>
+            <span className="text-sm py-2 text-slate-600 dark:text-slate-300">{page} / {totalPages}</span>
+            <Button size="sm" variant="ghost" disabled={page === totalPages} onClick={() => setPage((p) => p + 1)}>Sonraki ›</Button>
+          </div>
+        )}
       </div>
     </div>
   );
