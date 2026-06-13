@@ -22,12 +22,18 @@ async function verifyPassword(plain, hash) {
   return bcrypt.compare(plain, hash);
 }
 
+// Algoritma açıkça HS256'ya pinlenir. Pin olmadan jwt.verify token
+// header'ındaki `alg`'ı kabul eder → algoritma karıştırma / `alg:none`
+// saldırılarına kapı aralar. Simetrik secret kullandığımız için sign +
+// verify her zaman HS256.
+const JWT_ALG = 'HS256';
+
 function signToken(payload) {
-  return jwt.sign(payload, SECRET(), { expiresIn: EXPIRES() });
+  return jwt.sign(payload, SECRET(), { algorithm: JWT_ALG, expiresIn: EXPIRES() });
 }
 
 function verifyToken(token) {
-  return jwt.verify(token, SECRET());
+  return jwt.verify(token, SECRET(), { algorithms: [JWT_ALG] });
 }
 
 module.exports = { hashPassword, verifyPassword, signToken, verifyToken };
