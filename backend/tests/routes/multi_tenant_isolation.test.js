@@ -189,6 +189,196 @@ describe('Multi-tenant izolasyon', () => {
     });
   });
 
+  // ---------- KONTROLLER (foto / plaka / delete) İZOLASYON ----------
+
+  describe('kontroller izolasyon', () => {
+    let kontrolB;
+    beforeAll(async () => {
+      [kontrolB] = await db('gunluk_kontroller')
+        .insert({
+          kontrol_tarihi: new Date().toISOString().slice(0, 10),
+          plaka: '34A111',
+          foto_url: `sites/${siteB.id}/kontroller/test.jpg`,
+          site_id: siteB.id,
+        })
+        .returning('*');
+    });
+
+    test('Site A user, B kontrolünün fotosunu isteyemez → 404', async () => {
+      const r = await request(app)
+        .get(`/api/kontroller/${kontrolB.id}/foto`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(r.status).toBe(404);
+    });
+
+    test('Site A listede B kontrolünü görmez', async () => {
+      const r = await request(app)
+        .get('/api/kontroller')
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(r.status).toBe(200);
+      expect(r.body.kontroller.find((k) => k.id === kontrolB.id)).toBeUndefined();
+    });
+
+    test('Site A admin, B kontrolünün plakasını düzeltemez → 404', async () => {
+      const r = await request(app)
+        .patch(`/api/kontroller/${kontrolB.id}/plaka`)
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .send({ plaka: '34HACK99' });
+      expect(r.status).toBe(404);
+      const fresh = await db('gunluk_kontroller').where({ id: kontrolB.id }).first();
+      expect(fresh.plaka).toBe('34A111');
+    });
+
+    test('Site A admin, B kontrolünü silemez → 404', async () => {
+      const r = await request(app)
+        .delete(`/api/kontroller/${kontrolB.id}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(r.status).toBe(404);
+      const fresh = await db('gunluk_kontroller').where({ id: kontrolB.id }).first();
+      expect(fresh).toBeTruthy();
+    });
+  });
+
+  // ---------- MİSAFİR ARAÇ İZOLASYON ----------
+
+  describe('misafir araç izolasyon', () => {
+    let misafirB;
+    beforeAll(async () => {
+      [misafirB] = await db('misafir_araclar')
+        .insert({
+          daire_id: daireB1.id,
+          plaka: '34MISB01',
+          baslangic_tarihi: '2026-01-01',
+          bitis_tarihi: '2027-01-01',
+          aciklama: 'B misafir',
+          site_id: siteB.id,
+        })
+        .returning('*');
+    });
+
+    test('Site A listede B misafirini görmez', async () => {
+      const r = await request(app)
+        .get('/api/misafir-araclar')
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(r.status).toBe(200);
+      expect(r.body.misafir_araclar.find((m) => m.id === misafirB.id)).toBeUndefined();
+    });
+
+    test('Site A admin, B misafirini silemez → 404', async () => {
+      const r = await request(app)
+        .delete(`/api/misafir-araclar/${misafirB.id}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(r.status).toBe(404);
+      const fresh = await db('misafir_araclar').where({ id: misafirB.id }).first();
+      expect(fresh).toBeTruthy();
+    });
+
+    test('Site A admin, B dairesine misafir ekleyemez → 404', async () => {
+      const r = await request(app)
+        .post('/api/misafir-araclar')
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .send({
+          daire_id: daireB1.id, plaka: '34GUEST9',
+          baslangic_tarihi: '2026-06-01T10:00', bitis_tarihi: '2026-06-02T10:00',
+        });
+      expect(r.status).toBe(404);
+    });
+  });
+
+  // ---------- DAIRE SAHİP-TARİHÇE / SAHİP-DEĞİŞTİR İZOLASYON ----------
+
+  describe('daire sahip endpoint izolasyon', () => {
+    test('Site A, B dairesinin sahip-tarihçesini isteyemez → 404', async () => {
+      const r = await request(app)
+        .get(`/api/daireler/${daireB1.id}/sahip-tarihce`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(r.status).toBe(404);
+    });
+
+    test('Site A admin, B dairesinin sahibini değiştiremez → 404', async () => {
+      const r = await request(app)
+        .post(`/api/daireler/${daireB1.id}/sahip-degistir`)
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .send({ yeni_sahip_ad: 'Saldırgan', yeni_sahip_tel: '05551234567', kvkk_riza: true });
+      expect(r.status).toBe(404);
+      const fresh = await db('daireler').where({ id: daireB1.id }).first();
+      expect(fresh.sahip_ad).toBe('Sahip B1');
+    });
+  });
+
+  // ---------- ARAÇ /daire/:id İZOLASYON ----------
+
+  describe('araç daire-listesi izolasyon', () => {
+    test('Site A, B dairesinin araçlarını /daire/:id ile çekemez', async () => {
+      const r = await request(app)
+        .get(`/api/araclar/daire/${daireB1.id}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(r.status).toBe(200);
+      const list = r.body.araclar || [];
+      expect(list.find((a) => a.id === aracB1.id)).toBeUndefined();
+    });
+  });
+
+  // ---------- KULLANICI YÖNETİMİ İZOLASYON ----------
+
+  describe('kullanıcı yönetimi izolasyon', () => {
+    test('Site A admin kullanıcı listesinde B kullanıcısı yok', async () => {
+      const r = await request(app)
+        .get('/api/auth/kullanicilar')
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(r.status).toBe(200);
+      expect(r.body.kullanicilar.find((u) => u.id === adminB.id)).toBeUndefined();
+    });
+
+    test('Site A admin, B kullanıcısını deaktive edemez → 404', async () => {
+      const r = await request(app)
+        .patch(`/api/auth/kullanicilar/${adminB.id}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .send({ aktif: false });
+      expect(r.status).toBe(404);
+      const fresh = await db('users').where({ id: adminB.id }).first();
+      expect(fresh.aktif).toBe(true);
+    });
+
+    test('Site A admin, B kullanıcısının şifresini sıfırlayamaz → 404', async () => {
+      const r = await request(app)
+        .post('/api/auth/sifre-sifirla')
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .send({ kullanici_id: adminB.id, yeni_sifre: 'YeniSifre123!' });
+      expect(r.status).toBe(404);
+    });
+  });
+
+  // ---------- RAPOR SCHEDULE İZOLASYON ----------
+
+  describe('rapor schedule izolasyon', () => {
+    let scheduleB;
+    beforeAll(async () => {
+      const r = await request(app)
+        .post('/api/raporlar/schedules')
+        .set('Authorization', `Bearer ${tokenAdminB}`)
+        .send({ email: 'b-site@test.com', frequency: 'daily' });
+      scheduleB = r.body.schedule;
+    });
+
+    test('Site A admin, B schedule\'ını güncelleyemez → 404', async () => {
+      const r = await request(app)
+        .put(`/api/raporlar/schedules/${scheduleB.id}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`)
+        .send({ enabled: false });
+      expect(r.status).toBe(404);
+    });
+
+    test('Site A admin, B schedule\'ını silemez → 404', async () => {
+      const r = await request(app)
+        .delete(`/api/raporlar/schedules/${scheduleB.id}`)
+        .set('Authorization', `Bearer ${tokenAdminA}`);
+      expect(r.status).toBe(404);
+      const fresh = await db('report_schedules').where({ id: scheduleB.id }).first();
+      expect(fresh).toBeTruthy();
+    });
+  });
+
   // ---------- ROL TABANLI YETKİ ----------
 
   describe('rol bazlı yetki', () => {
