@@ -304,6 +304,16 @@ export default function MisafirAraclar() {
                           </span>
                         )}
                       </span>
+                      {/* Mobilde Tarih kolonu gizli (sm altı) — burada satır içi göster */}
+                      <span className="sm:hidden block font-sans text-xs text-slate-500 dark:text-slate-400 mt-1">
+                        {formatTarihSaat(m.baslangic_tarihi)} → {formatTarihSaat(m.bitis_tarihi)}
+                      </span>
+                      {/* Mobil + küçük tablette Açıklama kolonu gizli (md altı) — satır içi göster */}
+                      {m.aciklama && (
+                        <span className="md:hidden block font-sans text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                          {m.aciklama}
+                        </span>
+                      )}
                     </td>
                     <td className="p-3 font-mono">{m.daire_no}</td>
                     <td className="p-3 hidden sm:table-cell text-sm">{formatTarihSaat(m.baslangic_tarihi)} → {formatTarihSaat(m.bitis_tarihi)}</td>
