@@ -65,10 +65,12 @@ export default function Kontrol() {
     setItems((prev) => [...yeni, ...prev]);
     setBusy(true);
 
-    // 4 paralel upload — OCR tarafında 2 makine × 2 uvicorn worker = 4
-    // eşzamanlı işleme kapasitesi var (worker başına semaphore 1). Dosyalar
-    // ~0.4MB olduğu için 4 paralel upload mobil LTE'de de sorun değil.
-    const MAX_CONCURRENT = 4;
+    // 2 paralel upload. Makineler 2 CPU; 2 worker olsa da ayni makineye dusen
+    // iki OCR 2 CPU'yu paylasip her biri ~2x yavasliyordu (p50 1.5s ama
+    // p95 13.7s) → 15s timeout asiliyordu (2026-06-13 saha testi: 61 fotonun
+    // 13'u Python OCR'da timeout). 2 paralel = ~makine basina 1 OCR, cekisme
+    // yok, Python ~2-3s'de donuyor. MAX_CONCURRENT=4 idi.
+    const MAX_CONCURRENT = 2;
     let cursor = 0;
     // Toplu yükleme sonu özeti için yerel sayaç — items state'i closure'da
     // bayat kaldığından sonuçları burada biriktiriyoruz.
