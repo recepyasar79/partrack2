@@ -36,16 +36,21 @@ Production calisir halde. Asagidakilerin hepsi gercek site fotograflariyla test 
 
 **Backend (Fly.io: `parktrack-backend`)**
 - `PYTHON_OCR_URL=https://parktrack-ocr.fly.dev` (public URL — `.flycast`/`.internal` Node DNS'inde cozulmedi)
-- `PYTHON_OCR_TIMEOUT_MS=180000` (cold-start + ilk OCR tamponlu)
+- `PYTHON_OCR_TIMEOUT_MS=15000` (**guncellendi 2026-06-13**, eskiden 180000).
+  - **Neden:** Makine always-on oldugu icin cold-start tamponu gereksiz. OCR ic tarama butcesi 9s (`OCR_TIME_BUDGET_S`, app.py default) → 15s timeout ~6s aglarasi + buffer marji birakir. 9s'de yerel cozulemeyen fotograf zaten Plate Recognizer'a gidiyor.
 - `backend/src/services/pythonOcr.js`: HTTP keep-alive **kapali** (`keepAlive: false`).
-  - **Neden:** OCR makinesi restart olunca backend olu TCP soketleri yeniden kullanip 180s sessizce takiliyordu. Handshake basina 50-200ms kayip, guvenilirlik kazanci yaninda kabul edilebilir.
+  - **Neden:** OCR makinesi restart olunca backend olu TCP soketleri yeniden kullanip timeout suresi boyunca sessizce takiliyordu. Handshake basina 50-200ms kayip, guvenilirlik kazanci yaninda kabul edilebilir.
 - Axios hata loglari `err.code`/`err.cause.code`/`err.cause.message` ile detayli (ECONNREFUSED, ENOTFOUND, ETIMEDOUT goruluyor).
 
 **Python OCR (Fly.io: `parktrack-ocr`)**
-- `min_machines_running = 1`, `auto_stop_machines = 'off'` → **always-on**.
-  - **Neden:** Cold start = 35s makine boot + 35s EasyOCR yukleme = 70s. Aksam kontrolunde guvenlik gorevlisinin ilk fotosu icin kabul edilemez. Maliyet ~$5-7/ay, vardiya basina 1 takilan upload'dan ucuz.
-- 2GB RAM, 2 CPU, `fra` region, single uvicorn worker.
-- Dockerfile: torch + numpy + easyocr **tek pip resolution pass** ile yukleniyor (`--extra-index-url https://download.pytorch.org/whl/cpu`).
+- `min_machines_running = 1`, `auto_stop_machines = 'off'` → **always-on**. Pratikte **2 makine** kosuyor (ikisi de `fra`, always-on).
+  - **Neden:** Cold start = 35s makine boot + 35s EasyOCR yukleme = 70s. Aksam kontrolunde guvenlik gorevlisinin ilk fotosu icin kabul edilemez.
+- **4GB RAM, 2 CPU, `fra` region, 2 uvicorn worker** (`uvicorn --workers 2`). (**guncellendi 2026-06-13**, eskiden 2GB / single worker.)
+  - **Kapasite:** 2 makine × 2 worker = **4 eszamanli OCR**. Frontend `MAX_CONCURRENT=4` bununla uyumlu.
+  - **Neden 4GB:** PaddleOCR detection (AGPL-YOLOv8'in yerini aldi — ticari lisans uyumlulugu) + worker basina EasyOCR ~800MB. 2 worker × (EasyOCR + PaddleOCR) + Python + OS ≈ 2.6GB; 4GB guvenli marj (~$11/ay).
+- **Iki katmanli OCR:** Pass 1 region detection + Pass 2 tam-goruntu fallback (max 1000px'e kucultulmus, kalan butce yetmezse atlanir — 30s takilmalarin kaynagiydi). `OCR_TIME_BUDGET_S=9` dolunca eldeki en iyi sonuc donulur.
+- **Plate Recognizer fallback:** Yerel OCR dusuk guvenli kalinca `PLATE_RECOGNIZER_API_KEY` ile harici servise gidilir.
+- Dockerfile: torch + numpy + easyocr **tek pip resolution pass** ile yukleniyor (`--extra-index-url https://download.pytorch.org/whl/cpu`); paddlepaddle ayri adimda.
   - **Neden:** Onceden torch==2.2.2 ayri pin edilmisti, ardindan numpy 2.x kuruldu → torch numpy 1.x'e karsi build edildigi icin runtime'da "Numpy is not available". Tek pass pip'in uyumlu surumleri secmesini sagliyor.
 - EasyOCR weights image build sirasinda pre-download (`~/.EasyOCR`) → ilk request cold-start cezasini odemiyor.
 
@@ -69,7 +74,7 @@ Iki katmanli birlesik fuzzy match:
 
 ### Frontend Akis (`frontend/src/pages/Kontrol.jsx`)
 - Sunucu tarafli OCR (client-side OCR yok).
-- `MAX_CONCURRENT = 1` (seri yukleme) — single uvicorn worker'i tikamamak icin.
+- `MAX_CONCURRENT = 4` (**guncellendi 2026-06-13**, eskiden 1) — OCR kapasitesi 2 makine × 2 worker = 4 eszamanli; dosyalar ~0.4MB oldugu icin mobil LTE'de de sorun degil.
 - Agresiv compression: 0.4MB hedef, 1200px max, 0.7 quality.
 - Upload progress yuzdesi.
 
