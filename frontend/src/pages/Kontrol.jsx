@@ -138,14 +138,17 @@ export default function Kontrol() {
         // teyidi. Yüksek güvenli eşleşmelerde kullanıcıyı bekletme:
         //  - learned-exact / learned-signature (95-100): geçmişte onaylanmış
         //  - plate-recognizer skor >= 80: sahada %96+ isabet ölçüldü
-        // Fuzzy eşleşmeler (benzer kayıtlı plakaya yapışma riski) ve düşük
-        // güvenli okumalar manuel onayda kalır; kullanıcı düzeltirse sistem
-        // öğrenmeye devam eder.
+        //  - fuzzy-registered skor >= 88: kayıtlı bir sakine yüksek-skorlu
+        //    eşleşme (kamera çekimleri çoğunlukla bu yola düşüyordu; eşik
+        //    yüksek tutuldu ki çok benzer iki kayıtlı plaka karışmasın).
+        // Bunların dışındaki düşük güvenli okumalar manuel onayda kalır;
+        // kullanıcı düzeltirse sistem öğrenmeye devam eder.
         const matchSource = ocr.match_source || '';
         const matchScore = ocr.match_score ?? 0;
         const otoOnay = !!plaka && !ocr.needs_manual_review && (
           matchSource.startsWith('learned')
           || (matchSource === 'plate-recognizer' && matchScore >= 80)
+          || (matchSource === 'fuzzy-registered' && matchScore >= 88)
         );
 
         updateItem(item.id, {
