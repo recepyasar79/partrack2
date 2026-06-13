@@ -20,6 +20,34 @@ const SUBSTITUTION_DECAY_HALF_LIFE_DAYS = 60;
 // edebilir. Levenshtein skoru 100 üzerinden, max 8 bonus güvenli orta yol.
 const SUBSTITUTION_MAX_BONUS = 8;
 
+// Yerleşik optik karışma grupları — site bu pattern'i daha önce öğrenmemiş
+// olsa bile fuzzy match'te modest bonus verir, kayıtlı plakaya snap için.
+// Saha verisi (2026-06-13): O↔D ve D↔0 karışması gözlendi. D, signature
+// sınıfının (plateNormalize.js) DIŞINDA bırakılmıştı (yanlış-pozitif riski);
+// burada signature'ı değil yalnız Levenshtein bonusunu etkiliyoruz — yazarın
+// "nadir confusion'ları Levenshtein katmanına bırak" notuyla tutarlı. Bonus
+// üst sınırı (8) çok benzer iki kayıtlı plakanın yanlış snap'ini engeller.
+const BUILTIN_CONFUSABLE_GROUPS = [
+  ['O', '0', 'Q', 'D'],
+  ['I', '1', 'L'],
+  ['T', '7'],
+  ['B', '8'],
+  ['S', '5'],
+  ['Z', '2'],
+  ['A', '4'],
+  ['G', '6'],
+];
+const _confusableKeyByChar = {};
+for (const grup of BUILTIN_CONFUSABLE_GROUPS) {
+  for (const ch of grup) _confusableKeyByChar[ch] = grup[0];
+}
+function isConfusablePair(a, b) {
+  return Boolean(_confusableKeyByChar[a]) && _confusableKeyByChar[a] === _confusableKeyByChar[b];
+}
+// Yerleşik confusable diff başına bonus (öğrenilmiş pattern'den düşük; o
+// gerçek saha kanıtı, bu sadece optik öncül).
+const BUILTIN_CONFUSABLE_BONUS_PER_DIFF = 2.5;
+
 // Levenshtein mesafesi hesapla
 function levenshteinDistance(a, b) {
   if (a.length === 0) return b.length;
@@ -131,14 +159,19 @@ async function getSubstitutionMap(siteId) {
  * @returns {number} 0..SUBSTITUTION_MAX_BONUS
  */
 function substitutionBonus(ocrRaw, candidate, subMap) {
-  if (!subMap || subMap.size === 0) return 0;
   const diffs = charDiffs(ocrRaw, candidate);
   if (!diffs.length) return 0;
   let totalWeight = 0;
   for (const d of diffs) {
-    const w = subMap.get(`${d.from}>${d.to}`) || 0;
-    // log-ölçek: 10 confirm → ~3 puan, 100 confirm → ~5 puan
-    if (w > 0) totalWeight += Math.log10(1 + w) * 1.5;
+    const w = subMap ? (subMap.get(`${d.from}>${d.to}`) || 0) : 0;
+    if (w > 0) {
+      // Site'nin öğrendiği pattern (gerçek saha kanıtı) — log-ölçek:
+      // 10 confirm → ~3 puan, 100 confirm → ~5 puan.
+      totalWeight += Math.log10(1 + w) * 1.5;
+    } else if (isConfusablePair(d.from, d.to)) {
+      // Henüz öğrenilmemiş ama yerleşik optik karışma (O↔D, D↔0, I↔1 vb.).
+      totalWeight += BUILTIN_CONFUSABLE_BONUS_PER_DIFF;
+    }
   }
   return Math.min(SUBSTITUTION_MAX_BONUS, totalWeight);
 }

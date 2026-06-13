@@ -70,3 +70,6 @@ backend/scripts/
 MisafirListesi.xlsx
 scripts/misafir_*.py
 scripts/misafir_*.json
+
+# Test/saha fotograflari - gercek plaka = kisisel veri (KVKK), repoya girmez
+fotoarac*/
