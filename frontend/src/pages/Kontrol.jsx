@@ -26,9 +26,12 @@ export default function Kontrol() {
   const [manuelAcik, setManuelAcik] = useState(false);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
+  const [kameraAcik, setKameraAcik] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
-  const fileRef = useRef();
   const deletingRef = useRef(new Set());
+  // Kamera seri çekimde birden çok handleNewFiles çağrısı paralel koşabilir;
+  // ref sayaç ile yalnız hepsi bitince overlay kapanır.
+  const busyCountRef = useRef(0);
 
   async function loadBugun() {
     try {
@@ -48,6 +51,14 @@ export default function Kontrol() {
   async function onFiles(e) {
     const files = Array.from(e.target.files || []);
     e.target.value = '';
+    await handleNewFiles(files);
+  }
+
+  // Hem dosya inputundan (galeri) hem de canlı kamera modalından gelen File
+  // listesini aynı işleme hattına sokar. Kamera modalı her çekimde tek File
+  // gönderir; bu fonksiyon her çağrıda kendi worker'ını başlatır, çağrılar
+  // arası paralelliği güvenlik görevlisinin tıklama hızı sınırlar.
+  async function handleNewFiles(files) {
     if (!files.length) return;
 
     const yeni = files.map((f) => ({
@@ -64,6 +75,7 @@ export default function Kontrol() {
       hata: null,
     }));
     setItems((prev) => [...yeni, ...prev]);
+    busyCountRef.current += 1;
     setBusy(true);
 
     // 2 paralel upload. Makineler 2 CPU; 2 worker olsa da ayni makineye dusen
@@ -178,7 +190,11 @@ export default function Kontrol() {
     const workers = Array.from({ length: Math.min(MAX_CONCURRENT, yeni.length) }, () => worker());
     await Promise.all(workers);
 
-    setBusy(false);
+    busyCountRef.current -= 1;
+    if (busyCountRef.current <= 0) {
+      busyCountRef.current = 0;
+      setBusy(false);
+    }
     if (yeni.length > 1) {
       const mesaj = `${yeni.length} fotoğraf işlendi: ${sonuc.okunan} okundu, ${sonuc.okunamayan} okunamadı.`;
       if (sonuc.okunamayan > 0) toast.warning(mesaj);
@@ -253,15 +269,6 @@ export default function Kontrol() {
       <div className="flex flex-col gap-3">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <input
-            ref={fileRef}
-            type="file"
-            accept="image/jpeg,image/png,image/webp"
-            capture="environment"
-            onChange={onFiles}
-            className="hidden"
-            id="foto-input-camera"
-          />
-          <input
             type="file"
             accept="image/jpeg,image/png,image/webp"
             multiple
@@ -270,10 +277,8 @@ export default function Kontrol() {
             id="foto-input-gallery"
           />
           <Button
-            as="label"
-            htmlFor="foto-input-camera"
             size="xl"
-            className="cursor-pointer"
+            onClick={() => setKameraAcik(true)}
           >
             <CameraIcon className="w-6 h-6 mr-2" />
             Kameradan Çek
@@ -548,6 +553,13 @@ export default function Kontrol() {
         </div>
       )}
 
+      {kameraAcik && (
+        <CameraCapture
+          onCapture={(file) => handleNewFiles([file])}
+          onClose={() => setKameraAcik(false)}
+        />
+      )}
+
       {manuelAcik && (
         <ManuelPlakaModal
           onClose={() => setManuelAcik(false)}
@@ -590,6 +602,164 @@ export default function Kontrol() {
               className="max-w-full max-h-full object-contain rounded-lg shadow-2xl"
             />
           )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// Canlı kamera ile seri çekim. Native <input capture> her çekimde kamerayı
+// kapatıp tekrar açtırıyordu; güvenlik görevlisi yan yana duran araçları
+// çekerken her foto için butona basmak zorunda kalıyordu. Bu modal
+// getUserMedia ile canlı akış açar: "Çek" o anki kareyi yakalar, arka planda
+// işleme hattına yollar, kamera AÇIK kalır → sıradakine hızlıca geçilir.
+// "Bitti" akışı durdurup kapatır.
+function CameraCapture({ onCapture, onClose }) {
+  const videoRef = useRef(null);
+  const streamRef = useRef(null);
+  const [hata, setHata] = useState(null);
+  const [hazir, setHazir] = useState(false);
+  const [sayac, setSayac] = useState(0);
+  const [flash, setFlash] = useState(false);
+
+  useEffect(() => {
+    let iptal = false;
+    async function basla() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        setHata('Bu cihaz/tarayıcı canlı kamerayı desteklemiyor. "Galeriden Yükle" ile foto seçebilirsiniz.');
+        return;
+      }
+      try {
+        const stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            facingMode: { ideal: 'environment' },
+            width: { ideal: 1920 },
+            height: { ideal: 1080 },
+          },
+          audio: false,
+        });
+        if (iptal) { stream.getTracks().forEach((t) => t.stop()); return; }
+        streamRef.current = stream;
+        if (videoRef.current) {
+          videoRef.current.srcObject = stream;
+          await videoRef.current.play().catch(() => {});
+        }
+        setHazir(true);
+      } catch (err) {
+        const ad = err?.name;
+        if (ad === 'NotAllowedError' || ad === 'PermissionDeniedError') {
+          setHata('Kamera izni reddedildi. Tarayıcı ayarlarından izin verip tekrar deneyin.');
+        } else if (ad === 'NotFoundError' || ad === 'DevicesNotFoundError') {
+          setHata('Kamera bulunamadı.');
+        } else {
+          setHata('Kamera açılamadı. "Galeriden Yükle" ile foto seçebilirsiniz.');
+        }
+      }
+    }
+    basla();
+    return () => {
+      iptal = true;
+      const s = streamRef.current;
+      if (s) s.getTracks().forEach((t) => t.stop());
+      streamRef.current = null;
+    };
+  }, []);
+
+  function cek() {
+    const video = videoRef.current;
+    if (!video || !video.videoWidth) return;
+    const canvas = document.createElement('canvas');
+    canvas.width = video.videoWidth;
+    canvas.height = video.videoHeight;
+    canvas.getContext('2d').drawImage(video, 0, 0, canvas.width, canvas.height);
+    canvas.toBlob(
+      (blob) => {
+        if (!blob) return;
+        const file = new File([blob], `kamera_${Date.now()}.jpg`, { type: 'image/jpeg' });
+        onCapture(file);
+        setSayac((n) => n + 1);
+        setFlash(true);
+        setTimeout(() => setFlash(false), 160);
+      },
+      'image/jpeg',
+      0.92
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 bg-black flex flex-col">
+      {/* Üst bar: sayaç + Bitti */}
+      <div className="absolute top-0 inset-x-0 z-10 flex items-center justify-between p-4 bg-gradient-to-b from-black/70 to-transparent">
+        <div className="text-white/90 text-sm font-medium">
+          {sayac > 0 && (
+            <span className="inline-flex items-center gap-1.5 bg-white/15 backdrop-blur-sm rounded-full px-3 py-1 tabular-nums">
+              <span className="w-2 h-2 bg-green-400 rounded-full" />
+              {sayac} çekildi
+            </span>
+          )}
+        </div>
+        <button
+          type="button"
+          onClick={onClose}
+          className="inline-flex items-center gap-1.5 bg-white/15 hover:bg-white/25 backdrop-blur-sm text-white font-semibold rounded-full px-4 py-2"
+        >
+          <CheckIcon className="w-5 h-5" />
+          Bitti
+        </button>
+      </div>
+
+      {/* Görüntü / hata */}
+      <div className="flex-1 relative flex items-center justify-center overflow-hidden">
+        {hata ? (
+          <div className="text-center text-white/90 p-8 max-w-sm">
+            <CameraIcon className="w-12 h-12 mx-auto mb-3 opacity-60" />
+            <p className="text-sm">{hata}</p>
+            <button
+              type="button"
+              onClick={onClose}
+              className="mt-5 bg-white/15 hover:bg-white/25 rounded-full px-5 py-2 font-semibold text-white"
+            >
+              Kapat
+            </button>
+          </div>
+        ) : (
+          <>
+            <video
+              ref={videoRef}
+              playsInline
+              muted
+              autoPlay
+              className="w-full h-full object-cover"
+            />
+            {/* Plaka çerçeve kılavuzu + dışını hafif karart */}
+            <div className="pointer-events-none absolute inset-0 flex items-center justify-center">
+              <div className="w-[78%] max-w-md aspect-[4/1.3] border-2 border-white/70 rounded-xl shadow-[0_0_0_9999px_rgba(0,0,0,0.25)]" />
+            </div>
+            <div className="pointer-events-none absolute top-20 inset-x-0 text-center text-white/80 text-xs px-6">
+              Plakayı çerçeveye düz ve yakın yerleştirin
+            </div>
+            {flash && <div className="absolute inset-0 bg-white/80" />}
+            {!hazir && (
+              <div className="absolute inset-0 flex items-center justify-center bg-black/40">
+                <LoadingSpinner className="w-8 h-8 text-white" />
+              </div>
+            )}
+          </>
+        )}
+      </div>
+
+      {/* Alt bar: deklanşör */}
+      {!hata && (
+        <div className="absolute bottom-0 inset-x-0 z-10 flex items-center justify-center pb-8 pt-10 bg-gradient-to-t from-black/70 to-transparent">
+          <button
+            type="button"
+            onClick={cek}
+            disabled={!hazir}
+            aria-label="Çek"
+            className="w-20 h-20 rounded-full bg-white/95 active:scale-90 transition-transform disabled:opacity-40 ring-4 ring-white/40 flex items-center justify-center"
+          >
+            <span className="w-16 h-16 rounded-full bg-white border-4 border-slate-300" />
+          </button>
         </div>
       )}
     </div>
