@@ -92,10 +92,12 @@ export default function Daireler() {
         </div>
         {isYonetici && (
           <div className="flex gap-2">
+            {/* Toplu İçe Aktar — şimdilik gizli (kullanıcı isteği). Geri açmak için yorumu kaldır.
             <Button onClick={() => setShowImport(true)} variant="secondary" size="md">
               <DocumentArrowUpIcon className="w-5 h-5 mr-1.5" />
               Toplu İçe Aktar
             </Button>
+            */}
             <Button onClick={() => setShowForm((s) => !s)} size="md">
               {showForm ? (
                 <><XMarkIcon className="w-5 h-5 mr-1.5" /> Kapat</>
