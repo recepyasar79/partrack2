@@ -65,11 +65,10 @@ export default function Kontrol() {
     setItems((prev) => [...yeni, ...prev]);
     setBusy(true);
 
-    // 2 paralel upload. Python OCR artık 2 uvicorn worker ile koşuyor;
-    // ikiden fazla istekte sıra yine oluşur ama 2 paralel her vardiyada
-    // ~%40 toplam süre kazandırır. Eskiden MAX_CONCURRENT=1 idi (tek
-    // worker'ı tıkamamak için); 2'ye çıkarttık çünkü artık donanım var.
-    const MAX_CONCURRENT = 2;
+    // 4 paralel upload — OCR tarafında 2 makine × 2 uvicorn worker = 4
+    // eşzamanlı işleme kapasitesi var (worker başına semaphore 1). Dosyalar
+    // ~0.4MB olduğu için 4 paralel upload mobil LTE'de de sorun değil.
+    const MAX_CONCURRENT = 4;
     let cursor = 0;
     // Toplu yükleme sonu özeti için yerel sayaç — items state'i closure'da
     // bayat kaldığından sonuçları burada biriktiriyoruz.

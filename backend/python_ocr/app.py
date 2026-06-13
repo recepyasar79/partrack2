@@ -467,8 +467,11 @@ CONFIDENCE_ACCEPT = float(os.environ.get("OCR_CONFIDENCE_ACCEPT", "0.60"))
 CONFIDENCE_MANUAL_REVIEW = float(os.environ.get("OCR_CONFIDENCE_MANUAL_REVIEW", "0.5"))
 
 # Toplam süre bütçesi — bütçe dolunca eldeki en iyi sonuçla dön. Backend
-# PYTHON_OCR_TIMEOUT_MS=30s beklediği için burada 15s güvenli tavan.
-TIME_BUDGET_S = float(os.environ.get("OCR_TIME_BUDGET_S", "15"))
+# PYTHON_OCR_TIMEOUT_MS=15s beklediği için burada 9s güvenli tavan: 9s'de
+# yerel olarak çözülemeyen fotoğraflar pratikte Plate Recognizer'a gidiyor
+# (2026-06-12 gece batch'i: hızlı yol p50=1.8s, yavaş yol PR ile çözüldü) —
+# beklemeyi uzatmak yalnız toplam süreyi şişiriyor.
+TIME_BUDGET_S = float(os.environ.get("OCR_TIME_BUDGET_S", "9"))
 
 
 def recognize(image_bytes: bytes, debug: bool = False):
@@ -541,10 +544,21 @@ def recognize(image_bytes: bytes, debug: bool = False):
 
     # Pass 2: full-image fallback. Region detection plakayı bulamadıysa
     # (ör. plaka çok yakın çekilmiş, detection box'ı parçalamış) tam görüntü
-    # variant'larını dene. Her variant pahalı olduğu için bütçeyi her adımda
-    # kontrol et.
+    # variant'larını dene. Tek bir tam-görüntü EasyOCR taraması yoğun CPU'da
+    # 10-20s sürebiliyor ve bütçe yalnız taramalar ARASINDA kontrol edildiği
+    # için 30s timeout'ları buradan geliyordu (2026-06-12 batch: 10/61 foto).
+    # İki önlem: tam taramalar küçültülmüş görüntüde (max 1000px) yapılır ve
+    # kalan bütçe bir taramaya yetmeyecekse hiç başlanmaz.
+    FULL_PASS_MIN_BUDGET_S = 3.0
     if not accepted() and not out_of_budget():
-        for idx, variant in enumerate(preprocess_for_ocr(img)):
+        full_img = img
+        fh, fw = img.shape[:2]
+        if max(fh, fw) > 1000:
+            fscale = 1000 / max(fh, fw)
+            full_img = cv2.resize(img, (int(fw * fscale), int(fh * fscale)), interpolation=cv2.INTER_AREA)
+        for idx, variant in enumerate(preprocess_for_ocr(full_img)):
+            if (time.monotonic() - started) > (TIME_BUDGET_S - FULL_PASS_MIN_BUDGET_S):
+                break
             try_image(variant, f"full-{idx}")
             if accepted() or out_of_budget():
                 break
