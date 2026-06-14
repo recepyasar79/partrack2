@@ -89,6 +89,14 @@ PLATE_BODY = re.compile(
     r"^\d{2}(?:[A-Z]\d{4}|[A-Z]{2}\d{2,4}|[A-Z]{3}\d{2,3})$"
 )
 DIPLO_PLATE = re.compile(r"^(?:CC|CD)\d{3,6}$")
+# Diplomatik plakalar (CC/CD) konut sitelerinde pratikte hiç görülmez ama
+# "CD"/"CC" + rakam, standart bir plakanın çok yaygın yanlış-okumasıdır
+# (saha: 34COZ143 → CD21434). char_variants'ın O→D swap'iyle birleşince OCR
+# sağlam bir standart plakayı sahte bir diplomatik plakaya çeviriyor ve matcher
+# bunu düzeltemiyor (iki string arasında ortak karakter yok). Bu yüzden DIPLO
+# kabulü varsayılan KAPALI; gerçekten diplomatik plaka beklenen bir kurulumda
+# OCR_ALLOW_DIPLOMATIC=1 ile açılabilir.
+ALLOW_DIPLOMATIC = os.environ.get("OCR_ALLOW_DIPLOMATIC", "0") == "1"
 
 # Common OCR confusions on plate fonts. We try both directions because
 # EasyOCR sometimes reads them either way depending on lighting.
@@ -117,7 +125,7 @@ def is_valid_plate(text: str) -> bool:
     if not text:
         return False
     cleaned = "".join(ch for ch in text.upper() if ch.isalnum())
-    if DIPLO_PLATE.match(cleaned):
+    if ALLOW_DIPLOMATIC and DIPLO_PLATE.match(cleaned):
         return True
     return PLATE_BODY.match(cleaned) and cleaned[:2] in TR_CITY_CODES
 

@@ -183,19 +183,50 @@ router.post('/foto-upload', (req, res, next) => {
       if (prResult.ok && prResult.plate) {
         const prPlate = normalizePlaka(prResult.plate);
         usedEngine = 'plate_recognizer';
-        plaka = prPlate;
-        matchResult = {
-          original: rawOcrPlate,
-          corrected: prPlate,
-          source: 'plate-recognizer',
-          score: Math.round((prResult.score || 0) * 100),
-        };
-        // Otomatik öğrenme: ham OCR çıktısı varsa ve Plate Recognizer
-        // farklı bir sonuç döndüyse plate_learnings'e yaz. Bir sonraki
-        // aynı ham OCR çıktısında cache hit alacağız → API çağrısı yok.
-        if (rawOcrPlate && rawOcrPlate !== prPlate) {
+
+        // PR'ın ham okumasını da kayıtlı listeyle eşleştir. PR plakayı
+        // kayıtlı OLMAYAN bir değere okuduysa (örn. 34VK0148 → 36VK6148) ama
+        // bu değer kayıtlı bir plakaya yakınsa, kayıtlıya snap'le. Gece
+        // sayımında geçerli cevap kümesi kayıtlı plakalar; PR'ın ham çıktısı
+        // EasyOCR'ın kayıtlıya yaptığı eşleşmeyi körlemesine ezmemeli.
+        let prMatch = null;
+        try {
+          prMatch = await correctOCRGuess(prPlate, siteId);
+        } catch (e) {
+          console.warn('[kontroller] PR correction failed:', e.message);
+        }
+        // correctOCRGuess yalnız kayıtlı/öğrenilmiş kaynaklardan döner
+        // (fuzzy-registered / fuzzy-learned / learned-*); corrected varsa
+        // bilinen plaka kümesine snap etmiş demektir.
+        const prSnapped = prMatch?.corrected;     // PR ciktisi kayitliya snap etti
+        const easySnapped = matchResult?.corrected; // EasyOCR ciktisi kayitliya snap etti
+
+        if (prSnapped && easySnapped) {
+          // İkisi de kayıtlıya işaret ediyor — yüksek skorlu eşleşmeyi seç.
+          matchResult = (prMatch.score >= matchResult.score) ? prMatch : matchResult;
+        } else if (prSnapped) {
+          matchResult = prMatch;
+        } else if (easySnapped) {
+          // PR kayıtlı bir plakaya snap edemedi ama EasyOCR etti — kayıtlıyı tut.
+          // matchResult zaten EasyOCR'ın kayıtlı eşleşmesi, dokunma.
+        } else {
+          // İkisi de kayıtlıya snap edemedi → PR'ın ham okumasını kullan
+          // (genelde EasyOCR'ın ham çıktısından daha doğru).
+          matchResult = {
+            original: rawOcrPlate,
+            corrected: prPlate,
+            source: 'plate-recognizer',
+            score: Math.round((prResult.score || 0) * 100),
+          };
+        }
+        plaka = matchResult.corrected;
+
+        // Otomatik öğrenme: ham OCR çıktısı nihai plakadan farklıysa yaz. Bir
+        // sonraki aynı ham OCR çıktısında learned-exact cache hit → hem API
+        // çağrısı yok hem otomatik onay (örn. 36VK6148 → 34VK0148 öğrenilir).
+        if (rawOcrPlate && rawOcrPlate !== plaka) {
           try {
-            await recordLearning(rawOcrPlate, prPlate, siteId);
+            await recordLearning(rawOcrPlate, plaka, siteId);
           } catch (e) {
             console.warn('[kontroller] auto-learning failed:', e.message);
           }
