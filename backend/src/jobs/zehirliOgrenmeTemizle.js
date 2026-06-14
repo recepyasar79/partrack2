@@ -21,8 +21,6 @@ const norm = (s) => String(s == null ? '' : s).toUpperCase().replace(/\s+/g, '')
 const DRY_RUN = process.env.ZEHIRLI_OGRENME_DRY_RUN === '1';
 
 async function main() {
-  const today = new Date().toISOString().slice(0, 10);
-
   // Öğrenme kaydı olan tüm site'ler — temizlik site bazında (kayıtlı plaka
   // kümesi site'ye özel; bir site'nin plakası diğerini etkilemez).
   const siteIds = await db('plate_learnings').distinct('site_id').pluck('site_id');
@@ -37,11 +35,14 @@ async function main() {
       (await db('araclar').where({ site_id: siteId, aktif: true }).select('plaka'))
         .map((r) => norm(r.plaka))
     );
+    // Misafir plakalar tarih penceresinden BAĞIMSIZ alınır: süresi geçmiş bir
+    // misafir plakası da gerçek bir araçtı; ona öğrenilmiş düzeltme zararsız
+    // (kayıtlı bir plakayı gölgelemez, kendisi gerçek bir plaka). Yalnız
+    // HİÇBİR gerçek plakaya (kayıtlı veya herhangi bir misafir) karşılık
+    // gelmeyen "çöp" hedefler zehirlidir.
     const guest = new Set(
       (await db('misafir_araclar')
         .where('site_id', siteId)
-        .andWhere('baslangic_tarihi', '<=', today)
-        .andWhere('bitis_tarihi', '>=', today)
         .select('plaka'))
         .map((r) => norm(r.plaka))
     );
