@@ -427,52 +427,104 @@ def run_easyocr(image: np.ndarray):
 
     # Sort by x then y so that left-to-right reading order is respected.
     result.sort(key=lambda r: (r[0][0][1], r[0][0][0]))
-    texts = [(clean_text(t), float(c)) for _, t, c in result]
-    texts = [t for t in texts if t[0]]
-    if not texts:
+    # Her algılama için metin + güven + KUTU YÜKSEKLİĞİ tutulur. Yükseklik
+    # plaka seçiminde kullanılır: plaka karedeki en iri metindir, bayi
+    # tabelasındaki telefon/web yazısı daha küçük fontludur (extract_plate).
+    dets = []
+    for bbox, t, c in result:
+        ct = clean_text(t)
+        if not ct:
+            continue
+        ys = [pt[1] for pt in bbox]
+        height = float(max(ys) - min(ys))
+        dets.append((ct, float(c), height))
+    if not dets:
         return [], 0.0
-    avg_conf = sum(c for _, c in texts) / len(texts)
-    return texts, avg_conf
+    avg_conf = sum(c for _, c, _ in dets) / len(dets)
+    return dets, avg_conf
 
 
-def extract_plate(detections):
-    """
-    From a list of (text, confidence) tuples, return the most likely plate.
-    1. Concat in reading order, search substrings.
-    2. Try each individual detection.
-    3. Try permutations of 2-3 detections (handles plates split across boxes).
-    """
-    if not detections:
-        return None, 0.0, "none"
+# Telefon/uzun-rakam reddi: geçerli bir TR plakasında en fazla 4 ardışık rakam
+# bulunur (34AB1234 → "1234"). 7+ ardışık rakam = telefon / URL / ID — saha:
+# "02165615334" (= 0216 561 53 34 sabit hat) → char_variants ile sahte
+# "02IG5615" plakası üretiliyordu. Plaka aramasından önce bu run'lar silinir;
+# gerçek plakada bu kadar uzun rakam dizisi olmadığı için yanlış-pozitif yok.
+def _strip_phone_runs(text: str) -> str:
+    return re.sub(r"\d{7,}", "", text)
 
-    # Strategy 1: concatenated text.
-    joined = "".join(t for t, _ in detections)
+
+def _search_plate(items):
+    """items: [(text, conf)] → (plate, conf, sub_strategy) | None.
+    Birleşik (okuma sırası) → tekil → permütasyon (plaka kutulara bölünmüş
+    olabilir; eğik plakada il kodu harflerden SONRA sıralanabiliyor)."""
+    items = [(t, c) for t, c in items if t]
+    if not items:
+        return None
+
+    joined = "".join(t for t, _ in items)
     plate = best_plate_from_substrings(joined)
     if plate:
-        return plate, sum(c for _, c in detections) / len(detections), "joined"
+        return plate, sum(c for _, c in items) / len(items), "joined"
 
-    # Strategy 2: each detection alone.
-    for text, conf in detections:
+    for text, conf in items:
         candidate = best_plate_from_substrings(text)
         if candidate:
             return candidate, conf, "single"
 
-    # Strategy 3: token order may be wrong. EasyOCR reads the characters fine
-    # but on skewed plates the province code can sort AFTER the letters
-    # ("COZ143" + "34" → "COZ14334", not a valid plate, even though "34" +
-    # "COZ143" = "34COZ143" is). Reading-order sort (y,x) fails here. Try every
-    # ordering of the detections joined together; token count is capped so the
-    # permutation count stays bounded (4! = 24, each a cheap substring scan).
-    # Purely additive — only reached when in-order joins (1 & 2) already failed,
-    # so it cannot change cases that already resolve.
-    toks = [(t, c) for t, c in detections if t]
-    if 2 <= len(toks) <= 4:
+    # Permütasyon sayısı sınırlı kalsın diye token sayısı 2-4 ile sınırlı
+    # (4! = 24, her biri ucuz substring taraması). Yalnız sıralı join'ler
+    # başarısızsa çalışır, çözülen vakaları bozmaz.
+    if 2 <= len(items) <= 4:
         from itertools import permutations
-        for perm in permutations(toks):
+        for perm in permutations(items):
             candidate = best_plate_from_substrings("".join(t for t, _ in perm))
             if candidate:
-                avg = sum(c for _, c in perm) / len(perm)
-                return candidate, avg, "permuted"
+                return candidate, sum(c for _, c in perm) / len(perm), "permuted"
+
+    return None
+
+
+# Plaka karedeki en iri metindir; en uzun kutunun bu oranından kısa metin
+# kutuları "çerçeve yazısı" (bayi adı altındaki telefon/web/adres) sayılıp ÖNCE
+# dışlanır. Env ile ayarlanabilir. 0.5 = en uzun kutunun yarısından kısa olanlar
+# eler; bayi telefon/URL yazısı pratikte plakanın ~%40-60'ı boyunda.
+PLATE_MIN_HEIGHT_RATIO = float(os.environ.get("OCR_PLATE_MIN_HEIGHT_RATIO", "0.5"))
+
+
+def extract_plate(detections):
+    """
+    detections: [(text, confidence, height)] → (plate, confidence, strategy).
+
+    Seçim KARAKTER BOYUTUna dayanır: plaka karedeki en iri metindir, bayi
+    tabelasındaki telefon/web yazısı daha küçük fontludur. Önce iri kutulardan
+    aranır; bulunamazsa (boyut sinyali yanılmış olabilir, ör. plaka ufak/uzak)
+    tüm kutulara düşülür. Telefon/uzun-rakam run'ları her kutudan temizlenir.
+    """
+    if not detections:
+        return None, 0.0, "none"
+
+    dets = []
+    for text, conf, height in detections:
+        cleaned = _strip_phone_runs(text)
+        if cleaned:
+            dets.append((cleaned, conf, height))
+    if not dets:
+        return None, 0.0, "none"
+
+    max_h = max(h for _, _, h in dets) or 1.0
+    threshold = PLATE_MIN_HEIGHT_RATIO * max_h
+    big = [(t, c) for t, c, h in dets if h >= threshold]
+    small = [(t, c) for t, c, h in dets if h < threshold]
+
+    # 1) Önce iri kutular (plaka-boyutu metin) — bayi telefon/web yazısı dışta.
+    found = _search_plate(big)
+    if found:
+        return found[0], found[1], f"big/{found[2]}"
+
+    # 2) Regresyon emniyeti: iri kutular plaka vermezse tüm kutuları dene.
+    found = _search_plate(big + small)
+    if found:
+        return found[0], found[1], f"all/{found[2]}"
 
     return None, 0.0, "none"
 
@@ -528,7 +580,7 @@ def recognize(image_bytes: bytes, debug: bool = False):
         plate, conf, sub_strategy = extract_plate(detections)
         debug_info["strategies"].append({
             "label": label,
-            "detections": [{"text": t, "confidence": round(c, 3)} for t, c in detections],
+            "detections": [{"text": t, "confidence": round(c, 3), "height": round(h, 1)} for t, c, h in detections],
             "plate": plate,
             "sub_strategy": sub_strategy,
             "confidence": round(conf, 3),
@@ -537,7 +589,7 @@ def recognize(image_bytes: bytes, debug: bool = False):
             best["plate"] = plate
             best["confidence"] = conf
             best["strategy"] = f"{label}/{sub_strategy}"
-            best["raw"] = [t for t, _ in detections]
+            best["raw"] = [t for t, _c, _h in detections]
 
     # Pass 1: region-first. Plaka crop'larında EasyOCR çağrısı küçük görüntü
     # sayesinde ~0.3-1s; tam görüntüde 5-15s. Önce ucuz yolu dene, geçerli
