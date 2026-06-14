@@ -1,4 +1,5 @@
-const { app, request, db, makeToken, createTestUser, cleanupTables } = require('../helpers');
+const { app, request, db, makeToken, createTestUser, createTestSite, cleanupTables } = require('../helpers');
+const userStatusCache = require('../../src/utils/userStatusCache');
 
 beforeEach(async () => {
   await cleanupTables();
@@ -188,5 +189,59 @@ describe('POST /api/auth/sifre-degistir', () => {
       .set('Authorization', `Bearer ${token}`)
       .send({ eski_sifre: 'YanlisSifre1!', yeni_sifre: 'YeniSifre123!' });
     expect(res.status).toBe(401);
+  });
+});
+
+// #1 güvenlik fix: authRequired artık kullanıcı durumunu canlı kontrol eder —
+// deaktive edilen kullanıcı/site token süresi boyunca erişimde kalmaz.
+describe('authRequired — canlı oturum kontrolü (deaktivasyon)', () => {
+  test('aktif kullanici token ile erisir (200)', async () => {
+    const user = await createTestUser({ kullanici_adi: 'aktifuser', rol: 'guvenlik' });
+    const token = makeToken({ id: user.id, kullanici_adi: 'aktifuser', rol: 'guvenlik' });
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(200);
+  });
+
+  test('var olmayan kullanici id li (gecerli imzali) token 401 doner', async () => {
+    const token = makeToken({ id: 999999, kullanici_adi: 'hayalet', rol: 'guvenlik' });
+    const res = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+    expect(res.status).toBe(401);
+  });
+
+  test('PATCH ile deaktive edilen kullanici aninda erisemez (401)', async () => {
+    const admin = await createTestUser({ kullanici_adi: 'deaktadmin', rol: 'site_yonetici' });
+    const guard = await createTestUser({ kullanici_adi: 'deaktguard', rol: 'guvenlik' });
+    const adminToken = makeToken({ id: admin.id, kullanici_adi: 'deaktadmin', rol: 'site_yonetici' });
+    const guardToken = makeToken({ id: guard.id, kullanici_adi: 'deaktguard', rol: 'guvenlik' });
+
+    // Guard önce erişebiliyor (durumu cache'e aktif olarak yazılır)
+    const before = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${guardToken}`);
+    expect(before.status).toBe(200);
+
+    // Admin guard'ı deaktive eder — endpoint cache'i invalidate eder
+    const patch = await request(app)
+      .patch(`/api/auth/kullanicilar/${guard.id}`)
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ aktif: false });
+    expect(patch.status).toBe(200);
+
+    // Guard artık erişemez — TTL beklemeden anında
+    const after = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${guardToken}`);
+    expect(after.status).toBe(401);
+  });
+
+  test('deaktif site kullanicisi erisemez (401)', async () => {
+    const site = await createTestSite({ ad: 'Kapali Site', slug: `kapali-${Date.now()}`, aktif: true });
+    const user = await createTestUser({ kullanici_adi: 'kapalisiteuser', rol: 'guvenlik', site_id: site.id });
+    const token = makeToken({ id: user.id, kullanici_adi: 'kapalisiteuser', rol: 'guvenlik', site_id: site.id });
+
+    const before = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+    expect(before.status).toBe(200);
+
+    await db('sites').where({ id: site.id }).update({ aktif: false });
+    userStatusCache.invalidate(user.id); // direkt DB güncellemesi — cache'i atla
+
+    const after = await request(app).get('/api/auth/me').set('Authorization', `Bearer ${token}`);
+    expect(after.status).toBe(401);
   });
 });

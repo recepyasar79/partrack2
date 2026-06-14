@@ -2,6 +2,7 @@ const request = require('supertest');
 const { hashPassword, signToken } = require('../src/utils/auth');
 const db = require('../src/db');
 const app = require('../src/server');
+const userStatusCache = require('../src/utils/userStatusCache');
 
 function makeToken(payload) {
   // Multi-tenant: middleware site_id'yi token'dan okur. Test'lerde her token
@@ -103,6 +104,10 @@ async function createTestArac(overrides = {}) {
 }
 
 async function cleanupTables(preserveUsers = []) {
+  // authRequired kullanıcı durumunu kısa TTL cache'liyor; testler arası
+  // (silinip yeniden oluşturulan kullanıcılarda) bayat durum sızmasın diye
+  // cache'i sıfırla.
+  userStatusCache._reset();
   // Child tables first (FK constraints)
   await db('bildirimler').del();
   await db('ihlaller').del();

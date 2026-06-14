@@ -6,6 +6,7 @@ const { authRequired, requireRole, requireSiteAdmin, requireSuperadmin } = requi
 const { writeAudit } = require('../middleware/audit');
 const { getEffectiveLimits, isLimitReached } = require('../utils/planLimits');
 const lockout = require('../utils/loginLockout');
+const { invalidate: invalidateUserStatus } = require('../utils/userStatusCache');
 
 const router = express.Router();
 
@@ -249,6 +250,9 @@ router.patch('/kullanicilar/:id', authRequired, requireSiteAdmin, async (req, re
     .first();
   if (!target) return res.status(404).json({ error: 'Kullanıcı bulunamadı.' });
   await db('users').where({ id }).update({ aktif });
+  // Oturum durumu cache'ini düş → deaktivasyon TTL beklemeden anında geçerli
+  // (authRequired sonraki istekte 401 döner).
+  invalidateUserStatus(id);
   await writeAudit({
     user_id: req.user.id,
     site_id: req.user.site_id,

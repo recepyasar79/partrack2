@@ -24,6 +24,30 @@ function fileFilter(_req, file, cb) {
   cb(null, true);
 }
 
+/**
+ * Magic-byte tabanlı görüntü tipi tespiti. fileFilter yalnız istemci
+ * MIME'ına bakar (spoof edilebilir); bu, buffer içeriğinden gerçek tipi
+ * doğrular — upload handler'ı OCR/depolamadan ÖNCE çağırır.
+ * @param {Buffer} buffer
+ * @returns {'image/jpeg'|'image/png'|'image/webp'|null} tanınmazsa null
+ */
+function sniffImageType(buffer) {
+  if (!Buffer.isBuffer(buffer) || buffer.length < 12) return null;
+  // JPEG: FF D8 FF
+  if (buffer[0] === 0xff && buffer[1] === 0xd8 && buffer[2] === 0xff) return 'image/jpeg';
+  // PNG: 89 50 4E 47 0D 0A 1A 0A
+  if (
+    buffer[0] === 0x89 && buffer[1] === 0x50 && buffer[2] === 0x4e && buffer[3] === 0x47 &&
+    buffer[4] === 0x0d && buffer[5] === 0x0a && buffer[6] === 0x1a && buffer[7] === 0x0a
+  ) return 'image/png';
+  // WEBP: 'RIFF' [4 byte boyut] 'WEBP'
+  if (
+    buffer[0] === 0x52 && buffer[1] === 0x49 && buffer[2] === 0x46 && buffer[3] === 0x46 &&
+    buffer[8] === 0x57 && buffer[9] === 0x45 && buffer[10] === 0x42 && buffer[11] === 0x50
+  ) return 'image/webp';
+  return null;
+}
+
 // Multi-tenant: site_id prefix R2 path'inde yer alır. Eski (single-tenant)
 // foto'ların foto_url'leri DB'de tam URL olarak saklı → migration yok,
 // yalnızca yeni upload'lar sites/{siteId}/... altına yazılır.
@@ -123,4 +147,4 @@ function buildUpload() {
   };
 }
 
-module.exports = { buildUpload, isR2Configured, MAX_BYTES, ALLOWED_MIME };
+module.exports = { buildUpload, isR2Configured, sniffImageType, MAX_BYTES, ALLOWED_MIME };

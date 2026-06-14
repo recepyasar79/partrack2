@@ -4,7 +4,7 @@ const fs = require('fs');
 const db = require('../db');
 const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
-const { buildUpload, isR2Configured } = require('../services/storage');
+const { buildUpload, isR2Configured, sniffImageType } = require('../services/storage');
 const { todayTR } = require('../utils/timezone');
 const { normalizePlaka, isValidPlakaSerbest } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
@@ -115,6 +115,11 @@ router.post('/foto-upload', (req, res, next) => {
     if (!req.file) return res.status(400).json({ error: 'Dosya alınamadı.' });
 
     const buffer = req.file.buffer;
+    // İçerik doğrulaması: istemci MIME'ı spoof edilebilir; gerçek tipi
+    // magic-byte'tan teyit et (multer fileFilter ucuz ilk kapı olarak kaldı).
+    if (!sniffImageType(buffer)) {
+      return res.status(400).json({ error: 'Geçersiz veya bozuk görüntü dosyası (yalnız JPG/PNG/WEBP).' });
+    }
     const originalName = req.file.originalname || 'plate.jpg';
     const mimeType = req.file.mimetype || 'image/jpeg';
     const siteId = req.scopedSiteId;

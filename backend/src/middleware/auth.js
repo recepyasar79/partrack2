@@ -1,29 +1,57 @@
 const { verifyToken } = require('../utils/auth');
+const { getUserStatus } = require('../utils/userStatusCache');
 
 /**
- * JWT'yi doğrular, req.user'a payload'ı yerleştirir. Payload yapısı:
+ * JWT'yi doğrular VE kullanıcının hâlâ aktif olduğunu canlı kayıttan teyit
+ * eder, sonra req.user'ı kurar:
  *   { id, kullanici_adi, rol, site_id }
- * site_id NULL → superadmin (tüm sitelere erişir)
- * site_id dolu → bir site'ye bağlı user (site_yonetici veya guvenlik)
+ * site_id NULL → superadmin; dolu → site-bağlı user.
+ *
+ * Kimlik (id/kullanici_adi) imzalı token'dan, OTORİTE (rol/site_id/aktiflik)
+ * canlı DB'den gelir (kısa TTL cache). Böylece deaktive edilen kullanıcı ya
+ * da deaktif site'nin kullanıcısı token süresi (7g) boyunca erişimde kalmaz;
+ * rol/site değişimi de oturum ortasında anında yansır.
  *
  * Convenience getter: req.siteId — middleware'ler ve route'lar bunu okur.
- * Superadmin için req.siteId === null; query param ile geçici scope:
- * superadmin '?siteId=42' geçerek başka site verisine bakabilir
- * (Ü1.4 route layer'da zorla).
  */
-function authRequired(req, res, next) {
+async function authRequired(req, res, next) {
   const header = req.headers.authorization || '';
   const token = header.startsWith('Bearer ') ? header.slice(7) : null;
   if (!token) return res.status(401).json({ error: 'Yetkilendirme gerekli.' });
+
+  let payload;
   try {
-    const payload = verifyToken(token);
-    req.user = payload;
-    // Superadmin için null; aksi halde JWT'den gelen site_id.
-    req.siteId = payload.site_id ?? null;
-    next();
+    payload = verifyToken(token);
   } catch {
     return res.status(401).json({ error: 'Geçersiz veya süresi geçmiş oturum.' });
   }
+
+  let status;
+  try {
+    status = await getUserStatus(payload.id);
+  } catch (err) {
+    // Geçici DB hatası: herkesi 401 ile login'e atmaktansa 503 dön. Frontend
+    // 401'de oturumu kapatıyor; DB blip'inde aktif oturumları düşürmeyelim.
+    console.error('[auth] kullanıcı durumu sorgulanamadı:', err.message);
+    return res.status(503).json({ error: 'Servis geçici olarak kullanılamıyor.' });
+  }
+
+  if (!status || status.aktif === false) {
+    return res.status(401).json({ error: 'Oturum geçersiz. Lütfen tekrar giriş yapın.' });
+  }
+  // Site-bağlı kullanıcının site'si deaktif edilmişse erişimi kes.
+  if (status.rol !== 'superadmin' && status.site_aktif === false) {
+    return res.status(401).json({ error: 'Oturum geçersiz. Lütfen tekrar giriş yapın.' });
+  }
+
+  req.user = {
+    id: payload.id,
+    kullanici_adi: payload.kullanici_adi,
+    rol: status.rol,
+    site_id: status.site_id ?? null,
+  };
+  req.siteId = status.site_id ?? null;
+  next();
 }
 
 /**

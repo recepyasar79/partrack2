@@ -11,9 +11,14 @@ function initSentry() {
     dsn,
     environment: process.env.NODE_ENV || 'development',
     tracesSampleRate: process.env.NODE_ENV === 'production' ? 0.1 : 1.0,
+    sendDefaultPii: false,
     beforeSend(event) {
-      if (event.request && event.request.headers) {
+      // Hata bağlamından PII/sırrı çıkar: header (Authorization token),
+      // gövde (telefon/plaka) ve cookie. Yalnız method/url kalsın.
+      if (event.request) {
         delete event.request.headers;
+        delete event.request.data;
+        delete event.request.cookies;
       }
       return event;
     },

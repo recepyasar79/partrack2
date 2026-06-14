@@ -1,6 +1,15 @@
 const { app, request, makeToken, createTestUser, createTestDaire, createTestArac, db, cleanupTables } = require('../helpers');
 const { todayTR } = require('../../src/utils/timezone');
 
+// foto-upload artık magic-byte ile içerik doğruluyor (storage.sniffImageType);
+// geçerli JPEG header'ı olan buffer kullan. İçerik OCR'da decode edilemese de
+// upload akışı 201 döner (OCR Promise.allSettled ile soft-fail).
+function jpegBuffer(size = 1024) {
+  const b = Buffer.alloc(Math.max(size, 12));
+  b[0] = 0xff; b[1] = 0xd8; b[2] = 0xff; b[3] = 0xe0; // JPEG SOI + APP0
+  return b;
+}
+
 let adminToken;
 let admin;
 
@@ -17,7 +26,7 @@ describe('POST /api/kontroller/foto-upload', () => {
   test('foto yuklenir ve kontrol kaydi olusturulur', async () => {
     const daire = await createTestDaire({ daire_no: 'A1' });
     await createTestArac({ daire_id: daire.id, plaka: '34UPLOAD' });
-    const buffer = Buffer.alloc(1024);
+    const buffer = jpegBuffer();
     const res = await request(app)
       .post('/api/kontroller/foto-upload')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -28,7 +37,7 @@ describe('POST /api/kontroller/foto-upload', () => {
   });
 
   test('plaka olmadan da yuklenir', async () => {
-    const buffer = Buffer.alloc(1024);
+    const buffer = jpegBuffer();
     const res = await request(app)
       .post('/api/kontroller/foto-upload')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -43,6 +52,16 @@ describe('POST /api/kontroller/foto-upload', () => {
       .post('/api/kontroller/foto-upload')
       .attach('foto', buffer, 'noauth.jpg');
     expect(res.status).toBe(401);
+  });
+
+  test('image olmayan icerik (image/jpeg MIME ile) 400 doner', async () => {
+    // İstemci MIME'ı image/jpeg ama içerik görüntü değil (magic-byte fail).
+    const buffer = Buffer.from('GECERSIZ ICERIK, GORUNTU DEGIL'.repeat(40));
+    const res = await request(app)
+      .post('/api/kontroller/foto-upload')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .attach('foto', buffer, { filename: 'sahte.jpg', contentType: 'image/jpeg' });
+    expect(res.status).toBe(400);
   });
 });
 
@@ -159,7 +178,7 @@ describe('OCR metrics', () => {
   test('foto-upload sonrası ocr_metrics satırı oluşur', async () => {
     const before = await db('ocr_metrics').count('* as c').first();
     const beforeCount = parseInt(before.c, 10);
-    const buffer = Buffer.alloc(1024);
+    const buffer = jpegBuffer();
     const res = await request(app)
       .post('/api/kontroller/foto-upload')
       .set('Authorization', `Bearer ${adminToken}`)
