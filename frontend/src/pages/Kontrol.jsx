@@ -5,7 +5,7 @@ import { api, apiError } from '../services/api';
 import { captureException } from '../sentry';
 import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
-import { Input } from '../components/ui/Input';
+import { Input, Select } from '../components/ui/Input';
 import { isValidPlakaSerbest, normalizePlaka } from '../utils/validation';
 import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon, CarCartoonIcon, PhotoIcon, PencilSquareIcon, ClipboardDocumentCheckIcon, BuildingIcon } from '../components/ui/Icons';
 import AuthImage from '../components/AuthImage';
@@ -19,10 +19,48 @@ const DURUM_MAP = {
   'hata': { label: 'Hata', color: 'text-red-600', bg: 'bg-red-100' },
 };
 
+// "B3" → "B003", "A21" → "A021" — blok harfi + sıfır-dolgulu sıra no, böylece
+// string karşılaştırması blok-sonra-numarayı doğru sıralar (A2 < A10, naif
+// alfabetik sırada A10 < A2 olurdu). Dairesi olmayan (kayıtsız/boş plaka)
+// kayıtlar null döner → sıralamada her zaman sona iner.
+function daireSortKey(k) {
+  const d = (k.daire_no || '').trim();
+  if (!d) return null;
+  const m = /^([A-Za-z]+)\s*(\d+)$/.exec(d);
+  if (!m) return d.toUpperCase();
+  return `${m[1].toUpperCase()}${String(parseInt(m[2], 10)).padStart(3, '0')}`;
+}
+
+// Sıralayıcı üretici — null anahtarlar yönden bağımsız her zaman sona iner ki
+// kayıtsız/dairesiz kayıtlar (asc da olsa desc de olsa) listenin altında
+// toplansın, üstü gerçek verilere kalsın.
+function makeCmp(keyFn, dir) {
+  return (a, b) => {
+    const va = keyFn(a);
+    const vb = keyFn(b);
+    if (va == null && vb == null) return 0;
+    if (va == null) return 1;
+    if (vb == null) return -1;
+    const c = va < vb ? -1 : va > vb ? 1 : 0;
+    return dir === 'desc' ? -c : c;
+  };
+}
+
+const SIRALAYICILAR = {
+  zaman_desc: makeCmp((k) => new Date(k.yukleme_zamani).getTime(), 'desc'),
+  zaman_asc: makeCmp((k) => new Date(k.yukleme_zamani).getTime(), 'asc'),
+  plaka_asc: makeCmp((k) => k.plaka || null, 'asc'),
+  plaka_desc: makeCmp((k) => k.plaka || null, 'desc'),
+  daire_asc: makeCmp(daireSortKey, 'asc'),
+  daire_desc: makeCmp(daireSortKey, 'desc'),
+};
+
 export default function Kontrol() {
   const toast = useToast();
   const [bugun, setBugun] = useState([]);
   const [arama, setArama] = useState('');
+  const [daireArama, setDaireArama] = useState('');
+  const [siralama, setSiralama] = useState('zaman_desc');
   const [manuelAcik, setManuelAcik] = useState(false);
   const [items, setItems] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -208,11 +246,18 @@ export default function Kontrol() {
   }
 
   // Plakalar DB'de boşluksuz/büyük harf; aramayı da aynı forma sokarak
-  // "34 abc 123" gibi yazımlar da eşleşsin.
+  // "34 abc 123" gibi yazımlar da eşleşsin. Daire filtresi de aynı normalize
+  // (örn. "b 3" → "B3"). İki filtre AND'lenir, sonra seçili sıralama uygulanır.
   const aramaNorm = arama.toUpperCase().replace(/[^A-Z0-9]/g, '');
-  const bugunFiltreli = aramaNorm
-    ? bugun.filter((k) => (k.plaka || '').includes(aramaNorm))
-    : bugun;
+  const daireNorm = daireArama.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const filtreAktif = !!(aramaNorm || daireNorm);
+  const bugunFiltreli = bugun
+    .filter((k) => {
+      if (aramaNorm && !(k.plaka || '').includes(aramaNorm)) return false;
+      if (daireNorm && !(k.daire_no || '').toUpperCase().includes(daireNorm)) return false;
+      return true;
+    })
+    .sort(SIRALAYICILAR[siralama] || SIRALAYICILAR.zaman_desc);
 
   // Toplu yüklemede sabit bildirimdeki canlı sayaç — 100 fotoda durum
   // görmek için kaydırmak gerekmesin.
@@ -438,15 +483,39 @@ export default function Kontrol() {
       {/* Today's Uploads */}
       <div className="flex flex-col gap-3 mt-2">
         <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-          Bugünün tüm yüklemeleri ({arama ? `${bugunFiltreli.length}/${bugun.length}` : bugun.length})
+          Bugünün tüm yüklemeleri ({filtreAktif ? `${bugunFiltreli.length}/${bugun.length}` : bugun.length})
         </h2>
-        <Input
-          placeholder="Plaka ara"
-          value={arama}
-          onChange={(e) => setArama(e.target.value)}
-          icon={MagnifyingGlassIcon}
-          className="font-mono uppercase"
-        />
+        <div className="flex flex-col sm:flex-row gap-2">
+          <Input
+            placeholder="Plaka ara"
+            value={arama}
+            onChange={(e) => setArama(e.target.value)}
+            icon={MagnifyingGlassIcon}
+            className="font-mono uppercase"
+            containerClassName="flex-1"
+          />
+          <Input
+            placeholder="Daire (örn. B3)"
+            value={daireArama}
+            onChange={(e) => setDaireArama(e.target.value)}
+            icon={BuildingIcon}
+            className="font-mono uppercase"
+            containerClassName="sm:w-44"
+          />
+          <Select
+            value={siralama}
+            onChange={(e) => setSiralama(e.target.value)}
+            containerClassName="sm:w-48"
+            aria-label="Sıralama"
+          >
+            <option value="zaman_desc">En yeni</option>
+            <option value="zaman_asc">En eski</option>
+            <option value="plaka_asc">Plaka A→Z</option>
+            <option value="plaka_desc">Plaka Z→A</option>
+            <option value="daire_asc">Daire A1→D34</option>
+            <option value="daire_desc">Daire D34→A1</option>
+          </Select>
+        </div>
         <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-sm border border-slate-100 dark:border-slate-800 overflow-hidden">
           <table className="w-full text-base">
             <thead>
@@ -522,10 +591,10 @@ export default function Kontrol() {
                 <tr>
                   <td colSpan={4} className="p-8 text-center">
                     <div className="flex flex-col items-center gap-2 text-slate-400 dark:text-slate-500">
-                      {arama ? (
+                      {filtreAktif ? (
                         <>
                           <MagnifyingGlassIcon className="w-8 h-8" />
-                          <p>"{arama.toUpperCase()}" ile eşleşen plaka yok.</p>
+                          <p>Filtreyle eşleşen kayıt yok.</p>
                         </>
                       ) : (
                         <>
