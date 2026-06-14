@@ -602,9 +602,9 @@ def recognize(image_bytes: bytes, debug: bool = False):
         response["debug"] = debug_info
         response["thresholds"] = {
             "high": CONFIDENCE_HIGH,
-            "region_exit": CONFIDENCE_REGION_EXIT,
-            "min_auto": CONFIDENCE_MIN_AUTO,
+            "accept": CONFIDENCE_ACCEPT,
             "manual_review": CONFIDENCE_MANUAL_REVIEW,
+            "time_budget_s": TIME_BUDGET_S,
         }
         response["paddle_load_error"] = _paddle_load_error
     return response
