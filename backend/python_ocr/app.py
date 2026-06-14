@@ -178,14 +178,20 @@ def best_plate_from_substrings(text: str) -> Optional[str]:
             sub = text[i:i + length]
             for variant in char_variants(sub):
                 if is_valid_plate(variant):
-                    found.append((variant, length))
+                    # Kaç karakter takas edildi — sub ile variant aynı uzunlukta.
+                    swaps = sum(1 for a, b in zip(sub, variant) if a != b)
+                    found.append((length, swaps, variant))
 
     if not found:
         return None
 
-    # Prefer longer plates and earlier matches.
-    found.sort(key=lambda x: (-x[1], x[0]))
-    return found[0][0]
+    # Önce daha uzun plaka, SONRA en az takas (gerçekte okunana en yakın), en
+    # son deterministik alfabetik. Takas sayısını ölçmek kritik: char_variants
+    # "34COZ143"ten O→D, Z→2 ile geçerli "34CD2143" de üretir; alfabetik
+    # sıralama bu daha-çok-takaslı varyantı orijinalin önüne geçiriyordu
+    # (CD < CO). 0-takaslı gerçek okuma artık kazanıyor.
+    found.sort(key=lambda x: (-x[0], x[1], x[2]))
+    return found[0][2]
 
 
 # ---------------------------------------------------------------------------
@@ -451,13 +457,22 @@ def extract_plate(detections):
         if candidate:
             return candidate, conf, "single"
 
-    # Strategy 3: try pairs of adjacent detections.
-    for i in range(len(detections) - 1):
-        a, ca = detections[i]
-        b, cb = detections[i + 1]
-        candidate = best_plate_from_substrings(a + b)
-        if candidate:
-            return candidate, (ca + cb) / 2, "pair"
+    # Strategy 3: token order may be wrong. EasyOCR reads the characters fine
+    # but on skewed plates the province code can sort AFTER the letters
+    # ("COZ143" + "34" → "COZ14334", not a valid plate, even though "34" +
+    # "COZ143" = "34COZ143" is). Reading-order sort (y,x) fails here. Try every
+    # ordering of the detections joined together; token count is capped so the
+    # permutation count stays bounded (4! = 24, each a cheap substring scan).
+    # Purely additive — only reached when in-order joins (1 & 2) already failed,
+    # so it cannot change cases that already resolve.
+    toks = [(t, c) for t, c in detections if t]
+    if 2 <= len(toks) <= 4:
+        from itertools import permutations
+        for perm in permutations(toks):
+            candidate = best_plate_from_substrings("".join(t for t, _ in perm))
+            if candidate:
+                avg = sum(c for _, c in perm) / len(perm)
+                return candidate, avg, "permuted"
 
     return None, 0.0, "none"
 
