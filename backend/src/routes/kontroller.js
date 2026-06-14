@@ -164,10 +164,14 @@ router.post('/foto-upload', (req, res, next) => {
     let matchResult = null;
     let usedEngine = ocrInfo.engine || 'easyocr';
     const rawOcrPlate = plaka;
+    // Ham OCR metni — çıkarılan tek plaka yanlış olduğunda matcher bunu da
+    // değerlendirir (ham "DLN932 34" doğru plakayı içerir ama çıkarılan
+    // "34TR14" yanlış kayıtlıya snap'liyordu).
+    const rawOcrText = ocrInfo.rawText || '';
 
-    if (plaka && plaka.length >= 5) {
+    if ((plaka && plaka.length >= 5) || rawOcrText.length >= 5) {
       try {
-        matchResult = await correctOCRGuess(plaka, siteId);
+        matchResult = await correctOCRGuess(plaka, siteId, rawOcrText);
       } catch (e) {
         console.warn('[kontroller] OCR correction failed:', e.message);
       }
@@ -196,7 +200,7 @@ router.post('/foto-upload', (req, res, next) => {
         // EasyOCR'ın kayıtlıya yaptığı eşleşmeyi körlemesine ezmemeli.
         let prMatch = null;
         try {
-          prMatch = await correctOCRGuess(prPlate, siteId);
+          prMatch = await correctOCRGuess(prPlate, siteId, rawOcrText);
         } catch (e) {
           console.warn('[kontroller] PR correction failed:', e.message);
         }

@@ -316,12 +316,94 @@ async function getAllRegisteredPlates(siteId) {
 }
 
 /**
+ * Plakanın [il kodu, harfler, rakam] bloklarının olası dizilişlerini üret.
+ * OCR eğik/yakın çekimde blokları farklı sırada okuyabiliyor — saha örnekleri:
+ *   "729 PEL 34"  (rakam-harf-il)   → 34PEL729
+ *   "825 34NTM"   (rakam-il-harf)   → 34NTM825
+ *   "DLN932 34"   (harf-rakam-il)   → 34DLN932
+ * Ham metinde plakayı blok sırasından bağımsız yakalamak için tüm dizilişler
+ * (6 kısa form) pencere taramasıyla aranır.
+ * @returns {string[]}
+ */
+function plateOrderForms(plate) {
+  const forms = new Set([plate]);
+  const m = /^(\d{2})([A-Z]{1,3})(\d{2,4})$/.exec(plate);
+  if (m) {
+    const b = [m[1], m[2], m[3]]; // [il kodu, harfler, rakam]
+    // [0,1,2] (normal) zaten set'te; kalan 5 diziliş:
+    const orders = [[0, 2, 1], [1, 0, 2], [1, 2, 0], [2, 0, 1], [2, 1, 0]];
+    for (const [i, j, k] of orders) forms.add(b[i] + b[j] + b[k]);
+  } else {
+    // Standart desen değil (diplomatik vb.) → en azından province-sona formu.
+    const m2 = /^(\d{2})([A-Z][A-Z0-9]*)$/.exec(plate);
+    if (m2) forms.add(`${m2[2]}${m2[1]}`);
+  }
+  return [...forms];
+}
+
+/**
+ * `form`'u `rawNorm` içinde kaydırarak en iyi pencere benzerliğini bul.
+ * Tek ekleme/silme toleransı için form uzunluğunun ±1'i de denenir.
+ */
+function bestWindowScore(rawNorm, form) {
+  if (!form || form.length < 4) return 0;
+  if (form.length >= rawNorm.length) return similarityScore(rawNorm, form);
+  let best = 0;
+  for (let len = form.length - 1; len <= form.length + 1; len++) {
+    if (len < 4 || len > rawNorm.length) continue;
+    for (let i = 0; i + len <= rawNorm.length; i++) {
+      const s = similarityScore(rawNorm.slice(i, i + len), form);
+      if (s > best) {
+        best = s;
+        if (best === 100) return 100;
+      }
+    }
+  }
+  return best;
+}
+
+/**
+ * Ham OCR metninde (yalnız çıkarılan tek plaka değil) kayıtlı bir plaka ara.
+ * extract_plate yanlış substring seçip matcher'ı yanlış kayıtlıya snaplettiğinde
+ * (saha: ham "DLN932 34 TR" → çıkarılan "34TR14" → yanlış kayıtlı 34CTM124),
+ * doğru plaka ("DLN932 34") çoğu zaman ham metinde duruyor. Yüksek eşik (88):
+ * plakanın ham içinde neredeyse birebir geçmesini isteriz — 3 harf + 3-4 rakam
+ * gövdesi ayırt edici olduğu için yanlış-pozitif riski düşük.
+ *
+ * @param {string} rawText - Python OCR ham metni (boşluklu, çok token'lı)
+ * @param {number} siteId
+ * @param {number} minScore
+ * @returns {Promise<{plaka: string, score: number, source: string}|null>}
+ */
+async function findBestMatchFromRaw(rawText, siteId, minScore = 88) {
+  if (!rawText || siteId == null) return null;
+  const rawNorm = rawText.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (rawNorm.length < 5) return null;
+
+  const registeredPlates = await getAllRegisteredPlates(siteId);
+  let best = null;
+  for (const plate of registeredPlates) {
+    let plateBest = 0;
+    for (const form of plateOrderForms(plate)) {
+      const s = bestWindowScore(rawNorm, form);
+      if (s > plateBest) plateBest = s;
+    }
+    if (plateBest >= minScore && (!best || plateBest > best.score)) {
+      best = { plaka: plate, score: plateBest, source: 'raw-registered' };
+    }
+  }
+  return best;
+}
+
+/**
  * OCR çıktısını düzelt — site_id zorunlu.
- * @param {string} ocrGuess - OCR çıktısı
+ * @param {string} ocrGuess - OCR'ın çıkardığı tek plaka tahmini
  * @param {number} siteId   - Kullanıcının site'si
+ * @param {string} [rawText] - Python OCR ham metni (tüm token'lar). Verilirse,
+ *   çıkarılan tek plaka yanlış olduğunda ham metinde kayıtlı plaka aranır.
  * @returns {Promise<{original: string, corrected: string|null, source: string, score: number|null}>}
  */
-async function correctOCRGuess(ocrGuess, siteId) {
+async function correctOCRGuess(ocrGuess, siteId, rawText = null) {
   const result = {
     original: ocrGuess,
     corrected: null,
@@ -329,14 +411,28 @@ async function correctOCRGuess(ocrGuess, siteId) {
     score: null
   };
 
-  if (!ocrGuess) return result;
+  if (!ocrGuess && !rawText) return result;
 
-  const match = await findBestMatch(ocrGuess, siteId);
+  const match = ocrGuess ? await findBestMatch(ocrGuess, siteId) : null;
 
-  if (match) {
-    result.corrected = match.plaka;
-    result.source = match.source;
-    result.score = match.score;
+  // Ham metinde kayıtlı plaka neredeyse birebir geçiyorsa, bozuk tek-token'ın
+  // fuzzy snap'inden daha güvenilirdir. Yalnız KESİN daha iyiyse (strictly
+  // greater) override edilir — eşitlik/normal durumda mevcut davranış korunur.
+  let rawMatch = null;
+  if (rawText) {
+    try {
+      rawMatch = await findBestMatchFromRaw(rawText, siteId);
+    } catch (e) {
+      // raw-match opsiyonel iyileştirme; hata olursa normal akış sürsün
+    }
+  }
+
+  const chosen = (rawMatch && (!match || rawMatch.score > match.score)) ? rawMatch : match;
+
+  if (chosen) {
+    result.corrected = chosen.plaka;
+    result.source = chosen.source;
+    result.score = chosen.score;
   }
 
   return result;
@@ -526,6 +622,9 @@ module.exports = {
   levenshteinDistance,
   similarityScore,
   findBestMatch,
+  findBestMatchFromRaw,
+  plateOrderForms,
+  bestWindowScore,
   correctOCRGuess,
   recordLearning,
   correctBatchOCR,
