@@ -401,6 +401,18 @@ async function recordLearning(ocrRaw, correctPlaka, siteId) {
   // Zaten aynıysa kaydetmeye gerek yok
   if (ocrNormalized === correctNormalized) return;
 
+  // KRİTİK: Öğrenme havuzu yalnız BİLİNEN-İYİ (kayıtlı) plakaları içermeli.
+  // correct_plaka kayıtlı araç ya da bugün aktif misafir değilse kaydetme.
+  // Aksi halde OCR/PR'ın kayıtsız bir yanlış-okuması (örn. 34VK0148 → 36VK6148)
+  // "doğru" diye öğrenilir; sonraki okumalarda learned-exact ile bu kayıtsız
+  // plakaya snap eder ve gerçek kayıtlı plakaya ulaşmayı kalıcı olarak engeller
+  // (havuz zehirlenmesi — sahada 289 öğrenmenin 36'sı bu şekilde bozulmuştu).
+  const registered = await getAllRegisteredPlates(siteId);
+  const regSet = new Set(registered.map((p) => p.toUpperCase().replace(/\s+/g, '')));
+  if (!regSet.has(correctNormalized)) {
+    return;
+  }
+
   const signature = normalizeSignature(ocrNormalized);
 
   const existing = await db('plate_learnings')
