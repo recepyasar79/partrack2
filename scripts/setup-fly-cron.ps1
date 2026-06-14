@@ -27,7 +27,8 @@ $JOBS = @(
   @{ Name = 'parasut-sync';           Schedule = 'daily';  NpmScript = 'job:parasut-sync' },
   @{ Name = 'subscription-lifecycle'; Schedule = 'daily';  NpmScript = 'job:subscription-lifecycle' },
   @{ Name = 'email-raporu';           Schedule = 'daily';  NpmScript = 'job:email-raporu' },
-  @{ Name = 'bildirim-retry';         Schedule = 'hourly'; NpmScript = 'job:bildirim-retry' }
+  @{ Name = 'bildirim-retry';         Schedule = 'hourly'; NpmScript = 'job:bildirim-retry' },
+  @{ Name = 'zehirli-ogrenme-temizle'; Schedule = 'weekly'; NpmScript = 'job:zehirli-ogrenme-temizle' }
 )
 
 # Eski scheduled machines'i temizle

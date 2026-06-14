@@ -42,6 +42,7 @@ JOBS=(
   "subscription-lifecycle|daily|job:subscription-lifecycle"
   "email-raporu|daily|job:email-raporu"
   "bildirim-retry|hourly|job:bildirim-retry"
+  "zehirli-ogrenme-temizle|weekly|job:zehirli-ogrenme-temizle"
 )
 
 # Eski scheduled machines'i temizle (idempotency)
