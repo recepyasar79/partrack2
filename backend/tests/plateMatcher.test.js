@@ -105,6 +105,11 @@ describeIfDb('plateMatcher DB integration', () => {
   });
 
   test('recordLearning hem learnings hem substitutions yazar', async () => {
+    // recordLearning artık yalnız KAYITLI plakaları öğrenir (havuz zehirlenme
+    // önlemi, commit 9d8a06b) — hedef plakayı önce kayıtlı yap.
+    const daire = await createTestDaire({ daire_no: 'A1' });
+    await createTestArac({ daire_id: daire.id, plaka: '34MNL089' });
+
     await recordLearning('34MN1089', '34MNL089', 1);
 
     const learn = await db('plate_learnings').where({ ocr_raw: '34MN1089' }).first();
@@ -115,6 +120,18 @@ describeIfDb('plateMatcher DB integration', () => {
       .first();
     expect(sub).toBeTruthy();
     expect(sub.count).toBe(1);
+  });
+
+  test('recordLearning kayıtsız correct_plaka\'yı öğrenmez (zehir önleme)', async () => {
+    // Hiçbir araç kayıtlı değil → 36VK6148 kayıtsız. PR/OCR yanlış-okuması
+    // havuza "doğru" diye girmemeli (sonraki okumaları kayıtsıza snap'leyip
+    // gerçek kayıtlıyı gölgelerdi).
+    await recordLearning('36VK0187', '36VK6148', 1);
+    const learn = await db('plate_learnings').where({ ocr_raw: '36VK0187' }).first();
+    expect(learn).toBeUndefined();
+    // Substitution histogramına da yazılmamalı.
+    const subs = await db('plate_char_substitutions').select('*');
+    expect(subs).toHaveLength(0);
   });
 
   test('aynı substitution tekrarı count++', async () => {
