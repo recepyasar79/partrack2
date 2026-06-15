@@ -46,8 +46,10 @@ RUN python -c "from paddleocr import TextDetection; TextDetection(model_name='PP
 COPY app.py .
 
 EXPOSE 5000
-# 2 worker: tek worker'da EasyOCR sync olduğu için ikinci foto'nun serbest
-# beklemesi gerekiyordu (frontend MAX_CONCURRENT=1 olmak zorundaydı).
-# 2 worker + 3GB RAM ile iki paralel OCR + güvenlik marjı.
-# Her worker EasyOCR weights'i RAM'e yüklediği için baseline ~800MB/worker.
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "2"]
+# 1 worker (makine başına). 2 worker (2026-06-13) 4GB'a sığmıyordu: her worker
+# EasyOCR (~800MB) + PaddleOCR yüklüyor ≈ 2GB/worker; 2 worker + görüntü decode
+# > 4GB → kernel OOM-kill (saha 2026-06-15: akşam batch'inde her iki makine de
+# worker'ı öldürdü → 502 + timeout). 2 CPU paylaşımı yüzünden 2 worker hız da
+# kazandırmıyordu. 2 makine × 1 worker = 2 eşzamanlı OCR = frontend
+# MAX_CONCURRENT=2 ile birebir; tek worker 2 CPU'yu tek OCR için kullanır.
+CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "5000", "--workers", "1"]
