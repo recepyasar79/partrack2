@@ -7,7 +7,7 @@ import { useToast } from '../components/ui/Toast';
 import { Button } from '../components/ui/Button';
 import { Input, Select } from '../components/ui/Input';
 import { isValidPlakaSerbest, normalizePlaka } from '../utils/validation';
-import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon, CarCartoonIcon, PhotoIcon, PencilSquareIcon, ClipboardDocumentCheckIcon, BuildingIcon } from '../components/ui/Icons';
+import { CameraIcon, CheckIcon, XMarkIcon, ArrowPathIcon, LoadingSpinner, MagnifyingGlassIcon, CarCartoonIcon, PhotoIcon, PencilSquareIcon, ClipboardDocumentCheckIcon, BuildingIcon, TrashIcon } from '../components/ui/Icons';
 import AuthImage from '../components/AuthImage';
 
 const DURUM_MAP = {
@@ -66,7 +66,14 @@ export default function Kontrol() {
   const [busy, setBusy] = useState(false);
   const [kameraAcik, setKameraAcik] = useState(false);
   const [zoomImage, setZoomImage] = useState(null);
+  // Son yükleme batch'inin item id'leri — "Son Yüklenenleri Sil" butonu bununla
+  // görünür/gizlenir. Her handleNewFiles çağrısı bunu son batch'e günceller.
+  const [sonBatch, setSonBatch] = useState([]);
   const deletingRef = useRef(new Set());
+  // silSonBatch tıklandığında en güncel items'a (kontrolId'leri set edilmiş)
+  // erişmek için — closure bayatlığını önler.
+  const itemsRef = useRef([]);
+  itemsRef.current = items;
   // Kamera seri çekimde birden çok handleNewFiles çağrısı paralel koşabilir;
   // ref sayaç ile yalnız hepsi bitince overlay kapanır.
   const busyCountRef = useRef(0);
@@ -124,6 +131,7 @@ export default function Kontrol() {
       hata: null,
     }));
     setItems((prev) => [...yeni, ...prev]);
+    setSonBatch(yeni.map((y) => y.id)); // "Son Yüklenenleri Sil" butonunu göster
     busyCountRef.current += 1;
     setBusy(true);
 
@@ -311,6 +319,34 @@ export default function Kontrol() {
     }
   }
 
+  // Son yükleme batch'inde oluşan kayıtları topluca sil (yanlış galeri seçimi
+  // vb.). Sunucudan siler, oturum listesinden + bugün listesinden çıkarır,
+  // butonu gizler (sonBatch sıfırlanır).
+  async function silSonBatch() {
+    if (!sonBatch.length) return;
+    if (!window.confirm('Son yüklenen fotoğraflar silinsin mi?')) return;
+    const batchSet = new Set(sonBatch);
+    const kontrolIds = itemsRef.current
+      .filter((i) => batchSet.has(i.id) && i.kontrolId)
+      .map((i) => i.kontrolId);
+    // UI'dan hemen kaldır + butonu gizle
+    setItems((prev) => prev.filter((i) => !batchSet.has(i.id)));
+    setSonBatch([]);
+    // Sunucudan sil
+    let hata = 0;
+    for (const kid of kontrolIds) {
+      try {
+        await api.delete(`/kontroller/${kid}`);
+      } catch (e) {
+        if (e?.response?.status !== 404) hata += 1;
+      }
+    }
+    const silinenSet = new Set(kontrolIds);
+    setBugun((prev) => prev.filter((k) => !silinenSet.has(k.id)));
+    if (hata) toast.warning(`${kontrolIds.length - hata} silindi, ${hata} silinemedi.`);
+    else toast.success('Son yüklenenler silindi.');
+  }
+
   return (
     <div className="p-4 max-w-3xl mx-auto flex flex-col gap-4">
       {/* Header */}
@@ -360,6 +396,12 @@ export default function Kontrol() {
             </Button>
           </Link>
         </div>
+        {sonBatch.length > 0 && (
+          <Button variant="danger" size="lg" onClick={silSonBatch}>
+            <TrashIcon className="w-5 h-5 mr-2" />
+            Son Yüklenenleri Sil ({sonBatch.length})
+          </Button>
+        )}
       </div>
 
       {/* Session Uploads */}
