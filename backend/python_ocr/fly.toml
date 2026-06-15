@@ -28,6 +28,18 @@ primary_region = 'fra'
   # tabani 2'de tutmasini saglar.
   min_machines_running = 2
 
+  # Yuk dagitimi (saha fix 2026-06-15): concurrency ayari YOKKEN Fly varsayilani
+  # (soft_limit ~20) iki eszamanli OCR istegini AYNI makineye yigabiliyordu;
+  # makine basina tek worker oldugu icin kuyruk 20s timeout'u asiyor, diger
+  # makine bos kaliyordu (22:52 patlamasi: 19 Python OCR timeout, PR kurtardi
+  # ama ~25-30s yavasladi). soft_limit=1 → Fly 2. istegi ayni makineye koymadan
+  # once digerini doldurur → 2 yukleme 2 makineye yayilir, yigilma yok.
+  # hard_limit=2 → makine basina en fazla 1 aktif + 1 kuyruk (~18s, timeout alti).
+  [http_service.concurrency]
+    type = "requests"
+    soft_limit = 1
+    hard_limit = 2
+
 [[vm]]
   # 2 worker × (EasyOCR ~800MB + PaddleOCR detection ~300MB) + Python + OS
   # ≈ 2.6GB. 4GB güvenli marj; Fly.io 4GB shared ~$11/ay (vs 3GB ~$8, 2GB ~$5).
