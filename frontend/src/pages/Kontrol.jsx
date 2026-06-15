@@ -86,6 +86,17 @@ export default function Kontrol() {
     return () => window.removeEventListener('keydown', onKey);
   }, [zoomImage]);
 
+  // Yükleme/işleme sürerken sayfadan ayrılma/yenileme uyarısı. overscroll-behavior
+  // (index.css) kazara pull-to-refresh'i zaten kapatıyor; bu da bilerek yenileme
+  // ya da geri tuşunda "emin misin?" sorarak in-flight upload'ların ve oturum
+  // sonuçlarının kaybını önler.
+  useEffect(() => {
+    if (!busy) return undefined;
+    const handler = (e) => { e.preventDefault(); e.returnValue = ''; };
+    window.addEventListener('beforeunload', handler);
+    return () => window.removeEventListener('beforeunload', handler);
+  }, [busy]);
+
   async function onFiles(e) {
     const files = Array.from(e.target.files || []);
     e.target.value = '';

@@ -7,6 +7,10 @@ body,
 #root {
   height: 100%;
   scroll-behavior: smooth;
+  /* Mobilde tarayıcının "yukarı çek-bırak yenile" (pull-to-refresh) hareketini
+     kapat — galeriden yükleme işlenirken kazara yenileme oturum durumunu
+     (yüklenen fotoğrafların OCR/onay sonuçları) siliyordu. */
+  overscroll-behavior-y: contain;
 }
 
 body {
