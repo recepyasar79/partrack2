@@ -83,6 +83,35 @@ describe('Gece Çetelesi', () => {
     expect(r.status).toBe(404);
   });
 
+  test('araya giren stray satır gerçek tohumu engellemez', async () => {
+    const a1 = await createTestDaire({ daire_no: 'A1' });
+    const a2 = await createTestDaire({ daire_no: 'A2' });
+    await createTestArac({ daire_id: a1.id, plaka: '34CC001' });
+    await createTestArac({ daire_id: a2.id, plaka: '34CC002' });
+    await gorulen('34CC001');
+    await gorulen('34CC002');
+    // Launch testi gibi araya bir stray satır (a1, 0) — eski kodda bu, tüm
+    // tohumu engelliyordu (saha bug'ı). Artık üzerine yazılmalı.
+    await db('gece_cetelesi').insert({ site_id: 1, daire_id: a1.id, tarih: todayTR(), arac_sayisi: 0 });
+
+    const res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
+    const byNo = Object.fromEntries(res.body.daireler.map((d) => [d.daire_no, d.arac_sayisi]));
+    expect(byNo.A1).toBe(1); // stray 0 üzerine tespit değeri yazıldı
+    expect(byNo.A2).toBe(1);
+  });
+
+  test('?yenile=1 manuel sayımları akşam tespitine sıfırlar', async () => {
+    const a1 = await createTestDaire({ daire_no: 'A1' });
+    await createTestArac({ daire_id: a1.id, plaka: '34DD001' });
+    await gorulen('34DD001');
+    await auth(request(app).get('/api/kontroller/gece-cetelesi')); // tohum A1=1
+    await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a1.id}`).send({ delta: 1 })); // A1=2
+    let res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
+    expect(res.body.daireler.find((d) => d.daire_no === 'A1').arac_sayisi).toBe(2); // manuel korunur
+    res = await auth(request(app).get('/api/kontroller/gece-cetelesi?yenile=1'));
+    expect(res.body.daireler.find((d) => d.daire_no === 'A1').arac_sayisi).toBe(1); // tespite döndü
+  });
+
   test('token olmadan 401', async () => {
     const r = await request(app).get('/api/kontroller/gece-cetelesi');
     expect(r.status).toBe(401);

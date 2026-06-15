@@ -288,6 +288,27 @@ function GeceCetelesiModal({ onClose }) {
     }
   }
 
+  // Sayaçları akşam kontrolündeki tespit değerlerine geri al (gece boyu yapılan
+  // manuel +/- değişiklikleri siler). Tohum bir nedenle yanlış/eksik kaldıysa
+  // (ör. ekran erken açılmış) güvenlik görevlisinin elle düzeltme yolu.
+  async function yenile() {
+    if (!window.confirm(
+      'Sayaçlar akşam kontrolündeki tespit değerlerine sıfırlanacak.\n'
+      + 'Gece boyu yaptığınız +/- değişiklikler silinir. Devam edilsin mi?'
+    )) return;
+    setYukleniyor(true);
+    try {
+      const { data } = await api.get('/kontroller/gece-cetelesi?yenile=1');
+      setDaireler(data.daireler || []);
+      setSeciliId(null);
+      toast.success('Akşam tespitinden yenilendi.');
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setYukleniyor(false);
+    }
+  }
+
   // Blok bazında grupla (liste zaten blok+sıra sıralı geliyor).
   const aramaNorm = arama.toUpperCase().replace(/[^A-Z0-9]/g, '');
   const filtreli = aramaNorm
@@ -324,13 +345,24 @@ function GeceCetelesiModal({ onClose }) {
           </button>
         </div>
 
-        {/* Renk lejantı + arama */}
+        {/* Renk lejantı + yenile + arama */}
         <div className="px-4 pt-3 shrink-0 flex flex-col gap-2">
-          <div className="flex flex-wrap gap-2 text-[11px] text-slate-600 dark:text-slate-300">
-            <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-slate-300 dark:bg-slate-600" /> 0 (boş)</span>
-            <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-400" /> 1</span>
-            <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500" /> 2</span>
-            <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-800" /> 3+</span>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <div className="flex flex-wrap gap-2 text-[11px] text-slate-600 dark:text-slate-300">
+              <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-slate-300 dark:bg-slate-600" /> 0 (boş)</span>
+              <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-400" /> 1</span>
+              <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500" /> 2</span>
+              <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-800" /> 3+</span>
+            </div>
+            <button
+              type="button"
+              onClick={yenile}
+              disabled={yukleniyor}
+              className="text-xs font-medium text-brand-700 dark:text-brand-300 hover:underline disabled:opacity-50 whitespace-nowrap"
+              title="Sayaçları akşam tespitine sıfırla"
+            >
+              ↻ Akşam tespitinden yenile
+            </button>
           </div>
           <Input
             placeholder="Daire ara (örn. B17)"

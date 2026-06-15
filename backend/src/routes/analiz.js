@@ -286,25 +286,36 @@ router.get('/gece-cetelesi', async (req, res, next) => {
   try {
     const tarih = req.query.tarih || todayTR();
     const siteId = req.scopedSiteId;
+    const forceYenile = req.query.yenile === '1';
 
-    const mevcut = await db('gece_cetelesi')
-      .where({ site_id: siteId, tarih })
-      .count('* as n')
-      .first();
-    if (parseInt(mevcut.n, 10) === 0) {
-      const daireler = await db('daireler')
-        .where({ site_id: siteId, aktif: true })
-        .select('id');
+    const daireler = await db('daireler')
+      .where({ site_id: siteId, aktif: true })
+      .orderBy('blok')
+      .orderBy('sira_no')
+      .select('id', 'daire_no', 'blok', 'sira_no');
+
+    // Tohumla: zorla (yenile=1) ya da henüz TAM tohumlanmamışsa. "Tam" = satır
+    // sayısı aktif daire sayısı kadar. Eski mantık "herhangi bir satır varsa
+    // atla" idi → araya giren TEK bir PATCH satırı (launch testi vb.) gerçek
+    // tohumlamayı engelliyor, tüm daireler gri kalıyordu (saha 2026-06-15).
+    // Artık eksik tohumda tüm daireleri akşam tespit değeriyle ÜZERINE yazıyoruz
+    // (stray satır düzelir). Tam tohum sonrası satır==daire olduğundan ve manuel
+    // +/- satır sayısını değiştirmediğinden yeniden tohumlanmaz (manuel korunur).
+    const mevcut = await db('gece_cetelesi').where({ site_id: siteId, tarih }).count('* as n').first();
+    const mevcutRows = parseInt(mevcut.n, 10);
+    if (daireler.length && (forceYenile || mevcutRows < daireler.length)) {
       const counts = await dairBasinaIcerideSayisi(siteId, tarih);
-      const tohum = daireler
-        .map((d) => ({ site_id: siteId, daire_id: d.id, tarih, arac_sayisi: counts.get(d.id) || 0 }))
-        .filter((r) => r.arac_sayisi > 0); // 0'lar COALESCE ile gelir, satıra gerek yok
-      if (tohum.length) {
-        await db('gece_cetelesi')
-          .insert(tohum)
-          .onConflict(['site_id', 'daire_id', 'tarih'])
-          .ignore();
-      }
+      const rows = daireler.map((d) => ({
+        site_id: siteId,
+        daire_id: d.id,
+        tarih,
+        arac_sayisi: counts.get(d.id) || 0,
+        guncelleme_zamani: db.fn.now(),
+      }));
+      await db('gece_cetelesi')
+        .insert(rows)
+        .onConflict(['site_id', 'daire_id', 'tarih'])
+        .merge(['arac_sayisi', 'guncelleme_zamani']);
     }
 
     const liste = await db('daireler as d')
