@@ -45,9 +45,10 @@ Production calisir halde. Asagidakilerin hepsi gercek site fotograflariyla test 
 **Python OCR (Fly.io: `parktrack-ocr`)**
 - `min_machines_running = 1`, `auto_stop_machines = 'off'` → **always-on**. Pratikte **2 makine** kosuyor (ikisi de `fra`, always-on).
   - **Neden:** Cold start = 35s makine boot + 35s EasyOCR yukleme = 70s. Aksam kontrolunde guvenlik gorevlisinin ilk fotosu icin kabul edilemez.
-- **4GB RAM, 2 CPU, `fra` region, 2 uvicorn worker** (`uvicorn --workers 2`). (**guncellendi 2026-06-13**, eskiden 2GB / single worker.)
-  - **Kapasite (dikkat):** 2 makine × 2 worker olsa da her makine **2 CPU**; ayni makineye dusen 2 OCR CPU'yu paylasip her biri ~2x yavasliyor. 2026-06-13 saha testinde (61 foto, MAX_CONCURRENT=4) p50=1.5s ama p95=13.7s → 13 timeout. Bu yuzden frontend `MAX_CONCURRENT=2` (makine basina ~1 OCR, cekisme yok). Daha fazla paralellik istenirse CPU artirilmali.
-  - **Neden 4GB:** PaddleOCR detection (AGPL-YOLOv8'in yerini aldi — ticari lisans uyumlulugu) + worker basina EasyOCR ~800MB. 2 worker × (EasyOCR + PaddleOCR) + Python + OS ≈ 2.6GB; 4GB guvenli marj (~$11/ay).
+- **4GB RAM, 2 CPU, `fra` region, 1 uvicorn worker** (`uvicorn --workers 1`). (**guncellendi 2026-06-15**: 2 worker → 1 worker, OOM nedeniyle; eskiden 2GB/1-worker → 06-13'te 4GB/2-worker → 06-15'te 4GB/1-worker.)
+  - **Neden 1 worker (OOM):** Her worker EasyOCR (~800MB) + PaddleOCR yukluyor ≈ 2GB. 2 worker × 2GB + goruntu decode > 4GB → kernel **OOM-kill** (saha 2026-06-15: aksam batch'inde her iki makine de worker'i oldurdu → `connection closed before message completed` = 502 + worker yeniden yuklenirken 20s timeout; 66 fotonun ~10'u boyle dustu). 2 CPU paylasimi yuzunden 2 worker hiz da kazandirmiyordu (06-13 notu).
+  - **Kapasite:** 2 makine × 1 worker = **2 eszamanli OCR** = frontend `MAX_CONCURRENT=2` ile birebir. Tek worker 2 CPU'yu tek OCR icin kullanir (per-request daha hizli). Daha fazla paralellik istenirse RAM artir (8GB) ve worker'i geri ac, ya da makine sayisini artir.
+  - **Neden 4GB:** PaddleOCR detection (AGPL-YOLOv8'in yerini aldi — ticari lisans uyumlulugu) + EasyOCR. 1 worker ile bol marj (~$11/ay).
 - **Iki katmanli OCR:** Pass 1 region detection + Pass 2 tam-goruntu fallback (max 1000px'e kucultulmus, kalan butce yetmezse atlanir — 30s takilmalarin kaynagiydi). `OCR_TIME_BUDGET_S=9` dolunca eldeki en iyi sonuc donulur.
 - **Plate Recognizer fallback:** Yerel OCR dusuk guvenli kalinca `PLATE_RECOGNIZER_API_KEY` ile harici servise gidilir.
 - Dockerfile: torch + numpy + easyocr **tek pip resolution pass** ile yukleniyor (`--extra-index-url https://download.pytorch.org/whl/cpu`); paddlepaddle ayri adimda.
