@@ -444,13 +444,19 @@ def run_easyocr(image: np.ndarray):
     return dets, avg_conf
 
 
-# Telefon/uzun-rakam reddi: geçerli bir TR plakasında en fazla 4 ardışık rakam
-# bulunur (34AB1234 → "1234"). 7+ ardışık rakam = telefon / URL / ID — saha:
-# "02165615334" (= 0216 561 53 34 sabit hat) → char_variants ile sahte
-# "02IG5615" plakası üretiliyordu. Plaka aramasından önce bu run'lar silinir;
-# gerçek plakada bu kadar uzun rakam dizisi olmadığı için yanlış-pozitif yok.
-def _strip_phone_runs(text: str) -> str:
-    return re.sub(r"\d{7,}", "", text)
+# Reklam/bayi gürültüsü reddi — geçerli bir TR plakasında olmayan iki örüntü
+# plaka aramasından önce silinir (yanlış-pozitif yok, plaka bunları içeremez):
+#  1. 7+ ardışık RAKAM = telefon / URL / ID (plakada en fazla 4 ardışık rakam:
+#     34AB1234 → "1234"). Saha: "02165615334" (0216 561 53 34 sabit hat) →
+#     char_variants ile sahte "02IG5615" üretiliyordu.
+#  2. 4+ ardışık HARF = bayi/reklam adı (plaka harf grubu en fazla 3 harf:
+#     34ABC123). Saha: OCR "OTOMOTIV/OZTEK/BUBAAU/CONNG/KADOSAN" gibi bayi
+#     yazısını plaka sanıp seçiyordu (boyut filtresi reklam büyük fontta olunca
+#     yetmiyordu). Bu, kelime listesi gerektirmeden RASTGELE bayi adlarını eler.
+def _strip_noise(text: str) -> str:
+    text = re.sub(r"\d{7,}", "", text)
+    text = re.sub(r"[A-Z]{4,}", "", text)
+    return text
 
 
 def _search_plate(items):
@@ -505,7 +511,7 @@ def extract_plate(detections):
 
     dets = []
     for text, conf, height in detections:
-        cleaned = _strip_phone_runs(text)
+        cleaned = _strip_noise(text)
         if cleaned:
             dets.append((cleaned, conf, height))
     if not dets:
