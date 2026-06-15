@@ -384,7 +384,7 @@ function GeceCetelesiModal({ onClose }) {
           ) : (
             bloklar.map((grup) => (
               <div key={grup.blok}>
-                <div className="text-xs font-semibold text-slate-400 dark:text-slate-500 mb-2">{grup.blok} Blok</div>
+                <div className="text-xl font-bold text-slate-800 dark:text-slate-100 mb-2">{grup.blok} Blok</div>
                 <div className="grid grid-cols-4 sm:grid-cols-6 gap-2">
                   {grup.daireler.map((d) => (
                     <button
