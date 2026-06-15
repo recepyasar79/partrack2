@@ -55,7 +55,7 @@ export default function AracListesi() {
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Tüm Araç Listesi</h1>
         <div className="flex gap-2">
-          <span className="text-sm text-slate-600 dark:text-slate-400 self-center">{araclar.length} araç</span>
+          <span className="self-center inline-flex items-center gap-1 text-sm font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-full px-2.5 py-0.5">{araclar.length} araç</span>
           <Button variant="secondary" onClick={exportCSV} disabled={!araclar.length}>CSV İndir</Button>
         </div>
       </div>

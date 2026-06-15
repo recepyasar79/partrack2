@@ -88,7 +88,7 @@ export default function Daireler() {
       <div className="flex flex-wrap items-center gap-2 justify-between">
         <div>
           <h1 className="text-2xl font-bold text-slate-900 dark:text-slate-100">Daire Yönetimi</h1>
-          <p className="text-sm text-slate-500 dark:text-slate-400 mt-0.5">{daireler.length} daire kayıtlı</p>
+          <span className="mt-1 inline-flex items-center gap-1 text-sm font-medium bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-700 rounded-full px-2.5 py-0.5">{daireler.length} daire</span>
         </div>
         {isYonetici && (
           <div className="flex gap-2">
