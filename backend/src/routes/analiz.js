@@ -294,28 +294,36 @@ router.get('/gece-cetelesi', async (req, res, next) => {
       .orderBy('sira_no')
       .select('id', 'daire_no', 'blok', 'sira_no');
 
-    // Tohumla: zorla (yenile=1) ya da henüz TAM tohumlanmamışsa. "Tam" = satır
-    // sayısı aktif daire sayısı kadar. Eski mantık "herhangi bir satır varsa
-    // atla" idi → araya giren TEK bir PATCH satırı (launch testi vb.) gerçek
-    // tohumlamayı engelliyor, tüm daireler gri kalıyordu (saha 2026-06-15).
-    // Artık eksik tohumda tüm daireleri akşam tespit değeriyle ÜZERINE yazıyoruz
-    // (stray satır düzelir). Tam tohum sonrası satır==daire olduğundan ve manuel
-    // +/- satır sayısını değiştirmediğinden yeniden tohumlanmaz (manuel korunur).
-    const mevcut = await db('gece_cetelesi').where({ site_id: siteId, tarih }).count('* as n').first();
-    const mevcutRows = parseInt(mevcut.n, 10);
-    if (daireler.length && (forceYenile || mevcutRows < daireler.length)) {
-      const counts = await dairBasinaIcerideSayisi(siteId, tarih);
-      const rows = daireler.map((d) => ({
-        site_id: siteId,
-        daire_id: d.id,
-        tarih,
-        arac_sayisi: counts.get(d.id) || 0,
-        guncelleme_zamani: db.fn.now(),
-      }));
-      await db('gece_cetelesi')
-        .insert(rows)
-        .onConflict(['site_id', 'daire_id', 'tarih'])
-        .merge(['arac_sayisi', 'guncelleme_zamani']);
+    if (daireler.length) {
+      // Bugün için hangi dairelerin satırı (sayacı) var?
+      const mevcutRows = await db('gece_cetelesi')
+        .where({ site_id: siteId, tarih })
+        .select('daire_id');
+      const mevcutIds = new Set(mevcutRows.map((r) => r.daire_id));
+
+      // Tohumlama stratejisi:
+      //  - yenile=1 → TÜM daireleri akşam tespitiyle ÜZERINE yaz (manuel sıfırla).
+      //  - normalde → yalnız SATIRI OLMAYAN (henüz tohumlanmamış) daireleri yaz;
+      //    mevcut/manuel satırlara DOKUNMA. Böylece gece yarısı daire eklense
+      //    bile (eski "mevcutRows < daire sayısı → hepsini overwrite" mantığı)
+      //    görevlinin manuel +/- sayımları SİLİNMEZ (re-seed veri kaybı fix,
+      //    2026-06-15 kod incelemesi). İlk açılışta tüm daireler eksik → hepsi
+      //    tohumlanır; sonraki açılışlarda eksik olmadığından hiç dokunulmaz.
+      const hedef = forceYenile ? daireler : daireler.filter((d) => !mevcutIds.has(d.id));
+      if (hedef.length) {
+        const counts = await dairBasinaIcerideSayisi(siteId, tarih);
+        const rows = hedef.map((d) => ({
+          site_id: siteId,
+          daire_id: d.id,
+          tarih,
+          arac_sayisi: counts.get(d.id) || 0,
+          guncelleme_zamani: db.fn.now(),
+        }));
+        const q = db('gece_cetelesi').insert(rows).onConflict(['site_id', 'daire_id', 'tarih']);
+        // yenile → DO UPDATE (üzerine yaz); normal → DO NOTHING (yarış emniyeti,
+        // hedef zaten satırı olmayanlar ama eşzamanlı GET'e karşı güvenli).
+        await (forceYenile ? q.merge(['arac_sayisi', 'guncelleme_zamani']) : q.ignore());
+      }
     }
 
     const liste = await db('daireler as d')

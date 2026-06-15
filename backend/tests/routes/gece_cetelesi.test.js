@@ -83,21 +83,40 @@ describe('Gece Çetelesi', () => {
     expect(r.status).toBe(404);
   });
 
-  test('araya giren stray satır gerçek tohumu engellemez', async () => {
+  test('araya giren stray satır diğer dairelerin tohumunu engellemez', async () => {
     const a1 = await createTestDaire({ daire_no: 'A1' });
     const a2 = await createTestDaire({ daire_no: 'A2' });
     await createTestArac({ daire_id: a1.id, plaka: '34CC001' });
     await createTestArac({ daire_id: a2.id, plaka: '34CC002' });
     await gorulen('34CC001');
     await gorulen('34CC002');
-    // Launch testi gibi araya bir stray satır (a1, 0) — eski kodda bu, tüm
-    // tohumu engelliyordu (saha bug'ı). Artık üzerine yazılmalı.
+    // Launch testi gibi araya stray satır (a1, 0). Eski "satır varsa atla"
+    // kodunda bu TÜM tohumu engelliyordu (saha bug'ı: hepsi gri kalıyordu).
     await db('gece_cetelesi').insert({ site_id: 1, daire_id: a1.id, tarih: todayTR(), arac_sayisi: 0 });
 
     const res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
     const byNo = Object.fromEntries(res.body.daireler.map((d) => [d.daire_no, d.arac_sayisi]));
-    expect(byNo.A1).toBe(1); // stray 0 üzerine tespit değeri yazıldı
-    expect(byNo.A2).toBe(1);
+    expect(byNo.A2).toBe(1); // stray, A2'nin tohumlanmasını engellemez (asıl fix)
+    expect(byNo.A1).toBe(0); // mevcut/manuel satıra dokunulmaz
+    // yenile=1 stray'i akşam tespitine düzeltir
+    const res2 = await auth(request(app).get('/api/kontroller/gece-cetelesi?yenile=1'));
+    const byNo2 = Object.fromEntries(res2.body.daireler.map((d) => [d.daire_no, d.arac_sayisi]));
+    expect(byNo2.A1).toBe(1);
+  });
+
+  test('seed sonrası daire eklenince manuel sayımlar korunur (veri kaybı yok)', async () => {
+    const a1 = await createTestDaire({ daire_no: 'A1' });
+    await createTestArac({ daire_id: a1.id, plaka: '34EE001' });
+    await gorulen('34EE001');
+    await auth(request(app).get('/api/kontroller/gece-cetelesi')); // tohum A1=1
+    await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a1.id}`).send({ delta: 1 })); // A1=2 (manuel)
+    // Gece yarısı yeni daire eklendi — eski kodda bu re-seed tetikleyip A1'i
+    // 1'e sıfırlıyordu (kod incelemesi bulgusu).
+    const a2 = await createTestDaire({ daire_no: 'A2' });
+    const res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
+    const byNo = Object.fromEntries(res.body.daireler.map((d) => [d.daire_no, d.arac_sayisi]));
+    expect(byNo.A1).toBe(2); // manuel sayım KORUNDU
+    expect(byNo.A2).toBe(0); // yeni daire eklendi (akşam tespiti 0)
   });
 
   test('?yenile=1 manuel sayımları akşam tespitine sıfırlar', async () => {
