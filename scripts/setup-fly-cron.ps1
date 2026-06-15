@@ -28,7 +28,8 @@ $JOBS = @(
   @{ Name = 'subscription-lifecycle'; Schedule = 'daily';  NpmScript = 'job:subscription-lifecycle' },
   @{ Name = 'email-raporu';           Schedule = 'daily';  NpmScript = 'job:email-raporu' },
   @{ Name = 'bildirim-retry';         Schedule = 'hourly'; NpmScript = 'job:bildirim-retry' },
-  @{ Name = 'zehirli-ogrenme-temizle'; Schedule = 'weekly'; NpmScript = 'job:zehirli-ogrenme-temizle' }
+  @{ Name = 'zehirli-ogrenme-temizle'; Schedule = 'weekly'; NpmScript = 'job:zehirli-ogrenme-temizle' },
+  @{ Name = 'ocr-saglik';             Schedule = 'hourly'; NpmScript = 'job:ocr-saglik' }
 )
 
 # Eski scheduled machines'i temizle

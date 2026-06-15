@@ -43,6 +43,7 @@ JOBS=(
   "email-raporu|daily|job:email-raporu"
   "bildirim-retry|hourly|job:bildirim-retry"
   "zehirli-ogrenme-temizle|weekly|job:zehirli-ogrenme-temizle"
+  "ocr-saglik|hourly|job:ocr-saglik"
 )
 
 # Eski scheduled machines'i temizle (idempotency)

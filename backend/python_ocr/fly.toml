@@ -22,7 +22,11 @@ primary_region = 'fra'
   # workflow (one stalled upload during peak time blocks the whole shift).
   auto_stop_machines = 'off'
   auto_start_machines = true
-  min_machines_running = 1
+  # 2: aksam kontrolu + gece cetelesi penceresinde (18-02) iki makine de
+  # garanti ayakta olsun — 2 eszamanli OCR kapasitesi (frontend MAX_CONCURRENT=2)
+  # hep hazir. auto_stop zaten 'off'; bu, bir makine restart/crash olursa Fly
+  # tabani 2'de tutmasini saglar.
+  min_machines_running = 2
 
 [[vm]]
   # 2 worker × (EasyOCR ~800MB + PaddleOCR detection ~300MB) + Python + OS
