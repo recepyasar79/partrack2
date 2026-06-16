@@ -20,7 +20,7 @@ const db = require('../db');
  * @param {object} params.ocrResult             pythonOcr.recognizePlate'in cevabı
  * @returns {Promise<number|null>} oluşturulan metric id (yoksa null)
  */
-async function recordOcrCall({ gunlukKontrolId = null, engine = 'easyocr', ocrResult, siteId }) {
+async function recordOcrCall({ gunlukKontrolId = null, engine = 'easyocr', ocrResult, siteId, localMatch = null }) {
   if (!ocrResult) return null;
   if (siteId == null) {
     console.warn('[ocrMetrics] siteId eksik — kayıt atlandı');
@@ -39,6 +39,10 @@ async function recordOcrCall({ gunlukKontrolId = null, engine = 'easyocr', ocrRe
         elapsed_ms: ocrResult.elapsedMs ?? null,
         ocr_ok: !!ocrResult.ok,
         error: ocrResult.error || null,
+        // PR-öncesi yerel fuzzy eşleşmesi (PR fallback kalibrasyonu).
+        local_match_source: localMatch?.source || null,
+        local_match_score: localMatch?.score != null ? Math.round(localMatch.score) : null,
+        local_match_plate: localMatch?.plate || null,
       })
       .returning('id');
     return row?.id ?? row ?? null;

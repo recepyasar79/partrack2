@@ -177,6 +177,14 @@ router.post('/foto-upload', (req, res, next) => {
       }
     }
 
+    // Enstrümantasyon (PR fallback kalibrasyonu, 2026-06-16): PR çağrılsa BİLE
+    // PR-ÖNCESI yerel fuzzy eşleşmesini sakla. Sonra ocr_metrics.local_match_*'a
+    // yazılır; "fuzzy-registered'a güvenip PR atlanabilir miydi, hangi skorda
+    // doğru?" sorusu sahada ölçülür (FUZZY_TRUST_SCORE kalibrasyonu).
+    const localMatchSnapshot = matchResult?.corrected
+      ? { source: matchResult.source, score: matchResult.score, plate: matchResult.corrected }
+      : null;
+
     const cacheTrusted = matchResult?.corrected
       && (matchResult.score ?? 0) >= CACHE_TRUST_THRESHOLD;
 
@@ -269,6 +277,7 @@ router.post('/foto-upload', (req, res, next) => {
         engine: usedEngine,
         ocrResult: ocrInfo,
         siteId,
+        localMatch: localMatchSnapshot,
       });
 
       // Plaka herhangi bir katmandan çözüldüyse akış kullanıcı açısından
