@@ -329,20 +329,20 @@ export default function Kontrol() {
     const kontrolIds = itemsRef.current
       .filter((i) => batchSet.has(i.id) && i.kontrolId)
       .map((i) => i.kontrolId);
-    // UI'dan hemen kaldır + butonu gizle
-    setItems((prev) => prev.filter((i) => !batchSet.has(i.id)));
-    setSonBatch([]);
-    // Sunucudan sil
-    let hata = 0;
-    for (const kid of kontrolIds) {
-      try {
-        await api.delete(`/kontroller/${kid}`);
-      } catch (e) {
-        if (e?.response?.status !== 404) hata += 1;
-      }
-    }
+    // UI'dan hemen kaldır (iyimser): hem oturum listesi hem bugün listesi +
+    // butonu gizle. Sunucu silme bitene kadar beklemiyoruz (89 kayıtta alt
+    // sayaç dakikalarca takılı kalmasın).
     const silinenSet = new Set(kontrolIds);
+    setItems((prev) => prev.filter((i) => !batchSet.has(i.id)));
     setBugun((prev) => prev.filter((k) => !silinenSet.has(k.id)));
+    setSonBatch([]);
+    // Sunucudan paralel sil (sıralı await yerine — 89 istek aynı anda)
+    const sonuclar = await Promise.allSettled(
+      kontrolIds.map((kid) => api.delete(`/kontroller/${kid}`))
+    );
+    const hata = sonuclar.filter(
+      (r) => r.status === 'rejected' && r.reason?.response?.status !== 404
+    ).length;
     if (hata) toast.warning(`${kontrolIds.length - hata} silindi, ${hata} silinemedi.`);
     else toast.success('Son yüklenenler silindi.');
   }
