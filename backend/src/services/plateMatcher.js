@@ -534,6 +534,23 @@ async function recordLearning(ocrRaw, correctPlaka, siteId) {
     return;
   }
 
+  // KRİTİK (kayıtlı-hedefli zehir, 2026-06-16): ocr_raw'ın kendisi temiz/geçerli
+  // bir TAM plakaysa ve correct_plaka'ya matcher'ın fuzzy snap edemeyeceği kadar
+  // uzaksa (seri no farklı + skor<85), bu büyük olasılıkla YANLIŞ ONAY'dır —
+  // kullanıcı bir dairenin doğru okunan plakasını BAŞKA kayıtlı plakaya onaylamış
+  // (örn. 34CHF716→34CHF451 /A9, 34AHT610/D13→34ATL433/A23). Öğrenirsek
+  // learned-exact ile o aracı sürekli yanlış daireye snap eder; kayıtlı hedef
+  // olduğu için yukarıdaki "kayıtsız" gate'i bunu yakalamaz. Matcher ile AYNI
+  // kuralı (snapEligible) uygula: matcher snap etmiyorsa havuza da girmesin.
+  // Çöp/parça OCR (geçerli tam plaka değil) snapEligible'dan geçer → öğrenir.
+  const sim = similarityScore(ocrNormalized, correctNormalized);
+  if (!snapEligible(ocrNormalized, correctNormalized, sim)) {
+    console.warn(
+      `[plateMatcher] kayıtlı-hedefli zehir önlendi: ${ocrNormalized} -> ${correctNormalized} (sim=${sim}) öğrenilmedi`
+    );
+    return;
+  }
+
   const signature = normalizeSignature(ocrNormalized);
 
   const existing = await db('plate_learnings')

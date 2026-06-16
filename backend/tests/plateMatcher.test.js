@@ -163,6 +163,26 @@ describeIfDb('plateMatcher DB integration', () => {
     expect(subs).toHaveLength(0);
   });
 
+  test('recordLearning kayıtlı-hedefli zehri öğrenmez (snapEligible gate)', async () => {
+    // İki kayıtlı plaka: A9'un aracı 34CHF451, başka aracın 34CHF716.
+    // OCR 34CHF716'yı DOĞRU okudu ama kullanıcı yanlışlıkla 34CHF451 onayladı.
+    // Seri no farklı (716≠451) + skor<85 → matcher snap etmez → öğrenilmemeli.
+    const a9 = await createTestDaire({ daire_no: 'A9' });
+    await createTestArac({ daire_id: a9.id, plaka: '34CHF451' });
+    await recordLearning('34CHF716', '34CHF451', 1);
+    const learn = await db('plate_learnings').where({ ocr_raw: '34CHF716' }).first();
+    expect(learn).toBeUndefined();
+  });
+
+  test('recordLearning meşru yakın düzeltmeyi öğrenir (seri birebir / skor≥85)', async () => {
+    const a1 = await createTestDaire({ daire_no: 'A1' });
+    await createTestArac({ daire_id: a1.id, plaka: '34VJ0552' });
+    // OCR ilini/harfini yanlış okudu ama seri no (0552) birebir → öğrenilmeli.
+    await recordLearning('01J0552', '34VJ0552', 1);
+    const learn = await db('plate_learnings').where({ ocr_raw: '01J0552' }).first();
+    expect(learn?.correct_plaka).toBe('34VJ0552');
+  });
+
   test('aynı substitution tekrarı count++', async () => {
     await recordSubstitutions('34A1', '34AL', 1);
     await recordSubstitutions('34X1Y', '34XLY', 1);
