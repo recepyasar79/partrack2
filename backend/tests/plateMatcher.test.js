@@ -1,9 +1,38 @@
 const {
   levenshteinDistance,
   similarityScore,
+  snapEligible,
   charDiffs,
   substitutionBonus,
 } = require('../src/services/plateMatcher');
+
+describe('snapEligible — geçerli tam plakada uzak fuzzy snap engeli', () => {
+  // Saha 2026-06-16: temiz okunmuş KAYITSIZ plaka (34CHF716) en yakın kayıtlıya
+  // (34CHF451 / 34GJF916) yutuluyordu → ihlal gizleniyordu.
+  test('seri no farklı + skor<85 → snap engellenir (kayıtsız kalır)', () => {
+    expect(snapEligible('34CHF716', '34CHF451', 63)).toBe(false); // aynı il+harf
+    expect(snapEligible('34CHF716', '34GJF916', 63)).toBe(false); // başka aday da
+  });
+
+  test('seri no BİREBİR tutuyorsa snap korunur (il/harf OCR hatası)', () => {
+    expect(snapEligible('01J0552', '34VJ0552', 63)).toBe(true);
+    expect(snapEligible('24HK516', '34AHH516', 63)).toBe(true);
+    expect(snapEligible('04TIZ956', '34MNZ956', 63)).toBe(true);
+  });
+
+  test('skor ≥85 (tek karakter hatası) snap korunur', () => {
+    expect(snapEligible('34CHF457', '34CHF451', 88)).toBe(true); // seri 1 hane
+  });
+
+  test('seri no farklı + skor<85 → engellenir (bilinen takas: garbled okuma manuel)', () => {
+    expect(snapEligible('33NDU34', '34NDU233', 63)).toBe(false);
+  });
+
+  test('girdi geçerli tam plaka değilse (çöp/parça OCR) kısıt yok', () => {
+    expect(snapEligible('0MG873', '34NIG873', 60)).toBe(true);
+    expect(snapEligible('HT610 34', '34AHT610', 70)).toBe(true);
+  });
+});
 
 describe('plateMatcher pure helpers', () => {
   test('levenshteinDistance temel', () => {

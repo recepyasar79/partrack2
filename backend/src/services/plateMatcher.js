@@ -10,6 +10,28 @@
 const db = require('../db');
 const { normalizeSignature } = require('../utils/plateNormalize');
 
+// TR standart plaka: il(2 hane) + harf(1-3) + seri(2-5 hane).
+const TR_PLATE_RE = /^([0-9]{2})([A-Z]{1,3})([0-9]{2,5})$/;
+// Geçerli tam plaka girdisinde fuzzy snap için yüksek skor barı (1 karakterlik
+// OCR hatasını kapsar; 8 hanede tek hane = 87.5).
+const COMPLETE_PLATE_SNAP_MIN_SCORE = 85;
+
+// Girdi geçerli tam bir TR plakasıysa (örn "34CHF716"), bu adaya fuzzy snap
+// edilebilir mi? Kural: SERİ NO (son hane bloğu) BİREBİR tutuyorsa VEYA genel
+// skor ≥85. Neden: temiz okunmuş tam plakada seri no aracın asıl kimliğidir;
+// serisi hiçbir kayıtlıya uymayan plaka KAYITSIZ sayılmalı, en yakın kayıtlıya
+// yutulup ihlal gizlenmemeli (saha 2026-06-16: 34CHF716 → 34CHF451/34GJF916).
+// Seri birebir tutarsa il/harf OCR hatası olabilir (snap korunur: 01J0552 →
+// 34VJ0552); skor ≥85 ise tek-karakter hatası olabilir (34CHF457 → 34CHF451).
+// Girdi tam plaka değilse (çöp/parça OCR) kısıt yok → eski davranış korunur.
+function snapEligible(guess, cand, score) {
+  const g = TR_PLATE_RE.exec(guess);
+  if (!g) return true;
+  const c = TR_PLATE_RE.exec(cand);
+  if (c && g[3] === c[3]) return true; // seri no birebir
+  return score >= COMPLETE_PLATE_SNAP_MIN_SCORE;
+}
+
 // Substitution istatistiği bias hesabı için sabitler.
 // 60 gün → yarı ağırlık (exponential decay). Sahada karakter karışıklığı
 // pattern'i kamera/aydınlatma değişince eskirse otomatik silinmesin diye
@@ -244,6 +266,8 @@ async function findBestMatch(ocrGuess, siteId, minScore = 60) {
   for (const plate of registeredPlates) {
     const score = similarityScore(ocrNormalized, plate);
     if (score < minScore) continue;
+    // Geçerli tam plaka girdisinde uzak fuzzy snap'i engelle (bkz snapEligible).
+    if (!snapEligible(ocrNormalized, plate, score)) continue;
     // Substitution bonus: site'de sık görülen karakter karışıklığı
     // (örn. 1↔L) bu adayda varsa bonus puan.
     const bonus = substitutionBonus(ocrNormalized, plate, subMap);
@@ -265,6 +289,7 @@ async function findBestMatch(ocrGuess, siteId, minScore = 60) {
   for (const row of learnedPlates) {
     const score = similarityScore(ocrNormalized, row.correct_plaka);
     if (score < minScore) continue;
+    if (!snapEligible(ocrNormalized, row.correct_plaka, score)) continue;
     // Confirm bonus: defalarca onaylanmış öğrenmeler tie'larda kazanır.
     // Eski (30+ gün) onayların ağırlığı yarıya iner — kamera değişimi
     // gibi durumlarda eski pattern'ler birden bire belirleyici olmasın.
@@ -621,6 +646,7 @@ async function getAllLearnings(siteId) {
 module.exports = {
   levenshteinDistance,
   similarityScore,
+  snapEligible,
   findBestMatch,
   findBestMatchFromRaw,
   plateOrderForms,
