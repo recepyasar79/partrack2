@@ -46,10 +46,15 @@ Aksam kontrolu gercek site fotograflariyla yogun test edildi; OCR/matcher saha-t
 
 ### OCR — iki saha teyidi (2026-06-16)
 - **Char-size fix (f32e646) CALISIYOR:** `/big` (en iri bbox) stratejisi hakim; bayi telefonu/yazisi iceren ham metinler dogru plakaya cozuluyor, telefon-olarak-plaka donmuyor.
-- **OOM/concurrency fix CALISIYOR:** test batch'i 36 okumada **0 timeout** (06-15'te 19/112'ye karsi). 1-worker + concurrency soft=1 etkili. **Ikincil (acik is):** Plate Recognizer fallback orani ~%56 (yerel OCR cogu fotoda dusuk guvende) — maliyet+hiz konusu.
+- **OOM/concurrency fix CALISIYOR:** test batch'i 36 okumada **0 timeout** (06-15'te 19/112'ye karsi). 1-worker + concurrency soft=1 etkili. (PR fallback orani ayri ele alindi → asagi "PR fallback maliyet" bkz.)
 
 ### OCR maliyet — zamanli olcekleme (2026-06-16)
-- `parktrack-ocr` artik 7/24 acik DEGIL. `min_machines_running=0` + GH Actions cron (`.github/workflows/ocr-schedule.yml`): BASLAT 15:00 UTC / DURDUR 20:00 UTC (18:00–23:00 TR). ~%75 tasarruf (~$40→~$10/ay). 2 makine korundu (yedeklilik + 2 eszamanli). Detay yukarida "Python OCR" bolumunde. **Acik is:** PR fallback %56 → yerel OCR guvenini artir, harici API faturasi dussun.
+- `parktrack-ocr` artik 7/24 acik DEGIL. `min_machines_running=0` + GH Actions cron (`.github/workflows/ocr-schedule.yml`): BASLAT 15:00 UTC / DURDUR 20:00 UTC (18:00–23:00 TR). ~%75 tasarruf (~$40→~$10/ay). 2 makine korundu (yedeklilik + 2 eszamanli). Detay yukarida "Python OCR" bolumunde.
+
+### PR fallback maliyet — kayitli-capali fuzzy'ye guven (2026-06-16, commit a174380)
+- **Sorun:** PR (ucretli) `cacheTrusted = score>=95` ile atlaniyordu; fuzzy-registered (60-94) yerel OCR plakayi dogru bulsa bile PR'a gidiyordu (~%56 cagri).
+- **Kalibrasyon:** `ocr_metrics.local_match_*` enstrumantasyonu (migration `20260616120000`) ile aksam batch'i olculdu → fuzzy-registered 50/50 **%100 dogru** (snapEligible sayesinde), ~29 PR bosaydi.
+- **Fix:** `ocrTrust.js isMatchTrustedForPRSkip` — skor>=95 (her kaynak) VEYA kayitli-capali (`fuzzy-registered`/`raw-registered`) & skor>=80 → PR atla. `fuzzy-learned` HARIC. Enstrumantasyon ACIK kalir → dogruluk izlenir, gerekirse esik ayarlanir.
 
 ### Matcher — `snapEligible` (kayitsiz plakayi snap etme, commit 8e3b36e)
 - **Sorun:** OCR plakayi DOGRU okusa bile (`34CHF716`) matcher en yakin kayitliya (`34CHF451`, %63) fuzzy snap edip KAYITSIZ araci kayitli daireye gizliyordu → ihlal kacar.
