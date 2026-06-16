@@ -23,9 +23,12 @@ primary_region = 'fra'
 [http_service]
   internal_port = 3000
   force_https = true
-  auto_stop_machines = 'stop'
+  # min_machines_running=1 + suspend: app makinesi hep sicak kalir (aksam
+  # kontrolunde cold-start ~5-15s gecikme olmasin). 'suspend' RAM'i diske
+  # alir, resume 'stop'tan cok daha hizli. Cron process'leri ayri (scheduled).
+  auto_stop_machines = 'suspend'
   auto_start_machines = true
-  min_machines_running = 0
+  min_machines_running = 1
 
   [http_service.concurrency]
     type = 'connections'
