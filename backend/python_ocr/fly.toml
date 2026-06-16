@@ -16,17 +16,17 @@ primary_region = 'fra'
 [http_service]
   internal_port = 5000
   force_https = true
-  # Keep at least one machine warm so the first photo of the evening doesn't
-  # pay 35s machine boot + 35s EasyOCR cold start. The cost is ~$5-7/month
-  # for a 2GB always-on machine, which is worth it for the security guard
-  # workflow (one stalled upload during peak time blocks the whole shift).
+  # ZAMANLI OLCEKLEME (2026-06-16): min_machines_running=0 + GitHub Actions cron
+  # (.github/workflows/ocr-schedule.yml) makineleri yalniz aksam penceresinde
+  # (18:00-23:00 TR) baslatir/durdurur. Neden: OCR gunde ~1-2 saat (aksam
+  # kontrolu) kullaniliyor; 2x shared-cpu-2x/4GB 7/24 ~$40/ay idle yaniyordu.
+  # min=0 SART: yoksa Fly durdurulan makineyi tabani 2'de tutmak icin geri acar.
+  # auto_stop='off': cron baslatinca aksam boyu acik kalir (idle'da suspend olup
+  # batch-ortasi resume gecikmesi yasanmaz). auto_start=true: cron kacirirsa ya
+  # da gunduz beklenmedik istek gelirse ilk foto cold-start (70s) ile yine calisir.
   auto_stop_machines = 'off'
   auto_start_machines = true
-  # 2: aksam kontrolu + gece cetelesi penceresinde (18-02) iki makine de
-  # garanti ayakta olsun — 2 eszamanli OCR kapasitesi (frontend MAX_CONCURRENT=2)
-  # hep hazir. auto_stop zaten 'off'; bu, bir makine restart/crash olursa Fly
-  # tabani 2'de tutmasini saglar.
-  min_machines_running = 2
+  min_machines_running = 0
 
   # Yuk dagitimi (saha fix 2026-06-15): concurrency ayari YOKKEN Fly varsayilani
   # (soft_limit ~20) iki eszamanli OCR istegini AYNI makineye yigabiliyordu;
