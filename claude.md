@@ -48,6 +48,9 @@ Aksam kontrolu gercek site fotograflariyla yogun test edildi; OCR/matcher saha-t
 - **Char-size fix (f32e646) CALISIYOR:** `/big` (en iri bbox) stratejisi hakim; bayi telefonu/yazisi iceren ham metinler dogru plakaya cozuluyor, telefon-olarak-plaka donmuyor.
 - **OOM/concurrency fix CALISIYOR:** test batch'i 36 okumada **0 timeout** (06-15'te 19/112'ye karsi). 1-worker + concurrency soft=1 etkili. **Ikincil (acik is):** Plate Recognizer fallback orani ~%56 (yerel OCR cogu fotoda dusuk guvende) — maliyet+hiz konusu.
 
+### OCR maliyet — zamanli olcekleme (2026-06-16)
+- `parktrack-ocr` artik 7/24 acik DEGIL. `min_machines_running=0` + GH Actions cron (`.github/workflows/ocr-schedule.yml`): BASLAT 15:00 UTC / DURDUR 20:00 UTC (18:00–23:00 TR). ~%75 tasarruf (~$40→~$10/ay). 2 makine korundu (yedeklilik + 2 eszamanli). Detay yukarida "Python OCR" bolumunde. **Acik is:** PR fallback %56 → yerel OCR guvenini artir, harici API faturasi dussun.
+
 ### Matcher — `snapEligible` (kayitsiz plakayi snap etme, commit 8e3b36e)
 - **Sorun:** OCR plakayi DOGRU okusa bile (`34CHF716`) matcher en yakin kayitliya (`34CHF451`, %63) fuzzy snap edip KAYITSIZ araci kayitli daireye gizliyordu → ihlal kacar.
 - **Kural (`findBestMatch`):** girdi gecerli tam TR plakasiysa fuzzy snap'e ancak **SERI NO birebir tutarsa VEYA skor ≥85** izin. Seri no aracin asil kimligidir. Cop/parca OCR (tam plaka degil) kisitsiz → eski davranis. `01J0552→34VJ0552` (seri birebir), `34CHF457→34CHF451` (skor 88) korunur; `34CHF716→KAYITSIZ`.
@@ -76,8 +79,8 @@ Production calisir halde. Asagidakilerin hepsi gercek site fotograflariyla test 
 - Axios hata loglari `err.code`/`err.cause.code`/`err.cause.message` ile detayli (ECONNREFUSED, ENOTFOUND, ETIMEDOUT goruluyor).
 
 **Python OCR (Fly.io: `parktrack-ocr`)**
-- `min_machines_running = 1`, `auto_stop_machines = 'off'` → **always-on**. Pratikte **2 makine** kosuyor (ikisi de `fra`, always-on).
-  - **Neden:** Cold start = 35s makine boot + 35s EasyOCR yukleme = 70s. Aksam kontrolunde guvenlik gorevlisinin ilk fotosu icin kabul edilemez.
+- **GUNCELLENDI 2026-06-16 — artik 7/24 always-on DEGIL, ZAMANLI:** `min_machines_running = 0`, `auto_stop_machines = 'off'`. Makineler GitHub Actions cron (`.github/workflows/ocr-schedule.yml`) ile yalniz aksam penceresinde acik: BASLAT 15:00 UTC (18:00 TR), DURDUR 20:00 UTC (23:00 TR). 2 makine (`fra`). Asagidaki "always-on" notlari tarihsel — kapasite/OOM gerekceleri hala gecerli ama makineler artik pencere disinda kapali. (Yetkili config: `backend/python_ocr/fly.toml`. Kok dizindeki `fly.python.toml` SILINDI — olu/yanlis isimli `parktrack-python-ocr` hedefliyordu.)
+  - **Neden zamanli:** OCR gunde ~1-2 saat (aksam kontrolu) kullaniliyor; 2×4GB 7/24 ~$40/ay idle yaniyordu → ~%75 tasarruf. **Neden eskiden always-on:** Cold start = 35s makine boot + 35s EasyOCR yukleme = 70s; cron 2sa once isittigi icin aksam ilk foto sicak makineye gelir. Cron kacirilirsa `auto_start=true` cold-start ile kurtarir.
 - **4GB RAM, 2 CPU, `fra` region, 1 uvicorn worker** (`uvicorn --workers 1`). (**guncellendi 2026-06-15**: 2 worker → 1 worker, OOM nedeniyle; eskiden 2GB/1-worker → 06-13'te 4GB/2-worker → 06-15'te 4GB/1-worker.)
   - **Neden 1 worker (OOM):** Her worker EasyOCR (~800MB) + PaddleOCR yukluyor ≈ 2GB. 2 worker × 2GB + goruntu decode > 4GB → kernel **OOM-kill** (saha 2026-06-15: aksam batch'inde her iki makine de worker'i oldurdu → `connection closed before message completed` = 502 + worker yeniden yuklenirken 20s timeout; 66 fotonun ~10'u boyle dustu). 2 CPU paylasimi yuzunden 2 worker hiz da kazandirmiyordu (06-13 notu).
   - **Kapasite:** 2 makine × 1 worker = **2 eszamanli OCR** = frontend `MAX_CONCURRENT=2` ile birebir. Tek worker 2 CPU'yu tek OCR icin kullanir (per-request daha hizli). Daha fazla paralellik istenirse RAM artir (8GB) ve worker'i geri ac, ya da makine sayisini artir.
