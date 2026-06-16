@@ -28,6 +28,38 @@ Tesseract.js (taraycida) yerine **Python EasyOCR mikroservisi** kullaniliyor:
 - Lokal gelistirme: `docker compose up -d python-ocr` → http://localhost:5000
 - Production deploy: Fly.io ayri app `parktrack-ocr`
 
+## Son Durum (2026-06-16)
+
+Aksam kontrolu gercek site fotograflariyla yogun test edildi; OCR/matcher saha-teyitli.
+
+### Gece Cetelesi — manuel sayim (`gece_cetelesi.manuel`)
+- Migration `20260616000001` `manuel BOOL default false` ekledi. Backend `analiz.js`:
+  - **GET `/gece-cetelesi`:** TUM daireleri hedefler. `manuel=false` satirlar her acilista guncel aksam tespitine **yenilenir** (gec yuklenen fotograflar yansisin; saha bug'i: ilk acilista bayat tohumlu kirmizi daireler gorunmuyordu). `manuel=true` satirlar `WHERE manuel=false` guard ile korunur (gorevlinin elle +/- sayimi silinmez, eszamanli PATCH yarisina guvenli). `?yenile=1` hepsini tespite + `manuel=false` sifirlar.
+  - **PATCH `/gece-cetelesi/:daireId`:** her +/- cagrisi `manuel=true` yapar → satir re-seed'e kapanir.
+
+### Frontend — "Son Yuklenenleri Sil" (`Kontrol.jsx silSonBatch`)
+- Alt liste (`bugun`) artik **iyimser** olarak sunucu silmelerinden ONCE kaldiriliyor (ust liste gibi) + silmeler **`Promise.allSettled` ile paralel**. Eskiden 89 ardisik `await delete` bitene kadar alt sayac dakikalarca takiliyordu.
+
+### Backend always-warm (Fly: `parktrack-backend`)
+- `fly.toml`: `min_machines_running=1` + `auto_stop_machines='suspend'` (eski: `0`/`'stop'`). **Neden:** idle olunca sifira inip her duraklamadan sonraki ilk istek cold-start (5-15s) yiyordu — aksam kontrolunde kabul edilemez. ~$2/ay.
+- **App makinesi `90803d24b91487`** (process group `app`). Digerleri (`185d...`, `48ee...` vb.) CRON makineleri — HTTP trafigiyle auto-start OLMAZ. Prod teshis icin ssh'i `--machine 90803d24b91487` ile bu makineye hedefle.
+
+### OCR — iki saha teyidi (2026-06-16)
+- **Char-size fix (f32e646) CALISIYOR:** `/big` (en iri bbox) stratejisi hakim; bayi telefonu/yazisi iceren ham metinler dogru plakaya cozuluyor, telefon-olarak-plaka donmuyor.
+- **OOM/concurrency fix CALISIYOR:** test batch'i 36 okumada **0 timeout** (06-15'te 19/112'ye karsi). 1-worker + concurrency soft=1 etkili. **Ikincil (acik is):** Plate Recognizer fallback orani ~%56 (yerel OCR cogu fotoda dusuk guvende) — maliyet+hiz konusu.
+
+### Matcher — `snapEligible` (kayitsiz plakayi snap etme, commit 8e3b36e)
+- **Sorun:** OCR plakayi DOGRU okusa bile (`34CHF716`) matcher en yakin kayitliya (`34CHF451`, %63) fuzzy snap edip KAYITSIZ araci kayitli daireye gizliyordu → ihlal kacar.
+- **Kural (`findBestMatch`):** girdi gecerli tam TR plakasiysa fuzzy snap'e ancak **SERI NO birebir tutarsa VEYA skor ≥85** izin. Seri no aracin asil kimligidir. Cop/parca OCR (tam plaka degil) kisitsiz → eski davranis. `01J0552→34VJ0552` (seri birebir), `34CHF457→34CHF451` (skor 88) korunur; `34CHF716→KAYITSIZ`.
+- **DERS:** Matcher en kritik bilesen — **test etmeden deploy etme.** Ilk 2 yaklasim (esik 75; il+harf+seri kurali) bugunun 79 prod okumasina karsi offline replay'de elendi. Kazanan kural yalniz 2 garbled okumayi manuel'e dusurdu (kullanici onayli takas).
+
+### plate_learnings zehir — KAYITLI-hedefli (gate acigi, ACIK IS)
+- 9d8a06b gate'i yalniz *kayitsiz* `correct_plaka`'yi engelliyor. Ham OCR'in bir dairenin DOGRU plakasini okuyup kullanicinin yanlislikla BASKA kayitli plakaya onayladigi satirlar gate'ten geciyor (orn `ocr_raw="34AHT610"`/D13 → `correct_plaka="34ATL433"`/A23). 2026-06-16'da boyle 7 zehir elle silindi.
+- **Tarama:** `ocr_raw` normalize edilince kendisi aktif kayitli plaka VE `correct_plaka` ondan farkli kayitli plaka → yuksek-guvenli zehir.
+
+### Prod DB teshis yontemi
+- Lokal `.env` localhost'u gosterir (prod DEGIL). App makinesi: `flyctl machine start 90803d24b91487 -a parktrack-backend`, sonra uzun script'i base64 ile gonder: `echo <B64> | base64 -d > /tmp/x.js && node /tmp/x.js`, ssh `--machine 90803d24b91487`. App koku `/app/backend`. `plate_learnings` kolonlari: `ocr_raw, correct_plaka, confirm_count, ...` (raw_ocr DEGIL). site_id prod'da string `"1"`.
+
 ## Son Durum (2026-05-08, gun sonu)
 
 Production calisir halde. Asagidakilerin hepsi gercek site fotograflariyla test edildi.
