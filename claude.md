@@ -53,9 +53,10 @@ Aksam kontrolu gercek site fotograflariyla yogun test edildi; OCR/matcher saha-t
 - **Kural (`findBestMatch`):** girdi gecerli tam TR plakasiysa fuzzy snap'e ancak **SERI NO birebir tutarsa VEYA skor ≥85** izin. Seri no aracin asil kimligidir. Cop/parca OCR (tam plaka degil) kisitsiz → eski davranis. `01J0552→34VJ0552` (seri birebir), `34CHF457→34CHF451` (skor 88) korunur; `34CHF716→KAYITSIZ`.
 - **DERS:** Matcher en kritik bilesen — **test etmeden deploy etme.** Ilk 2 yaklasim (esik 75; il+harf+seri kurali) bugunun 79 prod okumasina karsi offline replay'de elendi. Kazanan kural yalniz 2 garbled okumayi manuel'e dusurdu (kullanici onayli takas).
 
-### plate_learnings zehir — KAYITLI-hedefli (gate acigi, ACIK IS)
-- 9d8a06b gate'i yalniz *kayitsiz* `correct_plaka`'yi engelliyor. Ham OCR'in bir dairenin DOGRU plakasini okuyup kullanicinin yanlislikla BASKA kayitli plakaya onayladigi satirlar gate'ten geciyor (orn `ocr_raw="34AHT610"`/D13 → `correct_plaka="34ATL433"`/A23). 2026-06-16'da boyle 7 zehir elle silindi.
-- **Tarama:** `ocr_raw` normalize edilince kendisi aktif kayitli plaka VE `correct_plaka` ondan farkli kayitli plaka → yuksek-guvenli zehir.
+### plate_learnings zehir — KAYITLI-hedefli (gate KAPANDI 77ab0d8)
+- 9d8a06b gate'i yalniz *kayitsiz* `correct_plaka`'yi engelliyordu. Ham OCR'in bir dairenin DOGRU plakasini okuyup kullanicinin yanlislikla BASKA kayitli plakaya onayladigi satirlar geciyordu (orn `ocr_raw="34AHT610"`/D13 → `34ATL433"`/A23). 2026-06-16'da boyle 7 zehir elle silindi.
+- **Fix (77ab0d8):** `recordLearning` artik matcher ile AYNI kurali (`snapEligible`) uygular — `ocr_raw` gecerli tam plakaysa ve `correct_plaka`'ya snap-uygun degilse (seri no farkli + skor<85) ogrenmez. Matcher snap etmiyorsa havuza da girmez; kaynakta onlendi. Cop/parca OCR ve mesru yakin duzeltmeler etkilenmez.
+- **Tarama (gecmis zehir icin):** `ocr_raw` normalize edilince kendisi aktif kayitli plaka VE `correct_plaka` ondan farkli kayitli plaka → yuksek-guvenli zehir.
 
 ### Prod DB teshis yontemi
 - Lokal `.env` localhost'u gosterir (prod DEGIL). App makinesi: `flyctl machine start 90803d24b91487 -a parktrack-backend`, sonra uzun script'i base64 ile gonder: `echo <B64> | base64 -d > /tmp/x.js && node /tmp/x.js`, ssh `--machine 90803d24b91487`. App koku `/app/backend`. `plate_learnings` kolonlari: `ocr_raw, correct_plaka, confirm_count, ...` (raw_ocr DEGIL). site_id prod'da string `"1"`.
