@@ -14,9 +14,8 @@ const { recordOcrCall, markCorrected } = require('../services/ocrMetrics');
 
 // Cache-first OCR akışı: bu skor ve üzeri match'lere güvenip Plate
 // Recognizer'a gitmiyoruz (API maliyetini tüketmemek için). 95 eşiği
-// learned-exact (100) ve learned-signature (95) cache hit'lerini kapsar;
-// fuzzy match (60-90 arası) cache miss sayılır.
-const CACHE_TRUST_THRESHOLD = 95;
+// PR fallback'i atlama güven kararı — eşikler ocrTrust.js'te (saha kalibre).
+const { isMatchTrustedForPRSkip } = require('../services/ocrTrust');
 
 const router = express.Router();
 const storage = buildUpload();
@@ -185,8 +184,7 @@ router.post('/foto-upload', (req, res, next) => {
       ? { source: matchResult.source, score: matchResult.score, plate: matchResult.corrected }
       : null;
 
-    const cacheTrusted = matchResult?.corrected
-      && (matchResult.score ?? 0) >= CACHE_TRUST_THRESHOLD;
+    const cacheTrusted = isMatchTrustedForPRSkip(matchResult);
 
     if (cacheTrusted) {
       // [1] veya [2] — high-confidence cache hit, Plate Recognizer'a gitme
