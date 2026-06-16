@@ -83,25 +83,22 @@ describe('Gece Çetelesi', () => {
     expect(r.status).toBe(404);
   });
 
-  test('araya giren stray satır diğer dairelerin tohumunu engellemez', async () => {
+  test('araya giren bayat/stray satır (manuel=false) GET ile tespite yenilenir', async () => {
     const a1 = await createTestDaire({ daire_no: 'A1' });
     const a2 = await createTestDaire({ daire_no: 'A2' });
     await createTestArac({ daire_id: a1.id, plaka: '34CC001' });
     await createTestArac({ daire_id: a2.id, plaka: '34CC002' });
     await gorulen('34CC001');
     await gorulen('34CC002');
-    // Launch testi gibi araya stray satır (a1, 0). Eski "satır varsa atla"
-    // kodunda bu TÜM tohumu engelliyordu (saha bug'ı: hepsi gri kalıyordu).
+    // Launch testi gibi araya bayat/stray satır (a1, 0, manuel=false). Saha
+    // 2026-06-16: bu satır GET'te güncellenmediği için A1 kırmızı (gerçekte 1)
+    // görünmüyordu. Yeni davranış: manuel=false satır güncel tespite YENİLENİR.
     await db('gece_cetelesi').insert({ site_id: 1, daire_id: a1.id, tarih: todayTR(), arac_sayisi: 0 });
 
     const res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
     const byNo = Object.fromEntries(res.body.daireler.map((d) => [d.daire_no, d.arac_sayisi]));
-    expect(byNo.A2).toBe(1); // stray, A2'nin tohumlanmasını engellemez (asıl fix)
-    expect(byNo.A1).toBe(0); // mevcut/manuel satıra dokunulmaz
-    // yenile=1 stray'i akşam tespitine düzeltir
-    const res2 = await auth(request(app).get('/api/kontroller/gece-cetelesi?yenile=1'));
-    const byNo2 = Object.fromEntries(res2.body.daireler.map((d) => [d.daire_no, d.arac_sayisi]));
-    expect(byNo2.A1).toBe(1);
+    expect(byNo.A2).toBe(1); // stray, A2'nin tohumlanmasını engellemez
+    expect(byNo.A1).toBe(1); // bayat manuel=false satır tespite yenilendi (asıl fix)
   });
 
   test('seed sonrası daire eklenince manuel sayımlar korunur (veri kaybı yok)', async () => {

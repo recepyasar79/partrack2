@@ -295,34 +295,30 @@ router.get('/gece-cetelesi', async (req, res, next) => {
       .select('id', 'daire_no', 'blok', 'sira_no');
 
     if (daireler.length) {
-      // Bugün için hangi dairelerin satırı (sayacı) var?
-      const mevcutRows = await db('gece_cetelesi')
-        .where({ site_id: siteId, tarih })
-        .select('daire_id');
-      const mevcutIds = new Set(mevcutRows.map((r) => r.daire_id));
-
-      // Tohumlama stratejisi:
-      //  - yenile=1 → TÜM daireleri akşam tespitiyle ÜZERINE yaz (manuel sıfırla).
-      //  - normalde → yalnız SATIRI OLMAYAN (henüz tohumlanmamış) daireleri yaz;
-      //    mevcut/manuel satırlara DOKUNMA. Böylece gece yarısı daire eklense
-      //    bile (eski "mevcutRows < daire sayısı → hepsini overwrite" mantığı)
-      //    görevlinin manuel +/- sayımları SİLİNMEZ (re-seed veri kaybı fix,
-      //    2026-06-15 kod incelemesi). İlk açılışta tüm daireler eksik → hepsi
-      //    tohumlanır; sonraki açılışlarda eksik olmadığından hiç dokunulmaz.
-      const hedef = forceYenile ? daireler : daireler.filter((d) => !mevcutIds.has(d.id));
-      if (hedef.length) {
-        const counts = await dairBasinaIcerideSayisi(siteId, tarih);
-        const rows = hedef.map((d) => ({
-          site_id: siteId,
-          daire_id: d.id,
-          tarih,
-          arac_sayisi: counts.get(d.id) || 0,
-          guncelleme_zamani: db.fn.now(),
-        }));
-        const q = db('gece_cetelesi').insert(rows).onConflict(['site_id', 'daire_id', 'tarih']);
-        // yenile → DO UPDATE (üzerine yaz); normal → DO NOTHING (yarış emniyeti,
-        // hedef zaten satırı olmayanlar ama eşzamanlı GET'e karşı güvenli).
-        await (forceYenile ? q.merge(['arac_sayisi', 'guncelleme_zamani']) : q.ignore());
+      // Tohumlama stratejisi (manuel kolonu ekseninde):
+      //  - yenile=1 → TÜM daireleri akşam tespitiyle ÜZERINE yaz + manuel=false
+      //    (görevlinin +/- sayımları dahil her şey sıfırlanır).
+      //  - normalde → SATIRI OLMAYAN daireleri tohumla; manuel=false MEVCUT
+      //    satırları güncel tespite YENİLE (bayat tohum fix, saha 2026-06-16:
+      //    geç yüklenen fotoğraflar yansısın, ilk açılışta kırmızı daireler
+      //    görünsün); manuel=true satırlara DOKUNMA (WHERE guard) → görevlinin
+      //    elle yaptığı +/- sayımı korunur, eşzamanlı PATCH yarışına da güvenli.
+      const counts = await dairBasinaIcerideSayisi(siteId, tarih);
+      const rows = daireler.map((d) => ({
+        site_id: siteId,
+        daire_id: d.id,
+        tarih,
+        arac_sayisi: counts.get(d.id) || 0,
+        manuel: false,
+        guncelleme_zamani: db.fn.now(),
+      }));
+      const q = db('gece_cetelesi').insert(rows).onConflict(['site_id', 'daire_id', 'tarih']);
+      if (forceYenile) {
+        // Her şeyi tespite döndür, manuel bayrağını da sıfırla.
+        await q.merge(['arac_sayisi', 'manuel', 'guncelleme_zamani']);
+      } else {
+        // Sadece manuel OLMAYAN satırların sayacını yenile; manuel satırlar korunur.
+        await q.merge(['arac_sayisi', 'guncelleme_zamani']).where('gece_cetelesi.manuel', false);
       }
     }
 
@@ -366,11 +362,13 @@ router.patch('/gece-cetelesi/:daireId', async (req, res, next) => {
     if (!daire) return res.status(404).json({ error: 'Daire bulunamadı.' });
 
     const seedVal = Math.max(0, delta); // yeni satırda 0 + delta
+    // Elle değişim → manuel=true: bu satır artık GET re-seed'ine kapanır.
     const result = await db.raw(
-      `INSERT INTO gece_cetelesi (site_id, daire_id, tarih, arac_sayisi)
-       VALUES (?, ?, ?, ?)
+      `INSERT INTO gece_cetelesi (site_id, daire_id, tarih, arac_sayisi, manuel)
+       VALUES (?, ?, ?, ?, true)
        ON CONFLICT (site_id, daire_id, tarih)
        DO UPDATE SET arac_sayisi = GREATEST(0, gece_cetelesi.arac_sayisi + ?),
+                     manuel = true,
                      guncelleme_zamani = now()
        RETURNING arac_sayisi`,
       [siteId, daireId, tarih, seedVal, delta]
