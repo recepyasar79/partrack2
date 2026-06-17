@@ -184,7 +184,17 @@ export default function Daireler() {
                   onClick={() => loadDetail(d.id)}
                 >
                   <td className="p-4">
-                    <div className="font-mono font-bold text-brand-700 dark:text-brand-300">{d.daire_no}</div>
+                    <div className="flex items-center gap-2">
+                      <span className="font-mono font-bold text-brand-700 dark:text-brand-300">{d.daire_no}</span>
+                      {d.ikinci_arac_izinli && (
+                        <span
+                          title="2. araç park hakkı"
+                          className="inline-flex items-center gap-0.5 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-[10px] font-bold px-1.5 py-0.5 leading-none"
+                        >
+                          🅿️ 2.
+                        </span>
+                      )}
+                    </div>
                   </td>
                   <td className="p-4">
                     <div className="font-medium text-slate-900 dark:text-slate-100">{d.sahip_ad}</div>
