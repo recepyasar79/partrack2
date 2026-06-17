@@ -353,6 +353,7 @@ function GeceCetelesiModal({ onClose }) {
               <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-amber-400" /> 1</span>
               <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-500" /> 2</span>
               <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-red-800" /> 3+</span>
+              <span className="inline-flex items-center gap-1"><span className="w-3 h-3 rounded bg-teal-500" /> 2. araç hakkı</span>
             </div>
             <button
               type="button"
@@ -391,13 +392,23 @@ function GeceCetelesiModal({ onClose }) {
                       key={d.daire_id}
                       type="button"
                       onClick={() => setSeciliId(d.daire_id)}
-                      className={`relative min-h-[48px] rounded-lg border text-sm font-bold font-mono transition-colors ${ceteleRenk(d.arac_sayisi)} ${
+                      title={d.ikinci_arac_izinli ? `${d.daire_no} — 2. araç hakkı (2 araca kadar ihlal sayılmaz)` : d.daire_no}
+                      className={`relative overflow-hidden min-h-[48px] rounded-lg border text-sm font-bold font-mono transition-colors ${ceteleRenk(d.arac_sayisi)} ${
                         seciliId === d.daire_id ? 'ring-2 ring-offset-1 ring-brand-500 dark:ring-offset-slate-900' : ''
                       }`}
                     >
-                      {d.daire_no}
+                      {/* 2. araç hakkı olan daireler: kutunun alt-sağ yarısı teal —
+                          gece çetelesinde hakkı olan daireler ayrıştırılabilsin. */}
+                      {d.ikinci_arac_izinli && (
+                        <span
+                          aria-hidden="true"
+                          className="absolute inset-0 bg-teal-500 pointer-events-none"
+                          style={{ clipPath: 'polygon(100% 0, 100% 100%, 0 100%)' }}
+                        />
+                      )}
+                      <span className="relative z-10">{d.daire_no}</span>
                       {d.arac_sayisi > 0 && (
-                        <span className="absolute top-0.5 right-1 text-[10px] font-extrabold tabular-nums opacity-80">
+                        <span className="absolute z-10 top-0.5 right-1 text-[10px] font-extrabold tabular-nums opacity-80">
                           {d.arac_sayisi}
                         </span>
                       )}

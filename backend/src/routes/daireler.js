@@ -8,6 +8,24 @@ const { getEffectiveLimits, isLimitReached } = require('../utils/planLimits');
 
 const router = express.Router();
 
+/**
+ * 2. araç hakkı kotası dolu mu? Site genelinde aktif + ikinci_arac_izinli
+ * daire sayısı kapasiteye ulaştıysa true. `haricId` verilirse (güncellemede
+ * kendi satırını sayma) o daire hariç tutulur.
+ *
+ * @returns {Promise<{dolu: boolean, kapasite: number, mevcut: number}>}
+ */
+async function ikinciAracKotaDurumu(siteId, kapasite, haricId = null) {
+  let qb = db('daireler').where({ site_id: siteId, aktif: true, ikinci_arac_izinli: true });
+  if (haricId != null) qb = qb.whereNot('id', haricId);
+  const row = await qb.count('* as c').first();
+  const mevcut = parseInt(row.c, 10) || 0;
+  return { dolu: mevcut >= (kapasite || 0), kapasite: kapasite || 0, mevcut };
+}
+
+const ikinciAracKotaMesaji = (kapasite) =>
+  `Sitede en fazla ${kapasite} daire için ikinci araç izni verebilirsiniz.`;
+
 // Tüm endpoint'ler authRequired + requireScopedSite ile başlar — site_id
 // zorunlu. Site-bağlı user'lar otomatik kendi site'sini görür, superadmin
 // '?siteId=N' parametresiyle başka site'ye geçiş yapar.
@@ -62,7 +80,7 @@ router.get('/:id/sahip-tarihce', async (req, res) => {
 });
 
 router.post('/', requireSiteAdmin, async (req, res) => {
-  const { daire_no, sahip_ad, sahip_tel, kvkk_riza, bildirim_opt_in } = req.body || {};
+  const { daire_no, sahip_ad, sahip_tel, kvkk_riza, bildirim_opt_in, ikinci_arac_izinli } = req.body || {};
   if (!sahip_ad || sahip_ad.length < 2) return res.status(400).json({ error: 'Sahip adı zorunlu.' });
   if (!isValidTelefon(sahip_tel)) return res.status(400).json({ error: 'Telefon formatı geçersiz (05XXXXXXXXX).' });
   if (!kvkk_riza) return res.status(400).json({ error: 'KVKK rızası zorunlu.' });
@@ -108,6 +126,15 @@ router.post('/', requireSiteAdmin, async (req, res) => {
     }
   }
 
+  // 2. araç hakkı kotası: işaretliyse site kapasitesini aşmamalı. Reactivate
+  // yolunda da yeni bir aktif izinli satır eklendiği için aynı kontrol geçerli.
+  if (ikinci_arac_izinli) {
+    const kota = await ikinciAracKotaDurumu(req.scopedSiteId, site.ikinci_arac_kapasitesi);
+    if (kota.dolu) {
+      return res.status(409).json({ error: ikinciAracKotaMesaji(kota.kapasite) });
+    }
+  }
+
   let created;
   if (existing && !existing.aktif) {
     [created] = await db('daireler').where({ id: existing.id }).update({
@@ -116,6 +143,7 @@ router.post('/', requireSiteAdmin, async (req, res) => {
       kvkk_riza: !!kvkk_riza,
       kvkk_riza_tarihi: db.fn.now(),
       bildirim_opt_in: !!bildirim_opt_in,
+      ikinci_arac_izinli: !!ikinci_arac_izinli,
       aktif: true,
       silinme_zamani: null,
     }).returning('*');
@@ -125,6 +153,7 @@ router.post('/', requireSiteAdmin, async (req, res) => {
       kvkk_riza: !!kvkk_riza,
       kvkk_riza_tarihi: db.fn.now(),
       bildirim_opt_in: !!bildirim_opt_in,
+      ikinci_arac_izinli: !!ikinci_arac_izinli,
       aktif: true,
       site_id: req.scopedSiteId,
     }).returning('*');
@@ -146,7 +175,7 @@ router.put('/:id', requireSiteAdmin, async (req, res) => {
   const id = parseInt(req.params.id, 10);
   const eski = await db('daireler').where({ id, site_id: req.scopedSiteId }).first();
   if (!eski) return res.status(404).json({ error: 'Daire bulunamadı.' });
-  const { sahip_ad, sahip_tel, bildirim_opt_in, kvkk_riza } = req.body || {};
+  const { sahip_ad, sahip_tel, bildirim_opt_in, kvkk_riza, ikinci_arac_izinli } = req.body || {};
   const update = {};
   if (sahip_ad !== undefined) update.sahip_ad = sahip_ad;
   if (sahip_tel !== undefined) {
@@ -157,6 +186,18 @@ router.put('/:id', requireSiteAdmin, async (req, res) => {
   if (kvkk_riza !== undefined) {
     update.kvkk_riza = !!kvkk_riza;
     if (kvkk_riza) update.kvkk_riza_tarihi = db.fn.now();
+  }
+  if (ikinci_arac_izinli !== undefined) {
+    // false → true geçişinde site kotasını aşmamalı. Kendi satırını sayma
+    // (zaten izinliyken başka alan güncellenmesi kotayı bozmamalı).
+    if (ikinci_arac_izinli && !eski.ikinci_arac_izinli) {
+      const site = await db('sites').where({ id: req.scopedSiteId }).first();
+      const kota = await ikinciAracKotaDurumu(req.scopedSiteId, site?.ikinci_arac_kapasitesi, id);
+      if (kota.dolu) {
+        return res.status(409).json({ error: ikinciAracKotaMesaji(kota.kapasite) });
+      }
+    }
+    update.ikinci_arac_izinli = !!ikinci_arac_izinli;
   }
   if (!Object.keys(update).length) return res.status(400).json({ error: 'Güncellenecek alan yok.' });
 
@@ -272,6 +313,14 @@ router.post('/bulk-import', requireSiteAdmin, async (req, res) => {
     aktifDaireSayisi = parseInt(aktifCount.c, 10) || 0;
   }
 
+  // 2. araç hakkı kotası — başlangıç sayımı + döngüde artan sayaç.
+  const ikinciAracKapasite = site?.ikinci_arac_kapasitesi || 0;
+  const izinliRow = await db('daireler')
+    .where({ site_id: req.scopedSiteId, aktif: true, ikinci_arac_izinli: true })
+    .count('* as c')
+    .first();
+  let ikinciAracSayisi = parseInt(izinliRow.c, 10) || 0;
+
   for (let i = 0; i < satirlar.length; i++) {
     const s = satirlar[i];
     try {
@@ -289,17 +338,23 @@ router.post('/bulk-import', requireSiteAdmin, async (req, res) => {
         .where({ daire_no: s.daire_no, site_id: req.scopedSiteId, aktif: true })
         .first();
       if (exist) throw new Error('Daire zaten kayıtlı');
+      const ikinciArac = ['true', '1', 'evet'].includes(String(s.ikinci_arac_izinli || '').toLowerCase()) || s.ikinci_arac_izinli === true;
+      if (ikinciArac && ikinciAracSayisi >= ikinciAracKapasite) {
+        throw new Error(ikinciAracKotaMesaji(ikinciAracKapasite));
+      }
       const [created] = await db('daireler').insert({
         daire_no: s.daire_no, blok, sira_no,
         sahip_ad: s.sahip_ad, sahip_tel: s.sahip_tel,
         kvkk_riza: !!s.kvkk_riza,
         kvkk_riza_tarihi: s.kvkk_riza ? db.fn.now() : null,
         bildirim_opt_in: !!s.bildirim_opt_in,
+        ikinci_arac_izinli: ikinciArac,
         aktif: true,
         site_id: req.scopedSiteId,
       }).returning(['id', 'daire_no']);
       eklenenler.push(created);
       aktifDaireSayisi += 1;
+      if (ikinciArac) ikinciAracSayisi += 1;
     } catch (err) {
       hatalar.push({ satir: i + 1, daire_no: s.daire_no, hata: err.message });
     }

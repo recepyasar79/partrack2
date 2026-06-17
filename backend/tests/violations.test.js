@@ -54,6 +54,49 @@ describe('detectViolations', () => {
     expect(r.kayitsizPlakalar).toEqual([]);
   });
 
+  test('2. araç hakkı olan daire 2 plaka → ihlal YOK', () => {
+    const daireIzinli = { ...daireB5, ikinci_arac_izinli: true };
+    const map = buildMap([
+      ['34ABC123', daireIzinli],
+      ['34DEF456', daireIzinli],
+    ]);
+    const r = detectViolations({
+      plakalar: ['34ABC123', '34DEF456'],
+      plakaToDaire: map,
+    });
+    expect(r.ihlalYapanDaireler).toEqual([]);
+  });
+
+  test('2. araç hakkı olan daire 3 plaka → ihlal VAR', () => {
+    const daireIzinli = { ...daireB5, ikinci_arac_izinli: true };
+    const map = buildMap([
+      ['34ABC123', daireIzinli],
+      ['34DEF456', daireIzinli],
+      ['34GHI789', daireIzinli],
+    ]);
+    const r = detectViolations({
+      plakalar: ['34ABC123', '34DEF456', '34GHI789'],
+      plakaToDaire: map,
+    });
+    expect(r.ihlalYapanDaireler).toHaveLength(1);
+    expect(r.ihlalYapanDaireler[0].daire_no).toBe('B5');
+    expect(r.ihlalYapanDaireler[0].ikinci_arac_izinli).toBe(true);
+    expect(r.ihlalYapanDaireler[0].plakalar).toHaveLength(3);
+  });
+
+  test('2. araç hakkı YOK + 2 plaka → ihlal VAR (varsayılan sınır 1)', () => {
+    const map = buildMap([
+      ['34ABC123', daireB5],
+      ['34DEF456', daireB5],
+    ]);
+    const r = detectViolations({
+      plakalar: ['34ABC123', '34DEF456'],
+      plakaToDaire: map,
+    });
+    expect(r.ihlalYapanDaireler).toHaveLength(1);
+    expect(r.ihlalYapanDaireler[0].ikinci_arac_izinli).toBe(false);
+  });
+
   test('misafir plaka sayım dışı', () => {
     const map = buildMap([
       ['34ABC123', daireB5],

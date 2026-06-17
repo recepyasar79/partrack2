@@ -16,6 +16,17 @@
 7. Misafir araclar aksam kontrolune **dahil edilir**; ilgili dairenin sayimina girer ve raporda plaka yaninda `misafir` notu gosterilir
 8. Aktif misafir plaka kayitsiz plaka olarak raporlanmaz; misafir kaydi yoksa kayitsiz plaka listesine duser
 
+## 2. Arac Park Hakki (2026-06-17)
+
+Bazi daireler — site bazinda belirlenen KOTA dahilinde — gece otoparkta 2. araca da izinli isaretlenebilir.
+
+- **Migration `20260617000001`:** `daireler.ikinci_arac_izinli BOOL default false` + `sites.ikinci_arac_kapasitesi INT default 0`. Aktif musteri (site id=1) kapasitesi **10** backfill edildi.
+- **Is kurali (`utils/violations.js`):** izinli daire 2 araca kadar ihlal SAYILMAZ; sinir `ikinci_arac_izinli ? 2 : 1`. 3+ araçta yine akşam kontrolune duser. Misafir araclar bu sayima dahil (mevcut kural degismedi).
+- **Kota (`routes/daireler.js`):** POST/PUT/bulk-import izinli isaretlemede `sites.ikinci_arac_kapasitesi` asilmamali. Asilirsa **409** + mesaj: *"Sitede en fazla {kota} daire için ikinci araç izni verebilirsiniz."* PUT'ta false→true gecisinde kendi satirini saymaz.
+- **Kota ayari:** superadmin `PATCH /api/sites/:id` ile `ikinci_arac_kapasitesi` set eder. `auth login`/`me` site payload'ina eklendi → frontend checkbox'i yalniz kota>0 ise gosterir.
+- **Frontend:** `DaireForm.jsx` + `Daireler.jsx` detay modalinda 2. araç hakki checkbox (teal). `AksamKontrolu.jsx` gece cetelesinde izinli daireler kutunun alt-sag yarisi **teal** (clip-path ucgen) ile ayristirilir; lejanta eklendi. `analiz.js` gece-cetelesi GET'i `ikinci_arac_izinli` doner.
+- **Testler:** `violations.test.js` (2/3 araç sinir), `routes/ikinci_arac.test.js` (CRUD+kota+analiz+cetele), `DaireForm.test.jsx` checkbox. Tum suite yesil (backend 492, frontend 42).
+
 ## OCR Mimari Degisikligi (2026-05-08)
 
 Tesseract.js (taraycida) yerine **Python EasyOCR mikroservisi** kullaniliyor:

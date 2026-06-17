@@ -79,6 +79,20 @@ export default function Daireler() {
     }
   }
 
+  // 2. araç hakkı kotası > 0 ise özellik açık (checkbox/rozet gösterilir).
+  const ikinciAracAcik = (user?.site?.ikinci_arac_kapasitesi || 0) > 0;
+
+  async function toggleIkinciArac(daire, deger) {
+    try {
+      const { data } = await api.put(`/daireler/${daire.id}`, { ikinci_arac_izinli: deger });
+      setSelected((s) => (s && s.id === daire.id ? data.daire : s));
+      setDaireler((prev) => prev.map((d) => (d.id === daire.id ? { ...d, ikinci_arac_izinli: deger } : d)));
+      toast.success(deger ? '2. araç hakkı verildi.' : '2. araç hakkı kaldırıldı.');
+    } catch (e) {
+      toast.error(apiError(e)); // kota dolu → backend uyarı mesajını gösterir
+    }
+  }
+
   const paged = daireler.slice((page - 1) * PER_PAGE, page * PER_PAGE);
   const totalPages = Math.max(1, Math.ceil(daireler.length / PER_PAGE));
 
@@ -258,6 +272,9 @@ export default function Daireler() {
                   <span className={selected.bildirim_opt_in ? 'text-green-600 dark:text-green-400' : ''}>
                     WhatsApp: {selected.bildirim_opt_in ? '✓ Aktif' : '—'}
                   </span>
+                  {selected.ikinci_arac_izinli && (
+                    <span className="text-teal-600 dark:text-teal-400">🅿️ 2. araç hakkı</span>
+                  )}
                 </div>
               </div>
               <Button variant="ghost" size="sm" onClick={() => setSelected(null)}>
@@ -270,6 +287,21 @@ export default function Daireler() {
               onChanged={() => loadDetail(selected.id)}
               canEdit={isYonetici}
             />
+            {isYonetici && ikinciAracAcik && (
+              <label className="flex items-start gap-2 text-sm bg-teal-50 dark:bg-teal-900/20 rounded-lg p-3 border border-teal-200 dark:border-teal-800 text-slate-700 dark:text-slate-200">
+                <input
+                  type="checkbox"
+                  checked={!!selected.ikinci_arac_izinli}
+                  onChange={(e) => toggleIkinciArac(selected, e.target.checked)}
+                  className="mt-1 h-5 w-5 accent-teal-600"
+                />
+                <span>
+                  <strong>2. araç park hakkı</strong> — Bu daire gece otoparkta ikinci bir araç
+                  bulundurabilir (2 araca kadar ihlal sayılmaz). Sitede en fazla{' '}
+                  <strong>{user?.site?.ikinci_arac_kapasitesi}</strong> daireye verilebilir.
+                </span>
+              </label>
+            )}
             <SahipTarihce daireId={selected.id} />
             {isYonetici && (
               <div className="flex flex-wrap gap-2 pt-2 border-t border-slate-100 dark:border-slate-800">

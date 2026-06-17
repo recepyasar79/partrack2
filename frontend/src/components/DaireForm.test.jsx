@@ -11,6 +11,7 @@ vi.mock('../auth/AuthContext', () => ({
     user: {
       site: {
         blok_yapisi: ['A', 'B', 'C', 'D'].map((ad) => ({ ad, daire_sayisi: 34 })),
+        ikinci_arac_kapasitesi: 10, // özellik açık → 2. araç checkbox'ı görünür
       },
     },
   }),
@@ -48,6 +49,34 @@ describe('DaireForm', () => {
       sahip_ad: 'Ahmet Yılmaz',
       sahip_tel: '05551234567',
       kvkk_riza: true,
+    }));
+  });
+
+  test('2. araç hakkı işaretlenince payload\'a geçer', async () => {
+    const u = userEvent.setup();
+    const { onSubmit } = setup();
+    await u.selectOptions(screen.getByRole('combobox'), 'B5');
+    await u.type(screen.getByLabelText('Adı Soyadı'), 'Ahmet Yılmaz');
+    await u.type(screen.getByLabelText('Telefon'), '05551234567');
+    await u.click(screen.getByLabelText(/KVKK Açık Rızası/i));
+    await u.click(screen.getByLabelText(/2\. araç park hakkı/i));
+    await u.click(screen.getByRole('button', { name: /Daire Ekle/i }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      daire_no: 'B5',
+      ikinci_arac_izinli: true,
+    }));
+  });
+
+  test('varsayılan olarak 2. araç hakkı false', async () => {
+    const u = userEvent.setup();
+    const { onSubmit } = setup();
+    await u.selectOptions(screen.getByRole('combobox'), 'B5');
+    await u.type(screen.getByLabelText('Adı Soyadı'), 'Ahmet Yılmaz');
+    await u.type(screen.getByLabelText('Telefon'), '05551234567');
+    await u.click(screen.getByLabelText(/KVKK Açık Rızası/i));
+    await u.click(screen.getByRole('button', { name: /Daire Ekle/i }));
+    expect(onSubmit).toHaveBeenCalledWith(expect.objectContaining({
+      ikinci_arac_izinli: false,
     }));
   });
 

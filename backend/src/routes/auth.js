@@ -94,7 +94,7 @@ router.post('/login', loginLimiter, async (req, res) => {
   if (user.site_id) {
     site = await db('sites')
       .where({ id: user.site_id })
-      .select('id', 'ad', 'slug', 'plan', 'aktif', 'blok_yapisi', 'plan_limits')
+      .select('id', 'ad', 'slug', 'plan', 'aktif', 'blok_yapisi', 'plan_limits', 'ikinci_arac_kapasitesi')
       .first();
     if (site) site.limits = getEffectiveLimits(site);
   }
@@ -120,7 +120,7 @@ router.get('/me', authRequired, async (req, res) => {
   if (user.site_id) {
     site = await db('sites')
       .where({ id: user.site_id })
-      .select('id', 'ad', 'slug', 'plan', 'aktif', 'blok_yapisi', 'plan_limits')
+      .select('id', 'ad', 'slug', 'plan', 'aktif', 'blok_yapisi', 'plan_limits', 'ikinci_arac_kapasitesi')
       .first();
     if (site) site.limits = getEffectiveLimits(site);
   }

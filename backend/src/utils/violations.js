@@ -28,13 +28,17 @@ function detectViolations({ plakalar, plakaToDaire, misafirPlakaToDaire = new Ma
 
   const ihlalYapanDaireler = [];
   for (const { daire, plakalar: ps, misafirPlakalar: ms } of dairePlakalar.values()) {
-    if (ps.length > 1) {
+    // 2. araç hakkı olan daireler 2 araca kadar ihlal sayılmaz; 3+ araçta düşer.
+    // Hakkı olmayanlar (varsayılan) için sınır 1.
+    const izinliSayi = daire.ikinci_arac_izinli ? 2 : 1;
+    if (ps.length > izinliSayi) {
       ihlalYapanDaireler.push({
         daire_id: daire.daire_id,
         daire_no: daire.daire_no,
         sahip_ad: daire.sahip_ad,
         sahip_tel: daire.sahip_tel,
         bildirim_opt_in: daire.bildirim_opt_in,
+        ikinci_arac_izinli: !!daire.ikinci_arac_izinli,
         plakalar: ps,
         misafir_plakalar: ms,
       });

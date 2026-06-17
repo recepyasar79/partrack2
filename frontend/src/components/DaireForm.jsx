@@ -27,10 +27,13 @@ export default function DaireForm({ initial = {}, onSubmit, busy }) {
   const [sahip_tel, setSahipTel] = useState(formatTelefon(initial.sahip_tel || ''));
   const [kvkk_riza, setKvkk] = useState(!!initial.kvkk_riza);
   const [bildirim_opt_in, setOptIn] = useState(!!initial.bildirim_opt_in);
+  const [ikinci_arac_izinli, setIkinciArac] = useState(!!initial.ikinci_arac_izinli);
   const [showKvkkText, setShowKvkkText] = useState(false);
   const [errors, setErrors] = useState({});
 
   const isEdit = !!initial.id;
+  // 2. araç hakkı yalnız site kotası > 0 ise gösterilir (özellik açık).
+  const ikinciAracKapasitesi = user?.site?.ikinci_arac_kapasitesi || 0;
 
   function validate() {
     const e = {};
@@ -51,6 +54,7 @@ export default function DaireForm({ initial = {}, onSubmit, busy }) {
       sahip_tel: unformatTelefon(sahip_tel),
       kvkk_riza,
       bildirim_opt_in,
+      ikinci_arac_izinli,
     });
   }
 
@@ -130,6 +134,22 @@ export default function DaireForm({ initial = {}, onSubmit, busy }) {
           İhlal durumunda <strong>WhatsApp ile bilgilendirilmeyi</strong> kabul ediyorum (opsiyonel).
         </span>
       </label>
+
+      {ikinciAracKapasitesi > 0 && (
+        <label className="flex items-start gap-2 text-sm bg-teal-50 dark:bg-teal-900/20 rounded-lg p-3 border border-teal-200 dark:border-teal-800 text-slate-700 dark:text-slate-200">
+          <input
+            type="checkbox"
+            checked={ikinci_arac_izinli}
+            onChange={(e) => setIkinciArac(e.target.checked)}
+            className="mt-1 h-5 w-5 accent-teal-600"
+          />
+          <span>
+            <strong>2. araç park hakkı</strong> — Bu daire gece otoparkta ikinci bir araç
+            bulundurabilir (2 araca kadar ihlal sayılmaz). Sitede en fazla{' '}
+            <strong>{ikinciAracKapasitesi}</strong> daireye bu hak verilebilir.
+          </span>
+        </label>
+      )}
 
       <Button type="submit" disabled={busy}>
         {busy ? 'Kaydediliyor…' : isEdit ? 'Güncelle' : 'Daire Ekle'}

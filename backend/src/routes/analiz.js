@@ -36,7 +36,8 @@ router.post('/analiz-et', async (req, res, next) => {
         'daireler.daire_no',
         'daireler.sahip_ad',
         'daireler.sahip_tel',
-        'daireler.bildirim_opt_in'
+        'daireler.bildirim_opt_in',
+        'daireler.ikinci_arac_izinli'
       );
     const plakaToDaire = new Map();
     for (const a of aktifAraclar) plakaToDaire.set(normalizePlaka(a.plaka), a);
@@ -60,7 +61,8 @@ router.post('/analiz-et', async (req, res, next) => {
         'daireler.daire_no',
         'daireler.sahip_ad',
         'daireler.sahip_tel',
-        'daireler.bildirim_opt_in'
+        'daireler.bildirim_opt_in',
+        'daireler.ikinci_arac_izinli'
       );
     const misafirPlakaToDaire = new Map();
     for (const m of misafirler) misafirPlakaToDaire.set(normalizePlaka(m.plaka), m);
@@ -336,6 +338,7 @@ router.get('/gece-cetelesi', async (req, res, next) => {
         'd.daire_no',
         'd.blok',
         'd.sira_no',
+        'd.ikinci_arac_izinli',
         db.raw('COALESCE(g.arac_sayisi, 0)::int as arac_sayisi')
       );
 

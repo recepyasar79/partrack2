@@ -213,7 +213,7 @@ router.patch('/:id', async (req, res, next) => {
     const eski = await db('sites').where({ id }).first();
     if (!eski) return res.status(404).json({ error: 'Site bulunamadı.' });
 
-    const { ad, plan, aktif, blok_yapisi, slug, plan_limits } = req.body || {};
+    const { ad, plan, aktif, blok_yapisi, slug, plan_limits, ikinci_arac_kapasitesi } = req.body || {};
     const update = {};
     if (ad !== undefined) {
       if (!ad || ad.length < 2) return res.status(400).json({ error: 'Site adı geçersiz.' });
@@ -256,6 +256,14 @@ router.patch('/:id', async (req, res, next) => {
       const v = validatePlanLimitsOverride(plan_limits);
       if (!v.ok) return res.status(400).json({ error: v.error });
       update.plan_limits = v.normalized == null ? null : JSON.stringify(v.normalized);
+    }
+    // 2. araç hakkı kotası (negatif olamaz). 0 = özellik kapalı.
+    if (ikinci_arac_kapasitesi !== undefined) {
+      const k = parseInt(ikinci_arac_kapasitesi, 10);
+      if (!Number.isInteger(k) || k < 0) {
+        return res.status(400).json({ error: 'ikinci_arac_kapasitesi 0 veya pozitif tamsayı olmalı.' });
+      }
+      update.ikinci_arac_kapasitesi = k;
     }
     if (!Object.keys(update).length) {
       return res.status(400).json({ error: 'Güncellenecek alan yok.' });

@@ -84,6 +84,7 @@ async function createTestDaire(overrides = {}) {
       kvkk_riza: true,
       kvkk_riza_tarihi: db.fn.now(),
       bildirim_opt_in: overrides.bildirim_opt_in !== undefined ? overrides.bildirim_opt_in : true,
+      ikinci_arac_izinli: overrides.ikinci_arac_izinli !== undefined ? overrides.ikinci_arac_izinli : false,
       aktif: true,
       site_id: overrides.site_id || 1,
     })
@@ -138,6 +139,7 @@ async function cleanupTables(preserveUsers = []) {
     plan: 'baslangic',
     aktif: true,
     blok_yapisi: JSON.stringify(defaultBlokYapisi),
+    ikinci_arac_kapasitesi: 10, // migration backfill değeri — testler arası deterministik
   });
 }
 
