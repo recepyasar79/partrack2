@@ -357,6 +357,32 @@ describe('POST /api/kontroller/analiz-et', () => {
     expect(res.body.kayitsiz_plakalar).toContain('99UNREG0');
   });
 
+  test('gun-ortasi/aksam baslayan misafir kayitsiz raporlanmaz, dairesine sayilir', async () => {
+    // Regresyon: misafir penceresi tam 20:00'i kapsamasa da (orn. 20:30'da
+    // kaydedilen ya da gunduz pencereli) o gun aktifse kayitsiz olmamali.
+    const daire = await createTestDaire({ daire_no: 'C3' });
+    const today = todayTR();
+    await db('misafir_araclar').insert({
+      site_id: 1,
+      daire_id: daire.id,
+      plaka: '34MISAKS',
+      baslangic_tarihi: normalizeMisafirZaman(`${today}T20:30`, false),
+      bitis_tarihi: normalizeMisafirZaman(`${today}T23:59`, true),
+      ekleyen_user_id: admin.id,
+    });
+    await db('gunluk_kontroller').insert({
+      site_id: 1, kontrol_tarihi: today, plaka: '34MISAKS', foto_url: '/uploads/mis.jpg',
+    });
+    const res = await request(app)
+      .post('/api/kontroller/analiz-et')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ tarih: today });
+    expect(res.status).toBe(200);
+    expect(res.body.kayitsiz_plakalar || []).not.toContain('34MISAKS');
+    // tek arac → ihlal yok, ama misafir gorulen listesinde olmali
+    expect((res.body.misafir_gorulen || []).map((m) => m.plaka)).toContain('34MISAKS');
+  });
+
   test('idempotent: ayni gun 2. cagri mevcut kaydi update eder', async () => {
     const daire = await createTestDaire({ daire_no: 'B1' });
     await createTestArac({ daire_id: daire.id, plaka: '34IDEM01' });

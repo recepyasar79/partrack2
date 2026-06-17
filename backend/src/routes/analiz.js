@@ -42,14 +42,18 @@ router.post('/analiz-et', async (req, res, next) => {
     const plakaToDaire = new Map();
     for (const a of aktifAraclar) plakaToDaire.set(normalizePlaka(a.plaka), a);
 
-    // Akşam kontrol referansı: tarih + 20:00 TR. Body ile override edilebilir.
-    const referansZaman =
-      req.body?.referans_zaman || normalizeMisafirZaman(`${tarih}T20:00`, false);
+    // Misafir muafiyeti GÜN bazlıdır: o gün herhangi bir anda aktif olan misafir
+    // kaydı dairesine sayılır ve ASLA kayıtsız raporlanmaz. Tek nokta (20:00)
+    // referansı, 20:30'da kaydedilen ya da gündüz pencereli misafiri dışarda
+    // bırakıp plakayı kayıtsıza düşürüyordu (kontroller GET ile tutarsızdı).
+    // Gün başı/sonu sınırlarıyla eşle (kontroller/misafirAraclar GET ile aynı).
+    const gunBasi = req.body?.referans_zaman || normalizeMisafirZaman(tarih, false);
+    const gunSonu = normalizeMisafirZaman(tarih, true);
     const misafirler = await db('misafir_araclar')
       .join('daireler', 'misafir_araclar.daire_id', 'daireler.id')
       .where('misafir_araclar.site_id', siteId)
-      .andWhere('baslangic_tarihi', '<=', referansZaman)
-      .andWhere('bitis_tarihi', '>=', referansZaman)
+      .andWhere('baslangic_tarihi', '<=', gunSonu)
+      .andWhere('bitis_tarihi', '>=', gunBasi)
       .andWhere('daireler.aktif', true)
       .select(
         'misafir_araclar.plaka',
@@ -263,11 +267,14 @@ async function dairBasinaIcerideSayisi(siteId, tarih) {
   const plakaToDaire = new Map();
   for (const a of aktifAraclar) plakaToDaire.set(normalizePlaka(a.plaka), a.daire_id);
 
-  const referansZaman = normalizeMisafirZaman(`${tarih}T20:00`, false);
+  // Misafir muafiyeti gün bazlı: o gün herhangi bir anda aktif misafiri eşle
+  // (analiz-et ile tutarlı; tek nokta 20:00 referansı kaldırıldı).
+  const gunBasi = normalizeMisafirZaman(tarih, false);
+  const gunSonu = normalizeMisafirZaman(tarih, true);
   const misafirler = await db('misafir_araclar')
     .where('site_id', siteId)
-    .andWhere('baslangic_tarihi', '<=', referansZaman)
-    .andWhere('bitis_tarihi', '>=', referansZaman)
+    .andWhere('baslangic_tarihi', '<=', gunSonu)
+    .andWhere('bitis_tarihi', '>=', gunBasi)
     .select('plaka', 'daire_id');
   const misafirToDaire = new Map();
   for (const m of misafirler) misafirToDaire.set(normalizePlaka(m.plaka), m.daire_id);
