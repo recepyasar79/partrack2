@@ -27,6 +27,19 @@ Bazi daireler — site bazinda belirlenen KOTA dahilinde — gece otoparkta 2. a
 - **Frontend:** `DaireForm.jsx` + `Daireler.jsx` detay modalinda 2. araç hakki checkbox (teal). `AksamKontrolu.jsx` gece cetelesinde izinli daireler kutunun alt-sag yarisi **teal** (clip-path ucgen) ile ayristirilir; lejanta eklendi. `analiz.js` gece-cetelesi GET'i `ikinci_arac_izinli` doner.
 - **Testler:** `violations.test.js` (2/3 araç sinir), `routes/ikinci_arac.test.js` (CRUD+kota+analiz+cetele), `DaireForm.test.jsx` checkbox. Tum suite yesil (backend 492, frontend 42).
 
+## Raporlar — Misafir Araç kutusu + Çoklu'dan misafir dusuldu (2026-06-18)
+
+**Istek:** Rapor ozetinde misafir araclar ayri kutu olsun; "Çoklu Araç" (fazla) sayisi misafirleri kapsiyorsa onlari dussun.
+**Kok neden:** `ihlaller.plaka_listesi` misafir + kayitli plakayi karisik tutuyordu; hangilerinin misafir oldugu bilinmedigi icin fazla-araç sayisi misafirleri de sayiyordu.
+**Cozum:**
+- Migration `20260618000001`: `ihlaller.misafir_plaka_listesi jsonb default '[]'`. (Gecmis kayitlar `[]` → geriye donuk misafir kirilimi yok, ileri analiz-et'lerde dolar.)
+- `analiz.js`: coklu_arac insert/update'inde `detectViolations`'in dondurdugu `misafir_plakalar` → `misafir_plaka_listesi`'ne yazilir.
+- `raporlar.js` dashboard: `ozet.misafir_arac` = SUM(misafir plaka adedi); `coklu_fazla_arac` artik `(toplam - misafir) - hak` (misafir dusulur). `donem_ozet`'e de `misafir_arac` eklendi (Bugün/Bu Hafta/Bu Ay). Hesaplama `daireler` leftJoin + `ikinci_arac_izinli` (izinli 2, normal 1) ile.
+- Frontend `RaporlarDashboard.jsx`: 5. kart **Misafir Araç** (emerald); grid `grid-cols-2 sm:grid-cols-3 lg:grid-cols-5`. Çoklu kartinin alt yazisi "(misafir hariç)". Dönem Özeti satirina misafir kolonu.
+- `emailRaporu.js` degismedi (fazla-araç hesaplamiyor).
+**Uyari:** Misafir/çoklu kirilimi yalniz yeni analiz-et cagrilarinda dolar; eski ihlal kayitlarinda misafir 0 gorunur.
+**Test:** `routes/raporlar.test.js` (misafir ayrimi + kendi fazla kirilimi), `routes/kontroller.test.js` (analiz-et misafir_plaka_listesi yazimi), `RaporlarDashboard.test.jsx` (Misafir Araç karti) — frontend 7/7 yesil. Backend lokal DB 5433 kapali → CI'da dogrulanir.
+
 ## Gece cetelesi — operasyon gunu 08:00'de doner (2026-06-18)
 
 **Istek:** Cetele listesi gece 00:00'da sifirlaniyordu; sifirlama sabah 08:00'e alindi (gece kontrolu suren gorevli 00:30'da bakinca aksamki sayim kaybolmasin).

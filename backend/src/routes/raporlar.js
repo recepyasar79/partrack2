@@ -75,11 +75,14 @@ router.get('/dashboard', async (req, res, next) => {
           db.raw(`COUNT(DISTINCT ihlaller.daire_id) FILTER (WHERE ihlaller.daire_id IS NOT NULL)::int as etkilenen_daire`),
           // Araç-adedi metrikleri: ihlal KAYDI sayısı kullanıcıyı yanıltıyordu
           // (4 foto yükleyip "Toplam İhlal 1" görüyordu — 1 kayıtsız kaydında
-          // N plaka). Kayıtsız = listedeki plaka adedi; çoklu = daire başına
-          // fazla araç adedi (izinli daire 2'ye, normal daire 1'e kadar muaf →
-          // listede k araç → k - hak fazla).
+          // N plaka). Kayıtsız = listedeki plaka adedi.
           db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='kayitsiz' THEN jsonb_array_length(plaka_listesi) ELSE 0 END),0)::int as kayitsiz_arac`),
-          db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN GREATEST(jsonb_array_length(plaka_listesi) - (CASE WHEN daireler.ikinci_arac_izinli THEN 2 ELSE 1 END), 0) ELSE 0 END),0)::int as coklu_fazla_arac`)
+          // Misafir araç = çoklu ihlallerdeki misafir plaka adedi (ayrı kutu).
+          db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN jsonb_array_length(COALESCE(misafir_plaka_listesi,'[]'::jsonb)) ELSE 0 END),0)::int as misafir_arac`),
+          // Çoklu (fazla) araç = dairenin KENDI fazla aracı; misafirler düşülür
+          // (ayrı kutuda gösterilir). (k_toplam - misafir) - hak; izinli daire
+          // 2'ye, normal daire 1'e kadar muaf.
+          db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN GREATEST((jsonb_array_length(plaka_listesi) - jsonb_array_length(COALESCE(misafir_plaka_listesi,'[]'::jsonb))) - (CASE WHEN daireler.ikinci_arac_izinli THEN 2 ELSE 1 END), 0) ELSE 0 END),0)::int as coklu_fazla_arac`)
         )
         .first(),
       db('gunluk_kontroller')
@@ -153,13 +156,14 @@ router.get('/dashboard', async (req, res, next) => {
           db.raw(`to_char(ihlaller.kontrol_tarihi, 'YYYY-MM-DD') as tarih`),
           'ihlaller.ihlal_tipi',
           db.raw(`jsonb_array_length(ihlaller.plaka_listesi)::int as arac`),
+          db.raw(`jsonb_array_length(COALESCE(ihlaller.misafir_plaka_listesi,'[]'::jsonb))::int as misafir`),
           db.raw(`COALESCE(daireler.ikinci_arac_izinli, false) as ikinci_arac_izinli`)
         ),
     ]);
     const kontrol_yapilan_gun = parseInt(kontrolGunRow?.c || 0, 10);
 
     // donemRows → Bugün / Bu Hafta / Bu Ay araç sayıları
-    const donemOzetBos = () => ({ kayitsiz_arac: 0, coklu_fazla_arac: 0 });
+    const donemOzetBos = () => ({ kayitsiz_arac: 0, coklu_fazla_arac: 0, misafir_arac: 0 });
     const donem_ozet = { bugun: donemOzetBos(), bu_hafta: donemOzetBos(), bu_ay: donemOzetBos() };
     for (const r of donemRows) {
       const hedefler = [];
@@ -168,9 +172,11 @@ router.get('/dashboard', async (req, res, next) => {
       if (r.tarih === bugun) hedefler.push(donem_ozet.bugun);
       for (const h of hedefler) {
         if (r.ihlal_tipi === 'kayitsiz') h.kayitsiz_arac += r.arac;
-        // İzinli daire 2 araca muaf → fazla = arac - 2; normal daire arac - 1.
+        // Çoklu: misafirler ayrı kutuya; fazla = (arac - misafir) - hak.
+        // İzinli daire 2 araca muaf, normal daire 1'e.
         else if (r.ihlal_tipi === 'coklu_arac') {
-          h.coklu_fazla_arac += Math.max(r.arac - (r.ikinci_arac_izinli ? 2 : 1), 0);
+          h.misafir_arac += r.misafir;
+          h.coklu_fazla_arac += Math.max((r.arac - r.misafir) - (r.ikinci_arac_izinli ? 2 : 1), 0);
         }
       }
     }
@@ -216,6 +222,7 @@ router.get('/dashboard', async (req, res, next) => {
         toplam_foto: parseInt(fotoCountRow?.c || 0, 10),
         kayitsiz_arac: ihlalAgg.kayitsiz_arac || 0,
         coklu_fazla_arac: ihlalAgg.coklu_fazla_arac || 0,
+        misafir_arac: ihlalAgg.misafir_arac || 0,
       },
       donem_ozet,
       bildirim: {

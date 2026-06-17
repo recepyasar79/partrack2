@@ -35,11 +35,12 @@ function dashboardPayload(overrides = {}) {
       toplam_foto: 41,
       kayitsiz_arac: 5,
       coklu_fazla_arac: 11,
+      misafir_arac: 7,
     },
     donem_ozet: {
-      bugun: { kayitsiz_arac: 1, coklu_fazla_arac: 2 },
-      bu_hafta: { kayitsiz_arac: 3, coklu_fazla_arac: 6 },
-      bu_ay: { kayitsiz_arac: 5, coklu_fazla_arac: 11 },
+      bugun: { kayitsiz_arac: 1, coklu_fazla_arac: 2, misafir_arac: 1 },
+      bu_hafta: { kayitsiz_arac: 3, coklu_fazla_arac: 6, misafir_arac: 4 },
+      bu_ay: { kayitsiz_arac: 5, coklu_fazla_arac: 11, misafir_arac: 7 },
     },
     bildirim: {
       toplam: 8,
@@ -94,6 +95,8 @@ describe('RaporlarDashboard', () => {
     expect(screen.getByText('Kayıtsız Araç')).toBeInTheDocument();
     expect(screen.getByText('Çoklu Araç')).toBeInTheDocument();
     expect(screen.getByText(/4 dairede fazla araç/i)).toBeInTheDocument();
+    expect(screen.getByText('Misafir Araç')).toBeInTheDocument();
+    expect(screen.getByText(/çoklu ihlaldeki misafir/i)).toBeInTheDocument();
     expect(screen.getByText('%75')).toBeInTheDocument();
     expect(screen.getByText('6/8 gönderildi')).toBeInTheDocument();
   });

@@ -341,6 +341,35 @@ describe('POST /api/kontroller/analiz-et', () => {
     expect(res.body.ihlaller[0].daire_no).toBe('A1');
   });
 
+  test('coklu ihlalde misafir plakalar misafir_plaka_listesi\'ne yazilir', async () => {
+    const daire = await createTestDaire({ daire_no: 'A1' });
+    await createTestArac({ daire_id: daire.id, plaka: '34OWN001' });
+    const today = todayTR();
+    // 1 kayıtlı + 1 misafir = 2 araç → ihlal; misafir ayrı listede olmalı.
+    await db('misafir_araclar').insert({
+      site_id: 1, daire_id: daire.id, plaka: '34GUEST1',
+      baslangic_tarihi: normalizeMisafirZaman(`${today}T08:00`, false),
+      bitis_tarihi: normalizeMisafirZaman(`${today}T23:59`, true),
+      ekleyen_user_id: admin.id,
+    });
+    await db('gunluk_kontroller').insert([
+      { site_id: 1, kontrol_tarihi: today, plaka: '34OWN001', foto_url: '/uploads/o.jpg' },
+      { site_id: 1, kontrol_tarihi: today, plaka: '34GUEST1', foto_url: '/uploads/g.jpg' },
+    ]);
+    const res = await request(app)
+      .post('/api/kontroller/analiz-et')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ tarih: today });
+    expect(res.status).toBe(200);
+    const row = await db('ihlaller')
+      .where({ site_id: 1, daire_id: daire.id, kontrol_tarihi: today, ihlal_tipi: 'coklu_arac' })
+      .first();
+    expect(row).toBeTruthy();
+    const misafir = typeof row.misafir_plaka_listesi === 'string'
+      ? JSON.parse(row.misafir_plaka_listesi) : row.misafir_plaka_listesi;
+    expect(misafir).toEqual(['34GUEST1']);
+  });
+
   test('kayitsiz plaka ihlal verir', async () => {
     const today = todayTR();
     await db('gunluk_kontroller').insert({

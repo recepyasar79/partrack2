@@ -62,7 +62,7 @@ export default function RaporlarDashboard({ baslangic, bitis }) {
     <div className="flex flex-col gap-4">
       {/* Stat kartları — araç adedi bazlı: "Toplam İhlal" kayıt sayısıydı ve
           yanıltıyordu (4 foto → 1 kayıtsız KAYDI içinde N plaka). */}
-      <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
         <StatCard
           label="Yüklenen Foto"
           value={data.ozet.toplam_foto ?? 0}
@@ -78,8 +78,14 @@ export default function RaporlarDashboard({ baslangic, bitis }) {
         <StatCard
           label="Çoklu Araç"
           value={data.ozet.coklu_fazla_arac ?? 0}
-          sub={`${data.ozet.etkilenen_daire} dairede fazla araç`}
+          sub={`${data.ozet.etkilenen_daire} dairede fazla araç (misafir hariç)`}
           color="rose"
+        />
+        <StatCard
+          label="Misafir Araç"
+          value={data.ozet.misafir_arac ?? 0}
+          sub="çoklu ihlaldeki misafir"
+          color="emerald"
         />
         <StatCard
           label="Bildirim Başarı"
@@ -125,7 +131,7 @@ export default function RaporlarDashboard({ baslangic, bitis }) {
               { key: 'bu_hafta', label: 'Bu Hafta' },
               { key: 'bu_ay', label: 'Bu Ay' },
             ].map(({ key, label }) => {
-              const d = data.donem_ozet?.[key] || { kayitsiz_arac: 0, coklu_fazla_arac: 0 };
+              const d = data.donem_ozet?.[key] || { kayitsiz_arac: 0, coklu_fazla_arac: 0, misafir_arac: 0 };
               return (
                 <div
                   key={key}
@@ -138,6 +144,9 @@ export default function RaporlarDashboard({ baslangic, bitis }) {
                     </span>
                     <span className="text-rose-600 dark:text-rose-400 font-semibold">
                       {d.coklu_fazla_arac} <span className="font-normal text-slate-500 dark:text-slate-400">çoklu araç</span>
+                    </span>
+                    <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                      {d.misafir_arac ?? 0} <span className="font-normal text-slate-500 dark:text-slate-400">misafir</span>
                     </span>
                   </span>
                 </div>

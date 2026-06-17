@@ -20,13 +20,14 @@ beforeEach(async () => {
   await cleanupTables([admin, guard, superadmin]);
 });
 
-async function seedIhlaller({ siteId = 1, daireId, dates, tipi = 'coklu_arac', plakalar = ['34X001', '34X002'] }) {
+async function seedIhlaller({ siteId = 1, daireId, dates, tipi = 'coklu_arac', plakalar = ['34X001', '34X002'], misafirPlakalar = [] }) {
   for (const t of dates) {
     await db('ihlaller').insert({
       kontrol_tarihi: t,
       daire_id: tipi === 'kayitsiz' ? null : daireId,
       daire_no_snapshot: tipi === 'kayitsiz' ? null : 'A1',
       plaka_listesi: JSON.stringify(plakalar),
+      misafir_plaka_listesi: JSON.stringify(misafirPlakalar),
       ihlal_tipi: tipi,
       site_id: siteId,
     });
@@ -239,6 +240,39 @@ describe('GET /api/raporlar/dashboard', () => {
     expect(res.status).toBe(200);
     // 1 (izinli) + 2 (normal) = 3
     expect(res.body.ozet.coklu_fazla_arac).toBe(3);
+  });
+
+  test('misafir_arac ayri sayilir ve coklu_fazla_arac\'tan dusulur', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const daire = await createTestDaire({ daire_no: 'A1', ikinci_arac_izinli: false });
+    // 3 plaka, 2'si misafir → toplam 3; kendi fazla = (3-2)-1 = 0; misafir = 2
+    await seedIhlaller({
+      daireId: daire.id, dates: [today], tipi: 'coklu_arac',
+      plakalar: ['34OWN001', '34GUEST1', '34GUEST2'],
+      misafirPlakalar: ['34GUEST1', '34GUEST2'],
+    });
+    const res = await request(app)
+      .get('/api/raporlar/dashboard')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.ozet.misafir_arac).toBe(2);
+    expect(res.body.ozet.coklu_fazla_arac).toBe(0); // misafirler düşülünce kendi fazlası yok
+  });
+
+  test('misafir + kendi fazla araci birlikte: dogru kirilim', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    const daire = await createTestDaire({ daire_no: 'B2', ikinci_arac_izinli: false });
+    // 4 plaka, 1 misafir → kendi fazla = (4-1)-1 = 2; misafir = 1
+    await seedIhlaller({
+      daireId: daire.id, dates: [today], tipi: 'coklu_arac',
+      plakalar: ['34OWN001', '34OWN002', '34OWN003', '34GUEST1'],
+      misafirPlakalar: ['34GUEST1'],
+    });
+    const res = await request(app)
+      .get('/api/raporlar/dashboard')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.body.ozet.misafir_arac).toBe(1);
+    expect(res.body.ozet.coklu_fazla_arac).toBe(2);
   });
 
   test('donem_ozet coklu_fazla_arac izinli daire icin 2 araca muaf', async () => {

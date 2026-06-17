@@ -113,7 +113,10 @@ router.post('/analiz-et', async (req, res, next) => {
           if (!same) {
             await trx('ihlaller')
               .where({ id: existing.id })
-              .update({ plaka_listesi: JSON.stringify(i.plakalar) });
+              .update({
+                plaka_listesi: JSON.stringify(i.plakalar),
+                misafir_plaka_listesi: JSON.stringify(i.misafir_plakalar || []),
+              });
             guncellenenler.push({ ihlal_id: existing.id, daire_no: i.daire_no, plakalar: i.plakalar });
           }
         } else {
@@ -123,6 +126,7 @@ router.post('/analiz-et', async (req, res, next) => {
               daire_id: i.daire_id,
               daire_no_snapshot: i.daire_no,
               plaka_listesi: JSON.stringify(i.plakalar),
+              misafir_plaka_listesi: JSON.stringify(i.misafir_plakalar || []),
               ihlal_tipi: 'coklu_arac',
               site_id: siteId,
             })
