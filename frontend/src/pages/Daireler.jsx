@@ -189,9 +189,9 @@ export default function Daireler() {
                       {d.ikinci_arac_izinli && (
                         <span
                           title="2. araç park hakkı"
-                          className="inline-flex items-center gap-0.5 rounded-full bg-teal-100 dark:bg-teal-900/40 text-teal-700 dark:text-teal-300 text-[10px] font-bold px-1.5 py-0.5 leading-none"
+                          className="inline-flex items-center rounded-full bg-teal-600 text-white text-[10px] font-bold px-2 py-0.5 leading-none whitespace-nowrap shadow-sm"
                         >
-                          🅿️ 2.
+                          2. araç
                         </span>
                       )}
                     </div>
