@@ -27,6 +27,13 @@ Bazi daireler — site bazinda belirlenen KOTA dahilinde — gece otoparkta 2. a
 - **Frontend:** `DaireForm.jsx` + `Daireler.jsx` detay modalinda 2. araç hakki checkbox (teal). `AksamKontrolu.jsx` gece cetelesinde izinli daireler kutunun alt-sag yarisi **teal** (clip-path ucgen) ile ayristirilir; lejanta eklendi. `analiz.js` gece-cetelesi GET'i `ikinci_arac_izinli` doner.
 - **Testler:** `violations.test.js` (2/3 araç sinir), `routes/ikinci_arac.test.js` (CRUD+kota+analiz+cetele), `DaireForm.test.jsx` checkbox. Tum suite yesil (backend 492, frontend 42).
 
+## Gece cetelesi — operasyon gunu 08:00'de doner (2026-06-18)
+
+**Istek:** Cetele listesi gece 00:00'da sifirlaniyordu; sifirlama sabah 08:00'e alindi (gece kontrolu suren gorevli 00:30'da bakinca aksamki sayim kaybolmasin).
+**Cozum:** `utils/timezone.js` → `ceteleGunuTR()` helper'i: TR saati `CETELE_RESET_SAATI` (08:00) altindaysa bir ONCEKI gunu, degilse takvim gununu doner. `analiz.js` `GET /gece-cetelesi` ve `PATCH /gece-cetelesi/:daireId` varsayilan tarihi `todayTR()` yerine `ceteleGunuTR()` kullaniyor (GET seed + PATCH yazma ayni operasyon gunune dusuyor). `?tarih=` override hala calisir. analiz-et/ihlaller takvim gunu (todayTR) kalir — sadece cetele etkilendi.
+**Not:** Cetele seed'i `gunluk_kontroller.kontrol_tarihi`'den okur; aksam fotograflari o takvim gununde yuklendiginden 00:00-08:00 arasi ayni tarihi referans alir, sorun yok.
+**Test:** `tests/timezone_cetele.test.js` (08:00 sinir birim testi, DB'siz — yesil). `gece_cetelesi.test.js` seed helper'lari `ceteleGunuTR()` ile hizalandi (00:00-08:00 penceresinde kosulsa da gecsin).
+
 ## Raporlar — fazla arac sayimi 2. arac hakkini bilmiyordu (2026-06-17)
 
 **Sorun:** Dashboard "fazla araç" metrigi (`coklu_fazla_arac`) `jsonb_array_length(plaka_listesi) - 1` ile hesaplaniyordu; muafiyet sabit **1** varsayiliyordu. 2. araç izinli daire 3 araçla ihlal edince fazla **2** sayiliyordu (dogru: 3 - 2 = **1**).

@@ -12,6 +12,14 @@ const todayTR = () => nowTR().format('YYYY-MM-DD');
 const toTR = (date) => dayjs(date).tz(TR_TZ);
 const isBefore20TR = (d = nowTR()) => d.hour() < 20;
 
+// Gece çetelesi "operasyon günü": takvim gününden farklı olarak sabah
+// CETELE_RESET_SAATI'ne (08:00 TR) kadar bir ÖNCEKI güne sayılır. Böylece
+// akşam kontrolü (20:00) çetelesi gece yarısında sıfırlanmaz; görevli gece
+// 00:30'da baktığında akşamki sayım durur, asıl sıfırlama sabah 08:00'de olur.
+const CETELE_RESET_SAATI = 8;
+const ceteleGunuTR = (d = nowTR()) =>
+  (d.hour() < CETELE_RESET_SAATI ? d.subtract(1, 'day') : d).format('YYYY-MM-DD');
+
 const DATE_ONLY_RE = /^\d{4}-\d{2}-\d{2}$/;
 const DATETIME_LOCAL_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(?::\d{2})?$/;
 
@@ -34,4 +42,4 @@ function normalizeMisafirZaman(value, isEnd) {
   return d.isValid() ? d.toISOString() : null;
 }
 
-module.exports = { TR_TZ, TZ: TR_TZ, nowTR, todayTR, toTR, isBefore20TR, dayjs, normalizeMisafirZaman };
+module.exports = { TR_TZ, TZ: TR_TZ, nowTR, todayTR, toTR, isBefore20TR, ceteleGunuTR, CETELE_RESET_SAATI, dayjs, normalizeMisafirZaman };

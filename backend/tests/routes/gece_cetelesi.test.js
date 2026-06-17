@@ -1,5 +1,5 @@
 const { app, request, makeToken, createTestUser, createTestDaire, createTestArac, db, cleanupTables } = require('../helpers');
-const { todayTR } = require('../../src/utils/timezone');
+const { ceteleGunuTR } = require('../../src/utils/timezone');
 
 let guvToken, guv;
 
@@ -13,7 +13,8 @@ beforeEach(async () => {
 });
 
 async function gorulen(plaka) {
-  await db('gunluk_kontroller').insert({ kontrol_tarihi: todayTR(), plaka, site_id: 1 });
+  // Çetele operasyon günüyle (08:00 reset) eşleş — endpoint seed bu tarihten okur.
+  await db('gunluk_kontroller').insert({ kontrol_tarihi: ceteleGunuTR(), plaka, site_id: 1 });
 }
 
 const auth = (r) => r.set('Authorization', `Bearer ${guvToken}`);
@@ -93,7 +94,7 @@ describe('Gece Çetelesi', () => {
     // Launch testi gibi araya bayat/stray satır (a1, 0, manuel=false). Saha
     // 2026-06-16: bu satır GET'te güncellenmediği için A1 kırmızı (gerçekte 1)
     // görünmüyordu. Yeni davranış: manuel=false satır güncel tespite YENİLENİR.
-    await db('gece_cetelesi').insert({ site_id: 1, daire_id: a1.id, tarih: todayTR(), arac_sayisi: 0 });
+    await db('gece_cetelesi').insert({ site_id: 1, daire_id: a1.id, tarih: ceteleGunuTR(), arac_sayisi: 0 });
 
     const res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
     const byNo = Object.fromEntries(res.body.daireler.map((d) => [d.daire_no, d.arac_sayisi]));

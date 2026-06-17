@@ -3,7 +3,7 @@ const db = require('../db');
 const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { detectViolations } = require('../utils/violations');
-const { todayTR, normalizeMisafirZaman } = require('../utils/timezone');
+const { todayTR, ceteleGunuTR, normalizeMisafirZaman } = require('../utils/timezone');
 const { normalizePlaka } = require('../utils/validators');
 
 const router = express.Router();
@@ -293,7 +293,9 @@ async function dairBasinaIcerideSayisi(siteId, tarih) {
 // kez; sonrası manuel +/- ile yönetilir). Eksik daireler COALESCE ile 0.
 router.get('/gece-cetelesi', async (req, res, next) => {
   try {
-    const tarih = req.query.tarih || todayTR();
+    // Çetele günü sabah 08:00'de döner (gece yarısında değil) → gece 00:00-08:00
+    // arası akşam kontrolü çetelesi korunur.
+    const tarih = req.query.tarih || ceteleGunuTR();
     const siteId = req.scopedSiteId;
     const forceYenile = req.query.yenile === '1';
 
@@ -359,7 +361,9 @@ router.patch('/gece-cetelesi/:daireId', async (req, res, next) => {
   try {
     const daireId = parseInt(req.params.daireId, 10);
     const siteId = req.scopedSiteId;
-    const tarih = req.body?.tarih || todayTR();
+    // GET ile aynı operasyon günü (08:00 reset) → görevlinin +/- yaptığı satır
+    // gördüğü çeteleyle aynı tarihe yazılır.
+    const tarih = req.body?.tarih || ceteleGunuTR();
     const delta = parseInt(req.body?.delta, 10);
     if (delta !== 1 && delta !== -1) {
       return res.status(400).json({ error: 'delta yalnız +1 veya -1 olabilir.' });
