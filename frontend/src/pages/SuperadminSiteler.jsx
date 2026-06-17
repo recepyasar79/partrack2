@@ -281,6 +281,8 @@ function SiteDetail({ siteId, onClose, onChanged }) {
   const [editingAd, setEditingAd] = useState(false);
   const [adDraft, setAdDraft] = useState('');
   const [adBusy, setAdBusy] = useState(false);
+  const [kotaDraft, setKotaDraft] = useState('');
+  const [kotaBusy, setKotaBusy] = useState(false);
 
   async function load() {
     try {
@@ -295,6 +297,10 @@ function SiteDetail({ siteId, onClose, onChanged }) {
     }
   }
   useEffect(() => { load(); }, [siteId]); // eslint-disable-line
+  // Kota input'unu yüklenen değerle senkronla (kullanıcı düzenlemediyse).
+  useEffect(() => {
+    if (detay?.site) setKotaDraft(String(detay.site.ikinci_arac_kapasitesi ?? 0));
+  }, [detay?.site?.ikinci_arac_kapasitesi]); // eslint-disable-line
 
   async function addUser() {
     if (!userForm.kullanici_adi || userForm.sifre.length < 8) {
@@ -340,6 +346,24 @@ function SiteDetail({ siteId, onClose, onChanged }) {
   function startEditAd() {
     setAdDraft(detay.site.ad);
     setEditingAd(true);
+  }
+
+  async function saveKota() {
+    const k = parseInt(kotaDraft, 10);
+    if (!Number.isInteger(k) || k < 0) {
+      return toast.error('Kota 0 veya pozitif bir tam sayı olmalı.');
+    }
+    setKotaBusy(true);
+    try {
+      await api.patch(`/sites/${siteId}`, { ikinci_arac_kapasitesi: k });
+      toast.success('2. araç kotası güncellendi.');
+      load();
+      onChanged?.();
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setKotaBusy(false);
+    }
   }
 
   if (!detay) return <div className="p-4 text-slate-500">Yükleniyor…</div>;
@@ -421,6 +445,45 @@ function SiteDetail({ siteId, onClose, onChanged }) {
         <Metric Icon={CameraIcon} label="Foto (30g)" value={metrikler.son_30_gun.foto_upload} />
         <Metric Icon={ChartIcon} label="OCR (30g)" value={metrikler.son_30_gun.ocr_cagrisi} />
         <Metric Icon={ChartIcon} label="Plate Recognizer (30g)" value={metrikler.son_30_gun.plate_recognizer_cagrisi} />
+      </div>
+
+      <div className="px-4 pb-4">
+        <div className="bg-teal-50 dark:bg-teal-950/30 border border-teal-200 dark:border-teal-800 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-teal-100 dark:bg-teal-900/40 flex items-center justify-center text-teal-700 dark:text-teal-300 flex-shrink-0 font-bold">
+              🅿️
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-teal-900 dark:text-teal-200 mb-1">
+                2. Araç Park Kotası
+              </div>
+              <p className="text-xs text-teal-800 dark:text-teal-300/80 mb-3">
+                Bu sitede en fazla kaç daireye 2. araç park hakkı verilebilir. Daire yönetimindeki
+                "2. araç hakkı" işareti bu kota dolunca reddedilir. <strong>0</strong> = özellik kapalı.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  value={kotaDraft}
+                  onChange={(e) => setKotaDraft(e.target.value)}
+                  disabled={kotaBusy}
+                  className="w-28 px-3 py-2 bg-white dark:bg-slate-900 rounded-lg font-mono text-lg font-bold text-teal-900 dark:text-teal-200 border border-teal-300 dark:border-teal-700 focus:outline-none focus:ring-2 focus:ring-teal-400"
+                />
+                <button
+                  onClick={saveKota}
+                  disabled={kotaBusy || kotaDraft === String(site.ikinci_arac_kapasitesi ?? 0)}
+                  className="px-3 py-2 bg-teal-600 hover:bg-teal-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  {kotaBusy ? 'Kaydediliyor…' : 'Kaydet'}
+                </button>
+                <span className="text-xs text-teal-700 dark:text-teal-400">
+                  Şu an: <strong>{site.ikinci_arac_kapasitesi ?? 0}</strong> daire
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="p-4 border-t border-slate-100 dark:border-slate-800">
