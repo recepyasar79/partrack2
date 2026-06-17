@@ -218,6 +218,43 @@ describe('GET /api/raporlar/dashboard', () => {
     expect(res.body.ozet.kayitsiz).toBe(1);
   });
 
+  test('coklu_fazla_arac 2. arac hakkini hesaba katar (izinli daire 2 araca muaf)', async () => {
+    const today = new Date().toISOString().slice(0, 10);
+    // İzinli daire, 3 plakalı çoklu ihlal → fazla = 3 - 2 = 1
+    const izinli = await createTestDaire({ daire_no: 'A1', ikinci_arac_izinli: true });
+    await seedIhlaller({
+      daireId: izinli.id, dates: [today], tipi: 'coklu_arac',
+      plakalar: ['34IZ001', '34IZ002', '34IZ003'],
+    });
+    // Normal daire, 3 plakalı → fazla = 3 - 1 = 2
+    const normal = await createTestDaire({ daire_no: 'B5', ikinci_arac_izinli: false });
+    await seedIhlaller({
+      daireId: normal.id, dates: [today], tipi: 'coklu_arac',
+      plakalar: ['34NM001', '34NM002', '34NM003'],
+    });
+
+    const res = await request(app)
+      .get('/api/raporlar/dashboard')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    // 1 (izinli) + 2 (normal) = 3
+    expect(res.body.ozet.coklu_fazla_arac).toBe(3);
+  });
+
+  test('donem_ozet coklu_fazla_arac izinli daire icin 2 araca muaf', async () => {
+    const todayTr = new Date(Date.now() + 3 * 3600 * 1000).toISOString().slice(0, 10);
+    const izinli = await createTestDaire({ daire_no: 'C3', ikinci_arac_izinli: true });
+    await seedIhlaller({
+      daireId: izinli.id, dates: [todayTr], tipi: 'coklu_arac',
+      plakalar: ['34IZ001', '34IZ002', '34IZ003'], // fazla = 1 (3-2)
+    });
+    const res = await request(app)
+      .get('/api/raporlar/dashboard?baslangic=2026-01-01&bitis=2026-01-31')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(res.status).toBe(200);
+    expect(res.body.donem_ozet.bugun.coklu_fazla_arac).toBe(1);
+  });
+
   test('donem_ozet bugun/bu_hafta/bu_ay dondurur (secili aralıktan bagimsiz)', async () => {
     const daire = await createTestDaire({ daire_no: 'A1' });
     // donem_ozet TR gününe göre hesaplanır (UTC değil) — TR = UTC+3 sabit.

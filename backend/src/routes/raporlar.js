@@ -64,18 +64,22 @@ router.get('/dashboard', async (req, res, next) => {
       donemRows,
     ] = await Promise.all([
       db('ihlaller')
-        .where({ site_id: siteId })
-        .whereBetween('kontrol_tarihi', [baslangic, bitis])
+        // Fazla araç sayımı dairenin 2. araç hakkını bilmeli → daireler join.
+        // leftJoin: kayıtsız ihlallerinde daire_id NULL, inner join onları yutardı.
+        .leftJoin('daireler', 'ihlaller.daire_id', 'daireler.id')
+        .where({ 'ihlaller.site_id': siteId })
+        .whereBetween('ihlaller.kontrol_tarihi', [baslangic, bitis])
         .select(
           db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN 1 ELSE 0 END),0)::int as coklu_arac`),
           db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='kayitsiz' THEN 1 ELSE 0 END),0)::int as kayitsiz`),
-          db.raw(`COUNT(DISTINCT daire_id) FILTER (WHERE daire_id IS NOT NULL)::int as etkilenen_daire`),
+          db.raw(`COUNT(DISTINCT ihlaller.daire_id) FILTER (WHERE ihlaller.daire_id IS NOT NULL)::int as etkilenen_daire`),
           // Araç-adedi metrikleri: ihlal KAYDI sayısı kullanıcıyı yanıltıyordu
           // (4 foto yükleyip "Toplam İhlal 1" görüyordu — 1 kayıtsız kaydında
           // N plaka). Kayıtsız = listedeki plaka adedi; çoklu = daire başına
-          // fazla araç adedi (listede k araç → k-1 fazla).
+          // fazla araç adedi (izinli daire 2'ye, normal daire 1'e kadar muaf →
+          // listede k araç → k - hak fazla).
           db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='kayitsiz' THEN jsonb_array_length(plaka_listesi) ELSE 0 END),0)::int as kayitsiz_arac`),
-          db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN GREATEST(jsonb_array_length(plaka_listesi) - 1, 0) ELSE 0 END),0)::int as coklu_fazla_arac`)
+          db.raw(`COALESCE(SUM(CASE WHEN ihlal_tipi='coklu_arac' THEN GREATEST(jsonb_array_length(plaka_listesi) - (CASE WHEN daireler.ikinci_arac_izinli THEN 2 ELSE 1 END), 0) ELSE 0 END),0)::int as coklu_fazla_arac`)
         )
         .first(),
       db('gunluk_kontroller')
@@ -142,12 +146,14 @@ router.get('/dashboard', async (req, res, next) => {
         .orderBy('ihlal_sayisi', 'desc')
         .limit(10),
       db('ihlaller')
-        .where({ site_id: siteId })
-        .where('kontrol_tarihi', '>=', donemBasi)
+        .leftJoin('daireler', 'ihlaller.daire_id', 'daireler.id')
+        .where({ 'ihlaller.site_id': siteId })
+        .where('ihlaller.kontrol_tarihi', '>=', donemBasi)
         .select(
-          db.raw(`to_char(kontrol_tarihi, 'YYYY-MM-DD') as tarih`),
-          'ihlal_tipi',
-          db.raw(`jsonb_array_length(plaka_listesi)::int as arac`)
+          db.raw(`to_char(ihlaller.kontrol_tarihi, 'YYYY-MM-DD') as tarih`),
+          'ihlaller.ihlal_tipi',
+          db.raw(`jsonb_array_length(ihlaller.plaka_listesi)::int as arac`),
+          db.raw(`COALESCE(daireler.ikinci_arac_izinli, false) as ikinci_arac_izinli`)
         ),
     ]);
     const kontrol_yapilan_gun = parseInt(kontrolGunRow?.c || 0, 10);
@@ -162,7 +168,10 @@ router.get('/dashboard', async (req, res, next) => {
       if (r.tarih === bugun) hedefler.push(donem_ozet.bugun);
       for (const h of hedefler) {
         if (r.ihlal_tipi === 'kayitsiz') h.kayitsiz_arac += r.arac;
-        else if (r.ihlal_tipi === 'coklu_arac') h.coklu_fazla_arac += Math.max(r.arac - 1, 0);
+        // İzinli daire 2 araca muaf → fazla = arac - 2; normal daire arac - 1.
+        else if (r.ihlal_tipi === 'coklu_arac') {
+          h.coklu_fazla_arac += Math.max(r.arac - (r.ikinci_arac_izinli ? 2 : 1), 0);
+        }
       }
     }
 

@@ -27,6 +27,14 @@ Bazi daireler — site bazinda belirlenen KOTA dahilinde — gece otoparkta 2. a
 - **Frontend:** `DaireForm.jsx` + `Daireler.jsx` detay modalinda 2. araç hakki checkbox (teal). `AksamKontrolu.jsx` gece cetelesinde izinli daireler kutunun alt-sag yarisi **teal** (clip-path ucgen) ile ayristirilir; lejanta eklendi. `analiz.js` gece-cetelesi GET'i `ikinci_arac_izinli` doner.
 - **Testler:** `violations.test.js` (2/3 araç sinir), `routes/ikinci_arac.test.js` (CRUD+kota+analiz+cetele), `DaireForm.test.jsx` checkbox. Tum suite yesil (backend 492, frontend 42).
 
+## Raporlar — fazla arac sayimi 2. arac hakkini bilmiyordu (2026-06-17)
+
+**Sorun:** Dashboard "fazla araç" metrigi (`coklu_fazla_arac`) `jsonb_array_length(plaka_listesi) - 1` ile hesaplaniyordu; muafiyet sabit **1** varsayiliyordu. 2. araç izinli daire 3 araçla ihlal edince fazla **2** sayiliyordu (dogru: 3 - 2 = **1**).
+**Kapsam:** `routes/raporlar.js` dashboard'ta 2 yer — `ihlalAgg.coklu_fazla_arac` (donem ozeti kartlari) ve `donemRows`→`donem_ozet` (Bugün/Bu Hafta/Bu Ay). Her ikisi de artik `daireler` leftJoin ile `ikinci_arac_izinli` okuyup muafiyeti `izinli ? 2 : 1` aliyor. leftJoin (inner degil) cunku kayitsiz ihlallerinde `daire_id` NULL.
+**Etkilenmeyenler:** Top 10 (`COUNT(*)` ihlal KAYDI) ve `coklu_arac`/`kayitsiz` kayit sayilari zaten dogru — `ihlaller` kayitlari `detectViolations` ile yazilirken kural uygulaniyor (izinli daire ancak 3+ araçta `coklu_arac` kaydi alir). `emailRaporu.js` fazla-araç hesaplamiyor (sadece kayit/plaka sayisi + Top 5 count) → degisiklik gerekmedi.
+**Uyari:** Fazla sayisi dairenin GUNCEL `ikinci_arac_izinli` bayragiyla hesaplanir (ihlal aninda snapshot tutulmuyor); bayrak sonradan degisirse gecmis fazla sayisi guncel hakka gore yorumlanir.
+**Test:** `routes/raporlar.test.js` — izinli daire 3 araç → fazla 1; normal daire 3 araç → fazla 2; donem_ozet izinli muafiyeti. (Lokal test DB 5433 kapali → CI'da dogrulanir.)
+
 ## Misafir gun-ortasi eslesme fix (2026-06-17)
 
 **Sorun:** "Bugunun tum yuklemeleri" listesinde misafir olarak kayitli arac "kayitsiz" gorunuyordu.
