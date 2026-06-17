@@ -27,6 +27,14 @@ Bazi daireler — site bazinda belirlenen KOTA dahilinde — gece otoparkta 2. a
 - **Frontend:** `DaireForm.jsx` + `Daireler.jsx` detay modalinda 2. araç hakki checkbox (teal). `AksamKontrolu.jsx` gece cetelesinde izinli daireler kutunun alt-sag yarisi **teal** (clip-path ucgen) ile ayristirilir; lejanta eklendi. `analiz.js` gece-cetelesi GET'i `ikinci_arac_izinli` doner.
 - **Testler:** `violations.test.js` (2/3 araç sinir), `routes/ikinci_arac.test.js` (CRUD+kota+analiz+cetele), `DaireForm.test.jsx` checkbox. Tum suite yesil (backend 492, frontend 42).
 
+## Misafir gun-ortasi eslesme fix (2026-06-17)
+
+**Sorun:** "Bugunun tum yuklemeleri" listesinde misafir olarak kayitli arac "kayitsiz" gorunuyordu.
+**Kok neden:** `routes/kontroller.js` GET `/` misafir join'i `baslangic_tarihi <= tarih` / `bitis_tarihi >= tarih` ile ham `tarih` (YYYY-MM-DD) string'ini kullaniyordu. Kolonlar `timestamptz`; ham tarih gun basini (00:00) baz aldigindan o gun **saat 14:30'da baslayan** misafir kaydi disarda kaliyor → plaka kayitsiz dusuyordu.
+**Fix:** `normalizeMisafirZaman(tarih, false/true)` ile gun basi/sonu sinirlari kullanildi (`misafirAraclar.js` GET ile ayni mantik). Artik o gun herhangi bir anda aktif misafir, daire_no + `daire_misafir:true` doner; frontend zaten yesil "B2 · misafir" rozetini gosteriyor (`Kontrol.jsx:612`).
+**Aksam kontrolu:** `analiz.js` zaten 20:00 referansini tam timestamp (`normalizeMisafirZaman(...T20:00)`) ile kiyasliyordu → ayni bug yoktu; 20:00'da aktif misafir `detectViolations`'ta dairesine sayilir, kayitsiz raporlanmaz. Liste artik aksam kontroluyle tutarli.
+**Test:** `routes/kontroller.test.js` — gun-ortasi baslayan misafir misafir gosterilir + kayitli plaka misafir DEGIL kontrolu. (Lokal test DB 5433 kapali → CI'da dogrulanir.)
+
 ## OCR Mimari Degisikligi (2026-05-08)
 
 Tesseract.js (taraycida) yerine **Python EasyOCR mikroservisi** kullaniliyor:

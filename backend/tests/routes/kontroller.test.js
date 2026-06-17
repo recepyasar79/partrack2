@@ -1,5 +1,5 @@
 const { app, request, makeToken, createTestUser, createTestDaire, createTestArac, db, cleanupTables } = require('../helpers');
-const { todayTR } = require('../../src/utils/timezone');
+const { todayTR, normalizeMisafirZaman } = require('../../src/utils/timezone');
 
 // foto-upload artık magic-byte ile içerik doğruluyor (storage.sniffImageType);
 // geçerli JPEG header'ı olan buffer kullan. İçerik OCR'da decode edilemese de
@@ -119,6 +119,44 @@ describe('GET /api/kontroller', () => {
       .set('Authorization', `Bearer ${adminToken}`);
     expect(res.status).toBe(200);
     expect(res.body.kontroller.length).toBeGreaterThanOrEqual(1);
+  });
+
+  test('kayitli plaka daire_no ile, misafir degil isaretlenir', async () => {
+    const daire = await createTestDaire({ daire_no: 'A1' });
+    await createTestArac({ daire_id: daire.id, plaka: '34KAYIT1' });
+    await db('gunluk_kontroller').insert({
+      site_id: 1, kontrol_tarihi: todayTR(), plaka: '34KAYIT1',
+    });
+    const res = await request(app)
+      .get('/api/kontroller')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const k = res.body.kontroller.find((x) => x.plaka === '34KAYIT1');
+    expect(k.daire_no).toBe('A1');
+    expect(k.daire_misafir).toBe(false);
+  });
+
+  test('bugun gun ortasinda baslayan misafir kaydi kayitsiz degil misafir gosterir', async () => {
+    // Regresyon: baslangic_tarihi tam timestamp; ham `tarih` (gun basi=00:00) ile
+    // kiyaslanirsa 14:30'da baslayan misafir disarda kalip "kayitsiz" gorunurdu.
+    const daire = await createTestDaire({ daire_no: 'B2' });
+    const bugun = todayTR();
+    await db('misafir_araclar').insert({
+      site_id: 1,
+      daire_id: daire.id,
+      plaka: '34MIS123',
+      baslangic_tarihi: normalizeMisafirZaman(`${bugun}T14:30`, false),
+      bitis_tarihi: normalizeMisafirZaman(`${bugun}T23:59`, true),
+      ekleyen_user_id: admin.id,
+    });
+    await db('gunluk_kontroller').insert({
+      site_id: 1, kontrol_tarihi: bugun, plaka: '34MIS123',
+    });
+    const res = await request(app)
+      .get('/api/kontroller')
+      .set('Authorization', `Bearer ${adminToken}`);
+    const k = res.body.kontroller.find((x) => x.plaka === '34MIS123');
+    expect(k.daire_no).toBe('B2');
+    expect(k.daire_misafir).toBe(true);
   });
 });
 

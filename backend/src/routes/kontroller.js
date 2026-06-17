@@ -5,7 +5,7 @@ const db = require('../db');
 const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { buildUpload, isR2Configured, sniffImageType } = require('../services/storage');
-const { todayTR } = require('../utils/timezone');
+const { todayTR, normalizeMisafirZaman } = require('../utils/timezone');
 const { normalizePlaka, isValidPlakaSerbest } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
 const { recognizePlate } = require('../services/pythonOcr');
@@ -46,11 +46,17 @@ router.get('/', async (req, res) => {
     }
     const eksik = plakalar.filter((p) => !daireByPlaka[p]);
     if (eksik.length) {
+      // baslangic/bitis tam timestamp tutulur; ham `tarih` (YYYY-MM-DD) ile
+      // kıyaslamak gün başını (00:00) baz alır ve o gün saat 14:30'da başlayan
+      // misafir kaydını dışarda bırakırdı → araç "kayıtsız" görünürdü. Gün
+      // başı/sonu sınırlarıyla kıyasla (misafirAraclar GET ile aynı mantık).
+      const gunBasi = normalizeMisafirZaman(tarih, false);
+      const gunSonu = normalizeMisafirZaman(tarih, true);
       const mis = await db('misafir_araclar')
         .join('daireler', 'misafir_araclar.daire_id', 'daireler.id')
         .where('misafir_araclar.site_id', req.scopedSiteId)
-        .andWhere('baslangic_tarihi', '<=', tarih)
-        .andWhere('bitis_tarihi', '>=', tarih)
+        .andWhere('baslangic_tarihi', '<=', gunSonu)
+        .andWhere('bitis_tarihi', '>=', gunBasi)
         .whereIn('misafir_araclar.plaka', eksik)
         .select('misafir_araclar.plaka', 'daireler.daire_no');
       for (const r of mis) {
