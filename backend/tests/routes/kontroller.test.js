@@ -1,5 +1,8 @@
 const { app, request, makeToken, createTestUser, createTestDaire, createTestArac, db, cleanupTables } = require('../helpers');
-const { todayTR, normalizeMisafirZaman } = require('../../src/utils/timezone');
+// Endpoint'ler operasyon gününü (ceteleGunuTR, 08:00 sınırı) kullanıyor; seed
+// tarihlerini de aynı helper'a hizala ki CI 00:00-08:00 TR penceresinde koşsa
+// da seed↔sorgu tarihi tutarlı kalsın (gece_cetelesi testleriyle aynı yaklaşım).
+const { ceteleGunuTR, normalizeMisafirZaman } = require('../../src/utils/timezone');
 
 // foto-upload artık magic-byte ile içerik doğruluyor (storage.sniffImageType);
 // geçerli JPEG header'ı olan buffer kullan. İçerik OCR'da decode edilemese de
@@ -110,7 +113,7 @@ describe('GET /api/kontroller', () => {
   test('bugunk kontroller listelenir', async () => {
     await db('gunluk_kontroller').insert({
       site_id: 1,
-      kontrol_tarihi: todayTR(),
+      kontrol_tarihi: ceteleGunuTR(),
       plaka: '34LIST01',
       foto_url: '/uploads/test.jpg',
     });
@@ -125,7 +128,7 @@ describe('GET /api/kontroller', () => {
     const daire = await createTestDaire({ daire_no: 'A1' });
     await createTestArac({ daire_id: daire.id, plaka: '34KAYIT1' });
     await db('gunluk_kontroller').insert({
-      site_id: 1, kontrol_tarihi: todayTR(), plaka: '34KAYIT1',
+      site_id: 1, kontrol_tarihi: ceteleGunuTR(), plaka: '34KAYIT1',
     });
     const res = await request(app)
       .get('/api/kontroller')
@@ -139,7 +142,7 @@ describe('GET /api/kontroller', () => {
     // Regresyon: baslangic_tarihi tam timestamp; ham `tarih` (gun basi=00:00) ile
     // kiyaslanirsa 14:30'da baslayan misafir disarda kalip "kayitsiz" gorunurdu.
     const daire = await createTestDaire({ daire_no: 'B2' });
-    const bugun = todayTR();
+    const bugun = ceteleGunuTR();
     await db('misafir_araclar').insert({
       site_id: 1,
       daire_id: daire.id,
@@ -165,7 +168,7 @@ describe('PATCH /api/kontroller/:id/plaka', () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
         site_id: 1,
-        kontrol_tarihi: todayTR(),
+        kontrol_tarihi: ceteleGunuTR(),
         plaka: '',
         foto_url: '/uploads/fix.jpg',
       })
@@ -182,7 +185,7 @@ describe('PATCH /api/kontroller/:id/plaka', () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
         site_id: 1,
-        kontrol_tarihi: todayTR(),
+        kontrol_tarihi: ceteleGunuTR(),
         plaka: '',
         foto_url: '/uploads/foreign.jpg',
       })
@@ -199,7 +202,7 @@ describe('PATCH /api/kontroller/:id/plaka', () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
         site_id: 1,
-        kontrol_tarihi: todayTR(),
+        kontrol_tarihi: ceteleGunuTR(),
         plaka: '34OLD123',
         foto_url: '/uploads/bad.jpg',
       })
@@ -240,7 +243,7 @@ describe('OCR metrics', () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
         site_id: 1,
-        kontrol_tarihi: todayTR(),
+        kontrol_tarihi: ceteleGunuTR(),
         plaka: '34WRONG1',
         foto_url: '/uploads/m.jpg',
       })
@@ -308,7 +311,7 @@ describe('DELETE /api/kontroller/:id', () => {
     const [kontrol] = await db('gunluk_kontroller')
       .insert({
         site_id: 1,
-        kontrol_tarihi: todayTR(),
+        kontrol_tarihi: ceteleGunuTR(),
         plaka: '34DELETE',
         foto_url: '/uploads/del.jpg',
       })
@@ -327,7 +330,7 @@ describe('POST /api/kontroller/analiz-et', () => {
     const daire = await createTestDaire({ daire_no: 'A1' });
     await createTestArac({ daire_id: daire.id, plaka: '34ANA001' });
     await createTestArac({ daire_id: daire.id, plaka: '34ANA002' });
-    const today = todayTR();
+    const today = ceteleGunuTR();
     await db('gunluk_kontroller').insert([
       { site_id: 1, kontrol_tarihi: today, plaka: '34ANA001', foto_url: '/uploads/a1.jpg' },
       { site_id: 1, kontrol_tarihi: today, plaka: '34ANA002', foto_url: '/uploads/a2.jpg' },
@@ -344,7 +347,7 @@ describe('POST /api/kontroller/analiz-et', () => {
   test('coklu ihlalde misafir plakalar misafir_plaka_listesi\'ne yazilir', async () => {
     const daire = await createTestDaire({ daire_no: 'A1' });
     await createTestArac({ daire_id: daire.id, plaka: '34OWN001' });
-    const today = todayTR();
+    const today = ceteleGunuTR();
     // 1 kayıtlı + 1 misafir = 2 araç → ihlal; misafir ayrı listede olmalı.
     await db('misafir_araclar').insert({
       site_id: 1, daire_id: daire.id, plaka: '34GUEST1',
@@ -371,7 +374,7 @@ describe('POST /api/kontroller/analiz-et', () => {
   });
 
   test('kayitsiz plaka ihlal verir', async () => {
-    const today = todayTR();
+    const today = ceteleGunuTR();
     await db('gunluk_kontroller').insert({
       site_id: 1,
       kontrol_tarihi: today,
@@ -390,7 +393,7 @@ describe('POST /api/kontroller/analiz-et', () => {
     // Regresyon: misafir penceresi tam 20:00'i kapsamasa da (orn. 20:30'da
     // kaydedilen ya da gunduz pencereli) o gun aktifse kayitsiz olmamali.
     const daire = await createTestDaire({ daire_no: 'C3' });
-    const today = todayTR();
+    const today = ceteleGunuTR();
     await db('misafir_araclar').insert({
       site_id: 1,
       daire_id: daire.id,
@@ -417,7 +420,7 @@ describe('POST /api/kontroller/analiz-et', () => {
     await createTestArac({ daire_id: daire.id, plaka: '34IDEM01' });
     await createTestArac({ daire_id: daire.id, plaka: '34IDEM02' });
     await createTestArac({ daire_id: daire.id, plaka: '34IDEM03' });
-    const today = todayTR();
+    const today = ceteleGunuTR();
     await db('gunluk_kontroller').insert([
       { site_id: 1, kontrol_tarihi: today, plaka: '34IDEM01', foto_url: '/uploads/i1.jpg' },
       { site_id: 1, kontrol_tarihi: today, plaka: '34IDEM02', foto_url: '/uploads/i2.jpg' },
@@ -451,7 +454,7 @@ describe('GET /api/kontroller/ihlaller', () => {
     const daire = await createTestDaire({ daire_no: 'A1' });
     await createTestArac({ daire_id: daire.id, plaka: '34IHLL01' });
     await createTestArac({ daire_id: daire.id, plaka: '34IHLL02' });
-    const today = todayTR();
+    const today = ceteleGunuTR();
     await db('gunluk_kontroller').insert([
       { site_id: 1, kontrol_tarihi: today, plaka: '34IHLL01', foto_url: '/uploads/h1.jpg' },
       { site_id: 1, kontrol_tarihi: today, plaka: '34IHLL02', foto_url: '/uploads/h2.jpg' },

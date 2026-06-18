@@ -5,7 +5,7 @@ const db = require('../db');
 const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { buildUpload, isR2Configured, sniffImageType } = require('../services/storage');
-const { todayTR, normalizeMisafirZaman } = require('../utils/timezone');
+const { ceteleGunuTR, normalizeMisafirZaman } = require('../utils/timezone');
 const { normalizePlaka, isValidPlakaSerbest } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
 const { recognizePlate } = require('../services/pythonOcr');
@@ -24,7 +24,10 @@ const storage = buildUpload();
 router.use(authRequired, requireScopedSite);
 
 router.get('/', async (req, res) => {
-  const tarih = req.query.tarih || todayTR();
+  // Operasyon günü: sabah 08:00'e kadar bir önceki güne sayılır. Gece kontrolü
+  // 00:00'da sıfırlanmasın — görevli 00:30'da baktığında akşamki yüklemeler
+  // dursun (gece çetelesiyle aynı mantık, utils/timezone.ceteleGunuTR).
+  const tarih = req.query.tarih || ceteleGunuTR();
   const list = await db('gunluk_kontroller')
     .where({ kontrol_tarihi: tarih, site_id: req.scopedSiteId })
     .orderBy('yukleme_zamani', 'desc');
@@ -264,7 +267,10 @@ router.post('/foto-upload', (req, res, next) => {
     try {
       const [row] = await db('gunluk_kontroller')
         .insert({
-          kontrol_tarihi: todayTR(),
+          // Operasyon günü (08:00 sınırı) — liste/çetele/analiz ile tutarlı
+          // olsun ki gece yarısından sonra yüklenen foto da aynı kontrol
+          // gününe düşsün ve listede görünmeye devam etsin.
+          kontrol_tarihi: ceteleGunuTR(),
           plaka: plaka || '',
           foto_url: savedFile.value.url,
           yukleyen_user_id: req.user?.id || null,
@@ -331,7 +337,7 @@ router.post('/manuel', async (req, res, next) => {
     }
     const [row] = await db('gunluk_kontroller')
       .insert({
-        kontrol_tarihi: todayTR(),
+        kontrol_tarihi: ceteleGunuTR(),
         plaka,
         foto_url: null,
         yukleyen_user_id: req.user?.id || null,

@@ -1,7 +1,9 @@
 const {
   app, request, db, makeToken, createTestUser, createTestDaire, createTestArac, cleanupTables,
 } = require('../helpers');
-const { todayTR } = require('../../src/utils/timezone');
+// Endpoint'ler operasyon gününü (ceteleGunuTR) kullanıyor — seed'i hizala ki
+// CI 00:00-08:00 TR penceresinde seed↔analiz/çetele tarihi tutarlı kalsın.
+const { ceteleGunuTR } = require('../../src/utils/timezone');
 
 let admin, guard, adminToken, guardToken;
 
@@ -18,7 +20,7 @@ beforeEach(async () => {
 
 const aAdmin = (r) => r.set('Authorization', `Bearer ${adminToken}`);
 const aGuard = (r) => r.set('Authorization', `Bearer ${guardToken}`);
-const gorulen = (plaka) => db('gunluk_kontroller').insert({ kontrol_tarihi: todayTR(), plaka, site_id: 1 });
+const gorulen = (plaka) => db('gunluk_kontroller').insert({ kontrol_tarihi: ceteleGunuTR(), plaka, site_id: 1 });
 
 describe('2. araç hakkı — daire CRUD + kota', () => {
   test('POST ikinci_arac_izinli=true ile daire oluşturulur', async () => {

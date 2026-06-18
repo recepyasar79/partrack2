@@ -3,7 +3,7 @@ const db = require('../db');
 const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { detectViolations } = require('../utils/violations');
-const { todayTR, ceteleGunuTR, normalizeMisafirZaman } = require('../utils/timezone');
+const { ceteleGunuTR, normalizeMisafirZaman } = require('../utils/timezone');
 const { normalizePlaka } = require('../utils/validators');
 
 const router = express.Router();
@@ -16,7 +16,11 @@ const IHLAL_MESAJI =
 
 router.post('/analiz-et', async (req, res, next) => {
   try {
-    const tarih = req.body?.tarih || todayTR();
+    // Operasyon günü (08:00 sınırı): yükleme/liste/çetele ile aynı tarih
+    // referansı. Gece kontrolü 00:00'ı geçse de aynı kontrol gününe yazılır
+    // — analiz yüklemeleri kaçırmaz ve midnight-spanning tekrar çağrılar
+    // aynı kontrol_tarihi'ne idempotent düşer (ihlaller UNIQUE).
+    const tarih = req.body?.tarih || ceteleGunuTR();
     const siteId = req.scopedSiteId;
 
     const kontroller = await db('gunluk_kontroller')
