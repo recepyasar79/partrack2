@@ -28,6 +28,52 @@ function r2KeyFromUrl(fotoUrl) {
   }
 }
 
+function makeS3() {
+  const { S3Client } = require('@aws-sdk/client-s3');
+  return new S3Client({
+    region: 'auto',
+    endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
+    credentials: {
+      accessKeyId: process.env.R2_ACCESS_KEY_ID,
+      secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
+    },
+  });
+}
+
+// DB pointer'larından BAĞIMSIZ yetim temizliği. DB-driven silme yalnız
+// `foto_url` dolu satırları işler; geçmişte foto_url bir kez NULL'lanıp
+// (legacy göreli path / disk dalı / eski hatalı key) R2 objesi silinmeden
+// kalınca o obje sonsuza dek yetim kalıyordu. Burada bucket'ı doğrudan
+// listeleyip tarih segmenti eşikten eski olan TÜM objeleri sileriz.
+// Key düzeni: sites/<siteId>/kontroller/<YYYY-MM-DD>/<dosya>
+const TARIH_RE = /^\d{4}-\d{2}-\d{2}$/;
+async function reconcileOrphans(s3, fileCutoff) {
+  const { ListObjectsV2Command, DeleteObjectsCommand } = require('@aws-sdk/client-s3');
+  const Bucket = process.env.R2_BUCKET;
+  const toDelete = [];
+  let token;
+  let listelenen = 0;
+  do {
+    const r = await s3.send(new ListObjectsV2Command({ Bucket, Prefix: 'sites/', ContinuationToken: token }));
+    for (const o of (r.Contents || [])) {
+      listelenen++;
+      const tarih = o.Key.split('/')[3];
+      if (TARIH_RE.test(tarih) && tarih < fileCutoff) toDelete.push({ Key: o.Key });
+    }
+    token = r.IsTruncated ? r.NextContinuationToken : null;
+  } while (token);
+
+  let silindi = 0;
+  for (let i = 0; i < toDelete.length; i += 1000) {
+    const batch = toDelete.slice(i, i + 1000);
+    const r = await s3.send(new DeleteObjectsCommand({ Bucket, Delete: { Objects: batch, Quiet: true } }));
+    const hata = (r.Errors || []).length;
+    silindi += batch.length - hata;
+    if (hata) console.warn(`[fotoTemizle] reconcile batch hataları: ${JSON.stringify((r.Errors || []).slice(0, 3))}`);
+  }
+  console.log(`[fotoTemizle] reconcile: ${listelenen} obje tarandı, ${silindi} yetim obje silindi (<${fileCutoff}).`);
+}
+
 async function main() {
   const fileCutoff = dayjs(todayTR()).subtract(FILE_KEEP_DAYS - 1, 'day').format('YYYY-MM-DD');
   const recordCutoff = dayjs(todayTR()).subtract(KEEP_DAYS, 'day').format('YYYY-MM-DD');
@@ -41,17 +87,11 @@ async function main() {
   console.log(`[fotoTemizle] ${fileCutoff} öncesi ${eskiFotolar.length} foto dosyası silinecek (${FILE_KEEP_DAYS} gün eşiği).`);
 
   const silinenIds = [];
+  let s3 = null;
   if (isR2Configured()) {
     try {
-      const { S3Client, DeleteObjectCommand } = require('@aws-sdk/client-s3');
-      const s3 = new S3Client({
-        region: 'auto',
-        endpoint: `https://${process.env.R2_ACCOUNT_ID}.r2.cloudflarestorage.com`,
-        credentials: {
-          accessKeyId: process.env.R2_ACCESS_KEY_ID,
-          secretAccessKey: process.env.R2_SECRET_ACCESS_KEY,
-        },
-      });
+      const { DeleteObjectCommand } = require('@aws-sdk/client-s3');
+      s3 = makeS3();
       for (const k of eskiFotolar) {
         const key = r2KeyFromUrl(k.foto_url);
         if (!key) {
@@ -86,6 +126,15 @@ async function main() {
     await db('gunluk_kontroller').whereIn('id', silinenIds).update({ foto_url: null });
   }
   console.log(`[fotoTemizle] ${silinenIds.length} foto silindi, foto_url temizlendi.`);
+
+  // 1b) Yetim obje temizliği (DB pointer'ı olmayan ama bucket'ta kalan dosyalar)
+  if (s3) {
+    try {
+      await reconcileOrphans(s3, fileCutoff);
+    } catch (err) {
+      console.warn(`[fotoTemizle] reconcile atlandı: ${err.message}`);
+    }
+  }
 
   // 2) Eski DB kayıtları (plaka geçmişi dahil)
   const silindi = await db('gunluk_kontroller').where('kontrol_tarihi', '<', recordCutoff).delete();
