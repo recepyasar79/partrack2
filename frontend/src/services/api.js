@@ -36,7 +36,12 @@ export function apiError(err) {
     return 'İstek zaman aşımına uğradı. Bağlantınızı kontrol edip tekrar deneyin.';
   }
   if (err.code === 'ERR_NETWORK' || err.message === 'Network Error') {
-    return 'Ağ hatası. İnternet bağlantınızı kontrol edip tekrar deneyin.';
+    // Teşhis: ERR_NETWORK = tarayıcıya yanıt ulaşmadı (CORS'suz hata / reset /
+    // kesinti). Statü varsa CORS engeli, yoksa bağlantı kopması — kodu mesaja
+    // ekleyip sahadaki gerçek sebebi görünür kılıyoruz.
+    const st = err.response?.status;
+    const ek = st ? `HTTP ${st}` : (err.code || 'yanıt yok');
+    return `Ağ hatası. İnternet bağlantınızı kontrol edip tekrar deneyin. (${ek})`;
   }
   if (err.message) return err.message;
   // Error olmayan throw (ör. foto decode başarısızlığında gelen DOM Event'in

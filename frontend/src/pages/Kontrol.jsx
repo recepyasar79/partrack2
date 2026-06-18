@@ -186,19 +186,40 @@ export default function Kontrol() {
 
         const fd = new FormData();
         fd.append('foto', uploadFile, item.file.name);
-        const { data } = await api.post('/kontroller/foto-upload', fd, {
-          headers: { 'Content-Type': 'multipart/form-data' },
-          // Sunucu tarafı OCR + fallback en kötü ~35s sürer; 2 dakika sonra
-          // hâlâ cevap yoksa bağlantı ölmüştür — sonsuz bekleme yerine
-          // anlamlı hata göster, kullanıcı tekrar denesin.
-          timeout: 120000,
-          onUploadProgress: (e) => {
-            if (e.total) {
-              const pct = Math.round((e.loaded / e.total) * 100);
-              updateItem(item.id, { uploadPct: pct });
-            }
-          },
-        });
+        // Mobil/edge bağlantısı uzun süren upload'larda ara sıra yanıt
+        // dönmeden reset ediliyor (ERR_NETWORK) → "Ağ hatası". Bu kopmalar
+        // geçici; ERR_NETWORK / timeout'ta kısa backoff ile 2 kez daha dene.
+        // (Yanıt alınamayan deneme genelde sunucuya ulaşmaz; ulaşıp kayıt
+        // oluşturduysa olası kopya kozmetiktir — analiz-et plakayı daire
+        // başına dedup eder, ihlal sayımı şişmez.)
+        const MAX_UPLOAD_TRY = 3;
+        let data;
+        for (let deneme = 1; ; deneme += 1) {
+          try {
+            ({ data } = await api.post('/kontroller/foto-upload', fd, {
+              headers: { 'Content-Type': 'multipart/form-data' },
+              // Sunucu tarafı OCR + fallback en kötü ~35s sürer; 2 dakika sonra
+              // hâlâ cevap yoksa bağlantı ölmüştür — sonsuz bekleme yerine
+              // anlamlı hata göster, kullanıcı tekrar denesin.
+              timeout: 120000,
+              onUploadProgress: (e) => {
+                if (e.total) {
+                  const pct = Math.round((e.loaded / e.total) * 100);
+                  updateItem(item.id, { uploadPct: pct });
+                }
+              },
+            }));
+            break;
+          } catch (upErr) {
+            const gecici =
+              upErr?.code === 'ERR_NETWORK' ||
+              upErr?.message === 'Network Error' ||
+              upErr?.code === 'ECONNABORTED';
+            if (!gecici || deneme >= MAX_UPLOAD_TRY) throw upErr;
+            updateItem(item.id, { durum: 'yeniden deneniyor', uploadPct: 0 });
+            await new Promise((r) => setTimeout(r, 800 * deneme));
+          }
+        }
 
         const ocr = data.ocr || {};
         const plaka = data.kontrol?.plaka || ocr.plate || '';
