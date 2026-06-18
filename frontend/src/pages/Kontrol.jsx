@@ -305,12 +305,40 @@ export default function Kontrol() {
   const okunanSayi = islenen.filter((i) => i.plaka).length;
   const okunamayanSayi = islenen.length - okunanSayi;
 
+  // ERR_NETWORK / timeout gibi geçici kopmalarda kısa backoff ile yeniden
+  // dener. Upload dışındaki kısa isteklerde (onay PATCH vb.) kullanılır —
+  // aynı kopma upload'ı da onayı da vuruyor, ikisi de retry'lanmalı.
+  async function withNetRetry(fn, tries = 3) {
+    for (let d = 1; ; d += 1) {
+      try {
+        return await fn();
+      } catch (e) {
+        const gecici =
+          e?.code === 'ERR_NETWORK' ||
+          e?.message === 'Network Error' ||
+          e?.code === 'ECONNABORTED';
+        if (!gecici || d >= tries) throw e;
+        await new Promise((r) => setTimeout(r, 600 * d));
+      }
+    }
+  }
+
+  // Upload başarısız olan (kontrolId oluşmamış) kartı kurtarır: aynı dosyayı
+  // taze item olarak mevcut işleme hattından geçirir (auto-retry dahil). Eski
+  // hatalı kart kaldırılır ki çift görünmesin. Sahada upload düşünce kullanıcı
+  // plakayı elle yazsa da kontrolId olmadığı için kaydedemiyordu (çıkmaz).
+  async function tekrarYukle(item) {
+    if (!item.file) return;
+    setItems((prev) => prev.filter((i) => i.id !== item.id));
+    await handleNewFiles([item.file]);
+  }
+
   async function onaylaPlaka(item) {
     const p = normalizePlaka(item.plaka);
     if (!isValidPlakaSerbest(p)) return toast.error('Plaka formatı geçersiz.');
-    if (!item.kontrolId) return toast.error('Kontrol kaydı henüz oluşmadı.');
+    if (!item.kontrolId) return toast.error('Kontrol kaydı henüz oluşmadı. Fotoğrafı "Tekrar dene" ile yeniden yükleyin.');
     try {
-      await api.patch(`/kontroller/${item.kontrolId}/plaka`, { plaka: p });
+      await withNetRetry(() => api.patch(`/kontroller/${item.kontrolId}/plaka`, { plaka: p }));
       updateItem(item.id, { durum: 'onaylandı', plaka: p });
       toast.success(`${p} onaylandı.`);
       loadBugun();
@@ -529,6 +557,17 @@ export default function Kontrol() {
                         className="font-mono"
                       />
                       <div className="flex gap-2">
+                        {it.durum === 'hata' && !it.kontrolId && (
+                          <Button
+                            size="md"
+                            variant="primary"
+                            onClick={() => tekrarYukle(it)}
+                            className="flex-1 sm:flex-none"
+                          >
+                            <ArrowPathIcon className="w-4 h-4 mr-1" />
+                            Tekrar dene
+                          </Button>
+                        )}
                         <Button
                           size="md"
                           variant={it.durum === 'onaylandı' ? 'success' : 'primary'}
