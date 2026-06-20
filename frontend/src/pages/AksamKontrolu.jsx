@@ -536,7 +536,7 @@ function GeceCetelesiModal({ onClose }) {
                   </div>
                   <div className="flex flex-wrap gap-1.5">
                     {(secili.plakalar || []).map((p) => (
-                      <span key={p} className="font-mono text-sm bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5">
+                      <span key={p} className="font-mono font-bold text-lg bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded px-2.5 py-1">
                         {p}
                       </span>
                     ))}

@@ -16,6 +16,16 @@
 7. Misafir araclar aksam kontrolune **dahil edilir**; ilgili dairenin sayimina girer ve raporda plaka yaninda `misafir` notu gosterilir
 8. Aktif misafir plaka kayitsiz plaka olarak raporlanmaz; misafir kaydi yoksa kayitsiz plaka listesine duser
 
+## Site park kapasitesi + header "Park Yeri / İçeride" kutucugu (2026-06-20)
+
+**Istek:** Her site icin toplam park (otopark) adedi tutulsun; superadmin site tanimlarken/sonradan set etsin (aktif site id=1 icin **138**). Header'da kullanici adinin SOLUNA renkli kutucuklarla **Park Yeri Sayisi / Icerideki Arac Sayisi**; iceride misafir varsa **(x misafir)** notu.
+**Cozum:**
+- Migration `20260620000002`: `sites.park_kapasitesi INT default 0`; site id=1 → **138** backfill. 0 = tanimsiz (gosterimde "—").
+- `routes/sites.js`: POST (opsiyonel) + PATCH'te `park_kapasitesi` (0/pozitif tamsayi, aksi 400). `auth.js` login+me site payload'ina `park_kapasitesi` eklendi.
+- `routes/analiz.js`: yeni hafif endpoint `GET /kontroller/gece-cetelesi/ozet` → `{park_kapasitesi, icerideki_arac, misafir_arac}`. `iceriOzet()` helper ceteleyle ayni eslestirme (kayitli + gun-bazli misafir; kayitsiz sayilmaz; misafir kayitliya oncelikli). Route ozet path'i `gece-cetelesi`'nden once tanimli (param yok, cakismaz).
+- Frontend `Layout.jsx`: `IceriOzetBadge` (sky=Park Yeri, emerald=Iceride, amber=misafir notu) — yalniz site'li (superadmin degil) kullanicida; ozeti 30sn + sekme odaginda tazeler; park degeri user.site'den, fallback endpoint. `SuperadminSiteler.jsx`: NewSiteForm "Toplam Park Yeri" input + SiteDetail'de sky renkli duzenlenebilir kutu (PATCH).
+**Test:** `gece_cetelesi.test.js` ozet describe (icerideki+misafir+park=138 + sifir + 401). (Lokal test DB 5433 kapali → CI'da dogrulanir.)
+
 ## 2. Arac Park Hakki (2026-06-17)
 
 Bazi daireler — site bazinda belirlenen KOTA dahilinde — gece otoparkta 2. araca da izinli isaretlenebilir.

@@ -86,12 +86,20 @@ router.get('/audit-log', async (req, res, next) => {
 
 router.post('/', async (req, res, next) => {
   try {
-    const { ad, plan = 'baslangic' } = req.body || {};
+    const { ad, plan = 'baslangic', park_kapasitesi } = req.body || {};
     if (!ad || ad.length < 2) {
       return res.status(400).json({ error: 'Site adı zorunlu.' });
     }
     if (!['baslangic', 'standart', 'pro', 'kurumsal'].includes(plan)) {
       return res.status(400).json({ error: 'Geçersiz plan.' });
+    }
+    // Toplam park kapasitesi opsiyonel; verilirse 0 veya pozitif tamsayı.
+    let parkKapasitesi = 0;
+    if (park_kapasitesi !== undefined && park_kapasitesi !== null && park_kapasitesi !== '') {
+      parkKapasitesi = parseInt(park_kapasitesi, 10);
+      if (!Number.isInteger(parkKapasitesi) || parkKapasitesi < 0) {
+        return res.status(400).json({ error: 'park_kapasitesi 0 veya pozitif tamsayı olmalı.' });
+      }
     }
 
     // Blok yapısı: ya tam yapı (blok_yapisi array) ya da hızlı form
@@ -137,6 +145,7 @@ router.post('/', async (req, res, next) => {
         plan,
         aktif: true,
         blok_yapisi: JSON.stringify(blokYapisi),
+        park_kapasitesi: parkKapasitesi,
       })
       .returning('*');
     await writeAudit({
@@ -213,7 +222,7 @@ router.patch('/:id', async (req, res, next) => {
     const eski = await db('sites').where({ id }).first();
     if (!eski) return res.status(404).json({ error: 'Site bulunamadı.' });
 
-    const { ad, plan, aktif, blok_yapisi, slug, plan_limits, ikinci_arac_kapasitesi } = req.body || {};
+    const { ad, plan, aktif, blok_yapisi, slug, plan_limits, ikinci_arac_kapasitesi, park_kapasitesi } = req.body || {};
     const update = {};
     if (ad !== undefined) {
       if (!ad || ad.length < 2) return res.status(400).json({ error: 'Site adı geçersiz.' });
@@ -264,6 +273,14 @@ router.patch('/:id', async (req, res, next) => {
         return res.status(400).json({ error: 'ikinci_arac_kapasitesi 0 veya pozitif tamsayı olmalı.' });
       }
       update.ikinci_arac_kapasitesi = k;
+    }
+    // Toplam park (otopark) kapasitesi (negatif olamaz). 0 = tanımsız.
+    if (park_kapasitesi !== undefined) {
+      const k = parseInt(park_kapasitesi, 10);
+      if (!Number.isInteger(k) || k < 0) {
+        return res.status(400).json({ error: 'park_kapasitesi 0 veya pozitif tamsayı olmalı.' });
+      }
+      update.park_kapasitesi = k;
     }
     if (!Object.keys(update).length) {
       return res.status(400).json({ error: 'Güncellenecek alan yok.' });

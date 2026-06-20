@@ -30,6 +30,7 @@ function NewSiteForm({ onCreated, onCancel }) {
     plan: 'baslangic',
     blok_sayisi: 4,
     daire_per_blok: 34,
+    park_kapasitesi: '',
   });
   const [busy, setBusy] = useState(false);
 
@@ -45,6 +46,13 @@ function NewSiteForm({ onCreated, onCancel }) {
     if (!Number.isInteger(dairePerBlok) || dairePerBlok < 1 || dairePerBlok > 200) {
       return toast.error('Daire sayısı 1-200 arası olmalı.');
     }
+    let parkKapasitesi;
+    if (form.park_kapasitesi !== '') {
+      parkKapasitesi = parseInt(form.park_kapasitesi, 10);
+      if (!Number.isInteger(parkKapasitesi) || parkKapasitesi < 0) {
+        return toast.error('Park yeri sayısı 0 veya pozitif bir tam sayı olmalı.');
+      }
+    }
     setBusy(true);
     try {
       const { data } = await api.post('/sites', {
@@ -52,6 +60,7 @@ function NewSiteForm({ onCreated, onCancel }) {
         plan: form.plan,
         blok_sayisi: blokSayisi,
         daire_per_blok: dairePerBlok,
+        ...(parkKapasitesi !== undefined ? { park_kapasitesi: parkKapasitesi } : {}),
       });
       toast.success(`${data.site.ad} oluşturuldu.`);
       onCreated(data.site);
@@ -93,6 +102,15 @@ function NewSiteForm({ onCreated, onCancel }) {
             ))}
           </select>
         </div>
+        <Input
+          label="Toplam Park Yeri"
+          type="number"
+          min={0}
+          placeholder="örn: 138"
+          value={form.park_kapasitesi}
+          onChange={(e) => setForm({ ...form, park_kapasitesi: e.target.value })}
+          helperText="Otoparkta park edilebilir araç sayısı (opsiyonel)"
+        />
       </div>
 
       <div className="mt-4">
@@ -283,6 +301,8 @@ function SiteDetail({ siteId, onClose, onChanged }) {
   const [adBusy, setAdBusy] = useState(false);
   const [kotaDraft, setKotaDraft] = useState('');
   const [kotaBusy, setKotaBusy] = useState(false);
+  const [parkDraft, setParkDraft] = useState('');
+  const [parkBusy, setParkBusy] = useState(false);
 
   async function load() {
     try {
@@ -301,6 +321,9 @@ function SiteDetail({ siteId, onClose, onChanged }) {
   useEffect(() => {
     if (detay?.site) setKotaDraft(String(detay.site.ikinci_arac_kapasitesi ?? 0));
   }, [detay?.site?.ikinci_arac_kapasitesi]); // eslint-disable-line
+  useEffect(() => {
+    if (detay?.site) setParkDraft(String(detay.site.park_kapasitesi ?? 0));
+  }, [detay?.site?.park_kapasitesi]); // eslint-disable-line
 
   async function addUser() {
     if (!userForm.kullanici_adi || userForm.sifre.length < 8) {
@@ -363,6 +386,24 @@ function SiteDetail({ siteId, onClose, onChanged }) {
       toast.error(apiError(e));
     } finally {
       setKotaBusy(false);
+    }
+  }
+
+  async function savePark() {
+    const k = parseInt(parkDraft, 10);
+    if (!Number.isInteger(k) || k < 0) {
+      return toast.error('Park yeri sayısı 0 veya pozitif bir tam sayı olmalı.');
+    }
+    setParkBusy(true);
+    try {
+      await api.patch(`/sites/${siteId}`, { park_kapasitesi: k });
+      toast.success('Park yeri sayısı güncellendi.');
+      load();
+      onChanged?.();
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setParkBusy(false);
     }
   }
 
@@ -445,6 +486,45 @@ function SiteDetail({ siteId, onClose, onChanged }) {
         <Metric Icon={CameraIcon} label="Foto (30g)" value={metrikler.son_30_gun.foto_upload} />
         <Metric Icon={ChartIcon} label="OCR (30g)" value={metrikler.son_30_gun.ocr_cagrisi} />
         <Metric Icon={ChartIcon} label="Plate Recognizer (30g)" value={metrikler.son_30_gun.plate_recognizer_cagrisi} />
+      </div>
+
+      <div className="px-4 pb-4">
+        <div className="bg-sky-50 dark:bg-sky-950/30 border border-sky-200 dark:border-sky-800 rounded-xl p-4">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-sky-100 dark:bg-sky-900/40 flex items-center justify-center text-sky-700 dark:text-sky-300 flex-shrink-0 font-bold">
+              🅿️
+            </div>
+            <div className="flex-1 min-w-0">
+              <div className="text-sm font-semibold text-sky-900 dark:text-sky-200 mb-1">
+                Toplam Park Yeri
+              </div>
+              <p className="text-xs text-sky-800 dark:text-sky-300/80 mb-3">
+                Sitenin otoparkında park edilebilir toplam araç sayısı. Header'daki
+                "Park Yeri / İçeride" kutucuğunda gösterilir. <strong>0</strong> = tanımsız.
+              </p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="number"
+                  min={0}
+                  value={parkDraft}
+                  onChange={(e) => setParkDraft(e.target.value)}
+                  disabled={parkBusy}
+                  className="w-28 px-3 py-2 bg-white dark:bg-slate-900 rounded-lg font-mono text-lg font-bold text-sky-900 dark:text-sky-200 border border-sky-300 dark:border-sky-700 focus:outline-none focus:ring-2 focus:ring-sky-400"
+                />
+                <button
+                  onClick={savePark}
+                  disabled={parkBusy || parkDraft === String(site.park_kapasitesi ?? 0)}
+                  className="px-3 py-2 bg-sky-600 hover:bg-sky-700 disabled:opacity-50 text-white rounded-lg text-sm font-medium transition-colors"
+                >
+                  {parkBusy ? 'Kaydediliyor…' : 'Kaydet'}
+                </button>
+                <span className="text-xs text-sky-700 dark:text-sky-400">
+                  Şu an: <strong>{site.park_kapasitesi ?? 0}</strong> park yeri
+                </span>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
 
       <div className="px-4 pb-4">

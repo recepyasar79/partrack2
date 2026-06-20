@@ -1,6 +1,8 @@
+import { useState, useEffect } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
+import { api } from '../services/api';
 import {
   BuildingIcon,
   CarIcon,
@@ -43,6 +45,65 @@ const ROL_LABEL = {
   guvenlik: 'Güvenlik',
 };
 
+// Header kutucuğu: Park Yeri Sayısı / İçerideki Araç Sayısı.
+// Site'nin toplam park kapasitesi user.site'den, içerideki araç + misafir sayısı
+// canlı çeteleden (gunluk_kontroller türevi) gelir. 30sn'de bir + sekme
+// odağında tazelenir. Superadmin'in site'si yok → çağrılmaz.
+function IceriOzetBadge({ parkKapasitesi }) {
+  const [ozet, setOzet] = useState(null);
+
+  useEffect(() => {
+    let iptal = false;
+    async function yukle() {
+      try {
+        const { data } = await api.get('/kontroller/gece-cetelesi/ozet');
+        if (!iptal) setOzet(data);
+      } catch {
+        // sessiz geç — header bilgi amaçlı, hata göstermeye değmez
+      }
+    }
+    yukle();
+    const id = setInterval(yukle, 30000);
+    function onFocus() { yukle(); }
+    window.addEventListener('focus', onFocus);
+    return () => {
+      iptal = true;
+      clearInterval(id);
+      window.removeEventListener('focus', onFocus);
+    };
+  }, []);
+
+  const park = parkKapasitesi ?? ozet?.park_kapasitesi ?? 0;
+  const iceride = ozet?.icerideki_arac ?? 0;
+  const misafir = ozet?.misafir_arac ?? 0;
+
+  return (
+    <div className="flex items-center gap-1.5">
+      <div
+        className="flex items-center gap-1.5 rounded-lg bg-sky-500/20 ring-1 ring-sky-300/30 px-2.5 py-1"
+        title="Sitenin toplam park (otopark) kapasitesi"
+      >
+        <span className="text-xs text-white/70 hidden md:inline">Park Yeri</span>
+        <span className="text-sm font-bold tabular-nums text-white">
+          {park > 0 ? park : '—'}
+        </span>
+      </div>
+      <div
+        className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 ring-1 ring-emerald-300/30 px-2.5 py-1"
+        title="Şu an site içinde tespit edilen araç sayısı"
+      >
+        <span className="text-xs text-white/70 hidden md:inline">İçeride</span>
+        <span className="text-sm font-bold tabular-nums text-white">{iceride}</span>
+        {misafir > 0 && (
+          <span className="text-[11px] font-medium text-amber-200 whitespace-nowrap">
+            ({misafir} misafir)
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
 function ThemeToggle() {
   const { isDark, toggleTheme } = useTheme();
   return (
@@ -82,6 +143,9 @@ export default function Layout({ children }) {
         </Link>
         {user ? (
           <div className="flex items-center gap-3 text-sm">
+            {!isSuperadmin && user.site && (
+              <IceriOzetBadge parkKapasitesi={user.site.park_kapasitesi} />
+            )}
             <span className="hidden sm:flex items-center gap-2 text-white/80">
               <div className="w-8 h-8 bg-brand-600 rounded-full flex items-center justify-center text-xs font-semibold">
                 {user.kullanici_adi?.charAt(0).toUpperCase()}

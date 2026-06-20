@@ -297,6 +297,71 @@ async function dairBasinaPlakalar(siteId, tarih) {
   return byDaire;
 }
 
+/**
+ * Header kutucuğu için hafif özet: o gün içeride tespit edilen toplam araç
+ * sayısı ve bunların kaçının misafir olduğu. Çeteleyle aynı eşleştirme mantığı
+ * (kayıtlı + gün-bazlı misafir; kayıtsız sayılmaz). Misafir, kayıtlıya göre
+ * önceliklidir — dairBasinaPlakalar ile tutarlı.
+ * @returns {Promise<{ icerideki_arac: number, misafir_arac: number }>}
+ */
+async function iceriOzet(siteId, tarih) {
+  const kontroller = await db('gunluk_kontroller')
+    .where({ kontrol_tarihi: tarih, site_id: siteId })
+    .whereNotNull('plaka')
+    .where('plaka', '!=', '');
+  const gorulen = new Set();
+  for (const k of kontroller) {
+    const p = normalizePlaka(k.plaka);
+    if (p) gorulen.add(p);
+  }
+  if (!gorulen.size) return { icerideki_arac: 0, misafir_arac: 0 };
+
+  const aktifAraclar = await db('araclar')
+    .where({ site_id: siteId, aktif: true })
+    .select('plaka', 'daire_id');
+  const plakaToDaire = new Map();
+  for (const a of aktifAraclar) plakaToDaire.set(normalizePlaka(a.plaka), a.daire_id);
+
+  const gunBasi = normalizeMisafirZaman(tarih, false);
+  const gunSonu = normalizeMisafirZaman(tarih, true);
+  const misafirler = await db('misafir_araclar')
+    .where('site_id', siteId)
+    .andWhere('baslangic_tarihi', '<=', gunSonu)
+    .andWhere('bitis_tarihi', '>=', gunBasi)
+    .select('plaka', 'daire_id');
+  const misafirToDaire = new Map();
+  for (const m of misafirler) misafirToDaire.set(normalizePlaka(m.plaka), m.daire_id);
+
+  let icerideki = 0;
+  let misafir = 0;
+  for (const p of gorulen) {
+    if (misafirToDaire.has(p)) {
+      icerideki += 1;
+      misafir += 1;
+    } else if (plakaToDaire.has(p)) {
+      icerideki += 1;
+    }
+    // kayıtsız → sayılmaz
+  }
+  return { icerideki_arac: icerideki, misafir_arac: misafir };
+}
+
+// Header kutucuğu özeti: park kapasitesi (site'den) + içerideki araç + misafir.
+router.get('/gece-cetelesi/ozet', async (req, res, next) => {
+  try {
+    const tarih = req.query.tarih || ceteleGunuTR();
+    const siteId = req.scopedSiteId;
+    const site = await db('sites').where({ id: siteId }).select('park_kapasitesi').first();
+    const { icerideki_arac, misafir_arac } = await iceriOzet(siteId, tarih);
+    res.json({
+      tarih,
+      park_kapasitesi: site?.park_kapasitesi ?? 0,
+      icerideki_arac,
+      misafir_arac,
+    });
+  } catch (e) { next(e); }
+});
+
 // Tüm aktif daireleri + o gün içeride tespit edilen araç sayısı ve plakalarını
 // döner. Çetele artık tamamen TÜREVDIR (gunluk_kontroller'den canlı hesaplanır):
 // araç girişi elle plaka ekleme (POST /manuel) ile, çıkış "bugün yüklenenler"

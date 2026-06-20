@@ -116,3 +116,40 @@ describe('Gece Çetelesi (türev — gunluk_kontroller canlı)', () => {
     expect(r.status).toBe(401);
   });
 });
+
+describe('Gece Çetelesi özeti (header kutucuğu)', () => {
+  test('içerideki toplam araç + misafir sayısı + park kapasitesi döner', async () => {
+    const a1 = await createTestDaire({ daire_no: 'A1' });
+    const a2 = await createTestDaire({ daire_no: 'A2' });
+    await createTestArac({ daire_id: a1.id, plaka: '34AA001' });
+    await createTestArac({ daire_id: a2.id, plaka: '34AA002' });
+    // misafir (gün-bazlı aktif)
+    await db('misafir_araclar').insert({
+      site_id: 1, daire_id: a1.id, plaka: '34MIS001',
+      baslangic_tarihi: `${ceteleGunuTR()} 00:00:00`,
+      bitis_tarihi: `${ceteleGunuTR()} 23:59:59`,
+    });
+    await gorulen('34AA001');
+    await gorulen('34AA002');
+    await gorulen('34MIS001');
+    await gorulen('34XX999'); // kayıtsız → sayılmaz
+
+    const res = await auth(request(app).get('/api/kontroller/gece-cetelesi/ozet'));
+    expect(res.status).toBe(200);
+    expect(res.body.icerideki_arac).toBe(3); // 2 kayıtlı + 1 misafir
+    expect(res.body.misafir_arac).toBe(1);
+    expect(res.body.park_kapasitesi).toBe(138); // migration backfill (site 1)
+  });
+
+  test('yükleme yokken sıfır döner', async () => {
+    const res = await auth(request(app).get('/api/kontroller/gece-cetelesi/ozet'));
+    expect(res.status).toBe(200);
+    expect(res.body.icerideki_arac).toBe(0);
+    expect(res.body.misafir_arac).toBe(0);
+  });
+
+  test('token olmadan 401', async () => {
+    const r = await request(app).get('/api/kontroller/gece-cetelesi/ozet');
+    expect(r.status).toBe(401);
+  });
+});
