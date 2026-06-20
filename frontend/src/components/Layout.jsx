@@ -161,7 +161,7 @@ function SettingsMenu({ items }) {
       {open && (
         <div
           role="menu"
-          className="absolute right-0 top-full mt-1 w-52 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl py-1.5 z-30 animate-scale-in origin-top-right"
+          className="absolute right-0 top-full mt-1 w-44 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl py-1.5 z-30 animate-scale-in origin-top-right"
         >
           {items.map((item) => (
             <NavLink
