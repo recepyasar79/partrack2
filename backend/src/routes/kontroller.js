@@ -29,8 +29,11 @@ router.get('/', async (req, res) => {
   // 00:00'da sıfırlanmasın — görevli 00:30'da baktığında akşamki yüklemeler
   // dursun (gece çetelesiyle aynı mantık, utils/timezone.ceteleGunuTR).
   const tarih = req.query.tarih || ceteleGunuTR();
+  // Liste = ŞU AN İÇERİDE olan araçlar. "Çıkış Yap" ile çıkış damgalanan kayıt
+  // listeden düşer (DB'de log için yaşamaya devam eder, GET /log raporunda).
   const list = await db('gunluk_kontroller')
     .where({ kontrol_tarihi: tarih, site_id: req.scopedSiteId })
+    .whereNull('cikis_zamani')
     .orderBy('yukleme_zamani', 'desc');
 
   // Plaka → daire eşlemesi: önce kayıtlı araç (araclar), o plaka kayıtlı

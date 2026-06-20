@@ -346,24 +346,21 @@ export default function Kontrol() {
     } catch (e) { toast.error(apiError(e)); }
   }
 
-  // Çıkış Yap — kaydı silmez, çıkış zamanını damgalar. Araç "içeride"
-  // sayımından düşer ama giriş/çıkış logunda kalır. Listede satır "çıktı"
-  // olarak işaretlenir (silinmez — günün hareket dökümü görünsün).
+  // Çıkış Yap — kaydı silmez, çıkış zamanını damgalar (DB'de giriş/çıkış
+  // logunda yaşamaya devam eder). Liste "şu an içeride"yi gösterdiği için
+  // çıkış yapılan araç listeden düşer (iyimser kaldırılır; hata olursa geri
+  // yüklenir).
   async function cikisYap(kontrolId) {
     if (cikisRef.current.has(kontrolId)) return;
     cikisRef.current.add(kontrolId);
-    // İyimser: satırı hemen "çıktı" işaretle.
-    const simdi = new Date().toISOString();
-    setBugun((prev) => prev.map((k) => (k.id === kontrolId ? { ...k, cikis_zamani: simdi } : k)));
+    const kayit = bugun.find((k) => k.id === kontrolId);
+    setBugun((prev) => prev.filter((k) => k.id !== kontrolId)); // iyimser kaldır
     try {
-      const { data } = await api.post(`/kontroller/${kontrolId}/cikis`);
-      const gercek = data?.kontrol?.cikis_zamani || simdi;
-      setBugun((prev) => prev.map((k) => (k.id === kontrolId ? { ...k, cikis_zamani: gercek } : k)));
-      toast.success('Çıkış kaydedildi.');
+      await api.post(`/kontroller/${kontrolId}/cikis`);
+      toast.success(`${kayit?.plaka || 'Araç'} çıkışı kaydedildi.`);
     } catch (e) {
-      // Geri al
-      setBugun((prev) => prev.map((k) => (k.id === kontrolId ? { ...k, cikis_zamani: null } : k)));
       toast.error(apiError(e));
+      loadBugun(); // geri yükle
     } finally {
       cikisRef.current.delete(kontrolId);
     }
@@ -620,7 +617,7 @@ export default function Kontrol() {
       {/* Today's Uploads */}
       <div className="flex flex-col gap-3 mt-2">
         <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">
-          Bugünün tüm yüklemeleri ({filtreAktif ? `${bugunFiltreli.length}/${bugun.length}` : bugun.length})
+          Site içindeki araçlar ({filtreAktif ? `${bugunFiltreli.length}/${bugun.length}` : bugun.length})
         </h2>
         <div className="flex flex-col sm:flex-row gap-2">
           <Input
@@ -660,12 +657,12 @@ export default function Kontrol() {
                 <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 w-20">Foto</th>
                 <th className="p-4 font-semibold text-slate-700 dark:text-slate-200">Plaka</th>
                 <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 hidden sm:table-cell">Giriş</th>
-                <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 text-right">Çıkış</th>
+                <th className="p-4"></th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {bugunFiltreli.map((k) => (
-                <tr key={k.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors ${k.cikis_zamani ? 'opacity-55' : ''}`}>
+                <tr key={k.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
                   <td className="p-2">
                     {k.foto_url ? (
                       <button
@@ -718,19 +715,9 @@ export default function Kontrol() {
                     {new Date(k.yukleme_zamani).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                   </td>
                   <td className="p-4 text-right">
-                    {k.cikis_zamani ? (
-                      <span
-                        className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded px-2 py-1"
-                        title={`Çıkış: ${new Date(k.cikis_zamani).toLocaleString('tr-TR')}`}
-                      >
-                        <CheckIcon className="w-3.5 h-3.5" />
-                        {new Date(k.cikis_zamani).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
-                      </span>
-                    ) : (
-                      <Button size="sm" variant="secondary" onClick={() => cikisYap(k.id)}>
-                        Çıkış Yap
-                      </Button>
-                    )}
+                    <Button size="sm" variant="secondary" onClick={() => cikisYap(k.id)}>
+                      Çıkış Yap
+                    </Button>
                   </td>
                 </tr>
               ))}

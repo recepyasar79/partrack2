@@ -37,6 +37,10 @@ describe('Giriş/Çıkış — Çıkış Yap (soft exit)', () => {
     const cetele = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
     expect(cetele.body.daireler.find((d) => d.daire_no === 'A1').arac_sayisi).toBe(0);
 
+    // "Site içindeki araçlar" listesinden de düşer (GET / yalnız içeride döner)
+    const liste = await auth(request(app).get('/api/kontroller'));
+    expect(liste.body.kontroller.find((k) => k.id === kid)).toBeUndefined();
+
     // Ama log'da giriş+çıkışıyla yaşar
     const log = await auth(request(app).get('/api/kontroller/log'));
     const kayit = log.body.kayitlar.find((k) => k.id === kid);
