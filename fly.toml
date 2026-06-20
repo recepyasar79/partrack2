@@ -16,6 +16,7 @@ primary_region = 'fra'
   PORT = '3000'
   TZ = 'Europe/Istanbul'
   WHATSAPP_TEMPLATE_NAME = 'ihlal_bildirimi'
+  WHATSAPP_SUMMARY_TEMPLATE_NAME = 'gunluk_ihlal_ozeti'
 
 [deploy]
   release_command = "sh -c './node_modules/.bin/knex migrate:latest'"

@@ -27,6 +27,19 @@ Bazi daireler — site bazinda belirlenen KOTA dahilinde — gece otoparkta 2. a
 - **Frontend:** `DaireForm.jsx` + `Daireler.jsx` detay modalinda 2. araç hakki checkbox (teal). `AksamKontrolu.jsx` gece cetelesinde izinli daireler kutunun alt-sag yarisi **teal** (clip-path ucgen) ile ayristirilir; lejanta eklendi. `analiz.js` gece-cetelesi GET'i `ikinci_arac_izinli` doner.
 - **Testler:** `violations.test.js` (2/3 araç sinir), `routes/ikinci_arac.test.js` (CRUD+kota+analiz+cetele), `DaireForm.test.jsx` checkbox. Tum suite yesil (backend 492, frontend 42).
 
+## Gunun ihlalleri — site yetkili numaralarina WhatsApp ozeti (2026-06-20)
+
+**Istek:** Daire sahibine giden bireysel bildirime EK olarak, her site (musteri) kendi **en fazla 5 yetkili telefon numarasini** tanimlasin; tek butonla **gunun tum ihlalleri** bu numaralara (yonetim/guvenlik) **tek ozet mesajda** WhatsApp'tan gitsin.
+**Karar (kullaniciyla):** alicilar = hem daire sahibi (mevcut) hem 5 numara; bicim = gunun ozeti tek mesaj (YENI template); buton = tek buton gunun tum ihlalleri.
+**Cozum:**
+- Migration `20260620000001`: `sites.bildirim_telefonlari jsonb default '[]'` (site-bazli, ≤5 numara `05XXXXXXXXX`).
+- `auth.js` login+me site payload'ina `bildirim_telefonlari` eklendi → frontend okur.
+- `services/whatsapp.js`: `sendSummaryTemplate({telefon,tarih,sayi,ozet})` + `buildSummaryText`. Template adi `WHATSAPP_SUMMARY_TEMPLATE_NAME` (default **`gunluk_ihlal_ozeti`**), dil tr, 3 param **{{1}}=tarih, {{2}}=ihlal sayisi, {{3}}=ozet** (tek satir; WhatsApp parametresi yeni satir/tab/4+ bosluk kabul etmez → ozet "; " ve ", " ile tek satir, 900 char'da kirpilir). Token yoksa mock.
+- `routes/bildirimler.js` (scoped): `GET /site-telefonlari` (oku), `PUT /site-telefonlari` (**requireSiteAdmin** — yalniz site_yonetici; normalize +90/90/5xxx → 05xxx, ≤5, audit), `POST /gunluk-ozet-gonder` (bugunun `coklu_arac` ihlallerini ceteleGunuTR'den toplar, ozet kurar, her numaraya gonderir; numara yoksa 400, ihlal yoksa `ihlal_sayisi:0` gonderilmez; audit). `bildirimler` tablosuna YAZMAZ (ihlal_id NOT NULL; ozet'in tek ihlal_id'si yok) → yalniz audit_log.
+- Frontend `AksamKontrolu.jsx`: aksiyon kartinda **"📋 Günün İhlallerini Yönetime Gönder (WhatsApp)"** butonu (her iki rol) + numara sayaci; site_yonetici icin **"⚙️ Yönetim Numaraları"** → `NumaralarModal` (5 input, PUT sonrasi `useAuth().refresh()`). `WHATSAPP_SUMMARY_TEMPLATE_NAME` fly.toml + .env.example'a eklendi.
+- **UYARI (prod):** Prod'da WhatsApp token configured → `gunluk_ihlal_ozeti` template'i Meta'da **OLUSTURULUP ONAYLANMADAN** bu buton gercek gonderimde "template not found" doner. Yeni template ayrica olusturulmali (Utility, tr, yukaridaki 3 param). `ihlal_bildirimi`'nden AYRI.
+**Test:** `routes/bildirim_ozet.test.js` (numara CRUD+normalize+≤5+rol gating; ozet gonderim mock + numara yok 400 + ihlal yok 0). (Lokal test DB 5433 kapali → CI'da dogrulanir.)
+
 ## Gece cetelesi — manuel +/- kaldirildi, tamamen turev (2026-06-20)
 
 **Istek:** Cetele listesindeki elle artir/azalt (+/-) islemleri kalksin. Artik gece boyu arac GIRISI "Elle Plaka Ekle" ekranindan, CIKIS "Bugunun yuklemeleri" gridinden silme ile yapilacak; cetele bunlari OTOMATIK yansitsin. Cetelede daire butonu uzerine gelince (hover/tap) icerideki araclar gorunsun; daire bos/gri ise "Sitede suan arac gorunmuyor" yazsin.
