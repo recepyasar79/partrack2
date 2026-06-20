@@ -266,6 +266,19 @@ function GeceCetelesiModal({ onClose }) {
 
   useEffect(() => {
     ceteleYukle(false);
+    // Otomatik tazele: cetele turevdir (Elle Plaka Ekle / yukleme silme baska
+    // ekranlardan gelir), bu yuzden acikken periyodik olarak sessizce yenile.
+    // Sekme arka plandayken bos yere istek atma.
+    const id = setInterval(() => {
+      if (document.visibilityState === 'visible') ceteleYukle(true);
+    }, 15000);
+    // Sekmeye geri donunce 15sn beklemeden hemen tazele.
+    const onVis = () => { if (document.visibilityState === 'visible') ceteleYukle(true); };
+    document.addEventListener('visibilitychange', onVis);
+    return () => {
+      clearInterval(id);
+      document.removeEventListener('visibilitychange', onVis);
+    };
   }, []); // eslint-disable-line
 
   useEffect(() => {
