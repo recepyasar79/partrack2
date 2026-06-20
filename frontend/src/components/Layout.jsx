@@ -83,39 +83,39 @@ function IceriOzetBadge({ parkKapasitesi }) {
   // Müsait yer = kapasite - içeride (negatif olamaz). Kapasite tanımsızsa (0) gizle.
   const musait = park > 0 ? Math.max(park - iceride, 0) : null;
 
+  // Tek bölünmüş istatistik şeridi: sayı üstte, küçük etiket altta, ince
+  // ayraçlarla. Müsait dolu→yeşil / 0→kırmızı; misafir küçük amber not.
+  const musaitClass = musait === 0 ? 'text-rose-300' : 'text-emerald-300';
   return (
-    <div className="flex items-center gap-1 sm:gap-1.5">
+    <div className="flex items-stretch rounded-xl bg-white/10 ring-1 ring-white/15 divide-x divide-white/10 overflow-hidden">
       <div
-        className="flex items-center gap-1 sm:gap-1.5 rounded-lg bg-sky-500/20 ring-1 ring-sky-300/30 px-1.5 sm:px-2.5 py-1"
+        className="flex flex-col items-center justify-center px-2.5 sm:px-3.5 py-1 leading-none"
         title="Sitenin toplam park (otopark) kapasitesi"
       >
-        <span className="text-xs text-white/70 hidden md:inline">Park Yeri</span>
-        <span className="text-[10px] text-white/60 md:hidden">P</span>
-        <span className="text-sm font-bold tabular-nums text-white">
+        <span className="text-sm sm:text-base font-bold tabular-nums text-white">
           {park > 0 ? park : '—'}
         </span>
+        <span className="mt-0.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-white/55">Park</span>
       </div>
       <div
-        className="flex items-center gap-1 sm:gap-1.5 rounded-lg bg-emerald-500/20 ring-1 ring-emerald-300/30 px-1.5 sm:px-2.5 py-1"
-        title="Şu an site içinde tespit edilen araç sayısı"
+        className="flex flex-col items-center justify-center px-2.5 sm:px-3.5 py-1 leading-none"
+        title={`Şu an içeride ${iceride} araç${misafir > 0 ? ` (${misafir} misafir)` : ''}`}
       >
-        <span className="text-xs text-white/70 hidden md:inline">İçeride</span>
-        <span className="text-[10px] text-white/60 md:hidden">İç</span>
-        <span className="text-sm font-bold tabular-nums text-white">{iceride}</span>
-        {misafir > 0 && (
-          <span className="text-[11px] font-medium text-amber-200 whitespace-nowrap hidden sm:inline">
-            ({misafir} misafir)
-          </span>
-        )}
+        <span className="text-sm sm:text-base font-bold tabular-nums text-white">
+          {iceride}
+          {misafir > 0 && (
+            <span className="ml-0.5 align-top text-[9px] font-semibold text-amber-300">{misafir}m</span>
+          )}
+        </span>
+        <span className="mt-0.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-white/55">İçeride</span>
       </div>
       {musait !== null && (
         <div
-          className="flex items-center gap-1 sm:gap-1.5 rounded-lg bg-amber-500/20 ring-1 ring-amber-300/30 px-1.5 sm:px-2.5 py-1"
+          className="flex flex-col items-center justify-center px-2.5 sm:px-3.5 py-1 leading-none"
           title={`Müsait park yeri (${park} − ${iceride})`}
         >
-          <span className="text-xs text-white/70 hidden md:inline">Müsait</span>
-          <span className="text-[10px] text-white/60 md:hidden">M</span>
-          <span className="text-sm font-bold tabular-nums text-white">{musait}</span>
+          <span className={`text-sm sm:text-base font-bold tabular-nums ${musaitClass}`}>{musait}</span>
+          <span className="mt-0.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-white/55">Müsait</span>
         </div>
       )}
     </div>
