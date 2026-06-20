@@ -13,14 +13,14 @@ beforeEach(async () => {
 });
 
 async function gorulen(plaka) {
-  // Çetele operasyon günüyle (08:00 reset) eşleş — endpoint seed bu tarihten okur.
+  // Çetele operasyon günüyle (08:00 reset) eşleş — endpoint bu tarihten okur.
   await db('gunluk_kontroller').insert({ kontrol_tarihi: ceteleGunuTR(), plaka, site_id: 1 });
 }
 
 const auth = (r) => r.set('Authorization', `Bearer ${guvToken}`);
 
-describe('Gece Çetelesi', () => {
-  test('GET akşam tespitinden daire başına sayıyı tohumlar', async () => {
+describe('Gece Çetelesi (türev — gunluk_kontroller canlı)', () => {
+  test('GET daire başına araç sayısını yüklemelerden hesaplar', async () => {
     const a1 = await createTestDaire({ daire_no: 'A1' });
     const a2 = await createTestDaire({ daire_no: 'A2' });
     const a3 = await createTestDaire({ daire_no: 'A3' });
@@ -40,93 +40,75 @@ describe('Gece Çetelesi', () => {
     expect(byNo.A3).toBe(0);
   });
 
-  test('tohum yalnız bir kez — ikinci GET aynı değerleri döner (yeniden hesaplamaz)', async () => {
+  test('GET her daire için içerideki plakaları döner', async () => {
     const a1 = await createTestDaire({ daire_no: 'A1' });
-    await createTestArac({ daire_id: a1.id, plaka: '34BB001' });
-    await gorulen('34BB001');
-    await auth(request(app).get('/api/kontroller/gece-cetelesi')); // tohumla (1)
-    await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a1.id}`).send({ delta: 1 })); // 2 yap
+    const a2 = await createTestDaire({ daire_no: 'A2' });
+    await createTestArac({ daire_id: a1.id, plaka: '34AA001' });
+    await createTestArac({ daire_id: a1.id, plaka: '34AA002' });
+    await gorulen('34AA001');
+    await gorulen('34AA002');
+
     const res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
     const a1row = res.body.daireler.find((d) => d.daire_no === 'A1');
-    expect(a1row.arac_sayisi).toBe(2); // re-seed olsaydı 1'e dönerdi
+    const a2row = res.body.daireler.find((d) => d.daire_no === 'A2');
+    expect([...a1row.plakalar].sort()).toEqual(['34AA001', '34AA002']);
+    expect(a2row.plakalar).toEqual([]); // boş daire → boş liste
+    expect(a2row.arac_sayisi).toBe(0);
   });
 
-  test('PATCH +1/-1 çalışır ve 0 altına inmez', async () => {
-    const a5 = await createTestDaire({ daire_no: 'A5' });
-    await auth(request(app).get('/api/kontroller/gece-cetelesi'));
-    let r = await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a5.id}`).send({ delta: 1 }));
-    expect(r.status).toBe(200);
-    expect(r.body.arac_sayisi).toBe(1);
-    r = await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a5.id}`).send({ delta: 1 }));
-    expect(r.body.arac_sayisi).toBe(2);
-    r = await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a5.id}`).send({ delta: -1 }));
-    expect(r.body.arac_sayisi).toBe(1);
-    await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a5.id}`).send({ delta: -1 }));
-    r = await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a5.id}`).send({ delta: -1 }));
-    expect(r.body.arac_sayisi).toBe(0); // clamp
-  });
-
-  test('tohumlanmamış daire PATCH ile upsert edilir', async () => {
-    const a7 = await createTestDaire({ daire_no: 'A7' });
-    const r = await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a7.id}`).send({ delta: 1 }));
-    expect(r.status).toBe(200);
-    expect(r.body.arac_sayisi).toBe(1);
-  });
-
-  test('geçersiz delta 400', async () => {
-    const a6 = await createTestDaire({ daire_no: 'A6' });
-    const r = await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a6.id}`).send({ delta: 5 }));
-    expect(r.status).toBe(400);
-  });
-
-  test('olmayan daire 404', async () => {
-    const r = await auth(request(app).patch('/api/kontroller/gece-cetelesi/999999').send({ delta: 1 }));
-    expect(r.status).toBe(404);
-  });
-
-  test('araya giren bayat/stray satır (manuel=false) GET ile tespite yenilenir', async () => {
+  test('elle plaka ekleme çeteleye otomatik yansır (giriş)', async () => {
     const a1 = await createTestDaire({ daire_no: 'A1' });
-    const a2 = await createTestDaire({ daire_no: 'A2' });
-    await createTestArac({ daire_id: a1.id, plaka: '34CC001' });
-    await createTestArac({ daire_id: a2.id, plaka: '34CC002' });
-    await gorulen('34CC001');
-    await gorulen('34CC002');
-    // Launch testi gibi araya bayat/stray satır (a1, 0, manuel=false). Saha
-    // 2026-06-16: bu satır GET'te güncellenmediği için A1 kırmızı (gerçekte 1)
-    // görünmüyordu. Yeni davranış: manuel=false satır güncel tespite YENİLENİR.
-    await db('gece_cetelesi').insert({ site_id: 1, daire_id: a1.id, tarih: ceteleGunuTR(), arac_sayisi: 0 });
+    await createTestArac({ daire_id: a1.id, plaka: '34BB001' });
 
-    const res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
-    const byNo = Object.fromEntries(res.body.daireler.map((d) => [d.daire_no, d.arac_sayisi]));
-    expect(byNo.A2).toBe(1); // stray, A2'nin tohumlanmasını engellemez
-    expect(byNo.A1).toBe(1); // bayat manuel=false satır tespite yenilendi (asıl fix)
-  });
-
-  test('seed sonrası daire eklenince manuel sayımlar korunur (veri kaybı yok)', async () => {
-    const a1 = await createTestDaire({ daire_no: 'A1' });
-    await createTestArac({ daire_id: a1.id, plaka: '34EE001' });
-    await gorulen('34EE001');
-    await auth(request(app).get('/api/kontroller/gece-cetelesi')); // tohum A1=1
-    await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a1.id}`).send({ delta: 1 })); // A1=2 (manuel)
-    // Gece yarısı yeni daire eklendi — eski kodda bu re-seed tetikleyip A1'i
-    // 1'e sıfırlıyordu (kod incelemesi bulgusu).
-    const a2 = await createTestDaire({ daire_no: 'A2' });
-    const res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
-    const byNo = Object.fromEntries(res.body.daireler.map((d) => [d.daire_no, d.arac_sayisi]));
-    expect(byNo.A1).toBe(2); // manuel sayım KORUNDU
-    expect(byNo.A2).toBe(0); // yeni daire eklendi (akşam tespiti 0)
-  });
-
-  test('?yenile=1 manuel sayımları akşam tespitine sıfırlar', async () => {
-    const a1 = await createTestDaire({ daire_no: 'A1' });
-    await createTestArac({ daire_id: a1.id, plaka: '34DD001' });
-    await gorulen('34DD001');
-    await auth(request(app).get('/api/kontroller/gece-cetelesi')); // tohum A1=1
-    await auth(request(app).patch(`/api/kontroller/gece-cetelesi/${a1.id}`).send({ delta: 1 })); // A1=2
     let res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
-    expect(res.body.daireler.find((d) => d.daire_no === 'A1').arac_sayisi).toBe(2); // manuel korunur
-    res = await auth(request(app).get('/api/kontroller/gece-cetelesi?yenile=1'));
-    expect(res.body.daireler.find((d) => d.daire_no === 'A1').arac_sayisi).toBe(1); // tespite döndü
+    expect(res.body.daireler.find((d) => d.daire_no === 'A1').arac_sayisi).toBe(0);
+
+    await auth(request(app).post('/api/kontroller/manuel')).send({ plaka: '34BB001' });
+
+    res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
+    const a1row = res.body.daireler.find((d) => d.daire_no === 'A1');
+    expect(a1row.arac_sayisi).toBe(1);
+    expect(a1row.plakalar).toEqual(['34BB001']);
+  });
+
+  test('yükleme silme çeteleye otomatik yansır (çıkış)', async () => {
+    const a1 = await createTestDaire({ daire_no: 'A1' });
+    await createTestArac({ daire_id: a1.id, plaka: '34CC001' });
+    const add = await auth(request(app).post('/api/kontroller/manuel')).send({ plaka: '34CC001' });
+    const kid = add.body.kontrol.id;
+
+    let res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
+    expect(res.body.daireler.find((d) => d.daire_no === 'A1').arac_sayisi).toBe(1);
+
+    await auth(request(app).delete(`/api/kontroller/${kid}`));
+
+    res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
+    expect(res.body.daireler.find((d) => d.daire_no === 'A1').arac_sayisi).toBe(0);
+  });
+
+  test('misafir plaka ilgili dairenin sayımına dahil edilir', async () => {
+    const a1 = await createTestDaire({ daire_no: 'A1' });
+    const gunBasi = `${ceteleGunuTR()} 00:00:00`;
+    const gunSonu = `${ceteleGunuTR()} 23:59:59`;
+    await db('misafir_araclar').insert({
+      site_id: 1, daire_id: a1.id, plaka: '34MIS001',
+      baslangic_tarihi: gunBasi, bitis_tarihi: gunSonu,
+    });
+    await gorulen('34MIS001');
+
+    const res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
+    const a1row = res.body.daireler.find((d) => d.daire_no === 'A1');
+    expect(a1row.arac_sayisi).toBe(1);
+    expect(a1row.plakalar).toEqual(['34MIS001']);
+  });
+
+  test('GET ikinci_arac_izinli bayrağını döner', async () => {
+    await createTestDaire({ daire_no: 'C1', ikinci_arac_izinli: true });
+    await createTestDaire({ daire_no: 'C2' });
+    const res = await auth(request(app).get('/api/kontroller/gece-cetelesi'));
+    const byNo = Object.fromEntries(res.body.daireler.map((d) => [d.daire_no, d.ikinci_arac_izinli]));
+    expect(byNo.C1).toBe(true);
+    expect(byNo.C2).toBe(false);
   });
 
   test('token olmadan 401', async () => {

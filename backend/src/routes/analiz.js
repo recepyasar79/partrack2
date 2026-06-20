@@ -250,14 +250,14 @@ router.get('/ihlaller/ozet', async (req, res, next) => {
 // Akşam kontrolü sonrası daire bazlı "içeride kaç araç" canlı sayacı.
 
 /**
- * Verilen tarih için her dairenin içeride tespit edilen araç sayısını hesapla
- * (akşam tohumu). Mantık analiz-et ile aynı: bugün görülen farklı plakaları
- * kayıtlı araç ya da o an aktif misafir üzerinden daireye eşler, daire başına
- * say. Misafir eşleşmesi kayıtlıya göre önceliklidir (detectViolations ile
- * tutarlı). Kayıtsız plakalar hiçbir daireye sayılmaz.
- * @returns {Promise<Map<number, number>>} daire_id → araç sayısı
+ * Verilen tarih için her dairenin içeride tespit edilen PLAKALARINI hesapla.
+ * Mantık analiz-et ile aynı: bugün görülen farklı plakaları kayıtlı araç ya da
+ * o an aktif misafir üzerinden daireye eşler, daire başına grupla. Misafir
+ * eşleşmesi kayıtlıya göre önceliklidir (detectViolations ile tutarlı).
+ * Kayıtsız plakalar hiçbir daireye sayılmaz. Araç sayısı = plaka adedi.
+ * @returns {Promise<Map<number, string[]>>} daire_id → içerideki plakalar
  */
-async function dairBasinaIcerideSayisi(siteId, tarih) {
+async function dairBasinaPlakalar(siteId, tarih) {
   const kontroller = await db('gunluk_kontroller')
     .where({ kontrol_tarihi: tarih, site_id: siteId })
     .whereNotNull('plaka')
@@ -287,115 +287,42 @@ async function dairBasinaIcerideSayisi(siteId, tarih) {
   const misafirToDaire = new Map();
   for (const m of misafirler) misafirToDaire.set(normalizePlaka(m.plaka), m.daire_id);
 
-  const counts = new Map();
+  const byDaire = new Map();
   for (const p of gorulen) {
     const daireId = misafirToDaire.has(p) ? misafirToDaire.get(p) : plakaToDaire.get(p);
     if (daireId == null) continue; // kayıtsız → sayılmaz
-    counts.set(daireId, (counts.get(daireId) || 0) + 1);
+    if (!byDaire.has(daireId)) byDaire.set(daireId, []);
+    byDaire.get(daireId).push(p);
   }
-  return counts;
+  return byDaire;
 }
 
-// Tüm aktif daireleri + o tarihteki gece çetelesi sayılarını döner. Tablo o
-// tarih için ilk kez sorgulanıyorsa akşam tespitinden tohumlanır (yalnız bir
-// kez; sonrası manuel +/- ile yönetilir). Eksik daireler COALESCE ile 0.
+// Tüm aktif daireleri + o gün içeride tespit edilen araç sayısı ve plakalarını
+// döner. Çetele artık tamamen TÜREVDIR (gunluk_kontroller'den canlı hesaplanır):
+// araç girişi elle plaka ekleme (POST /manuel) ile, çıkış "bugün yüklenenler"
+// gridinden silme (DELETE /:id) ile yapılır; her ikisi de gunluk_kontroller'i
+// değiştirdiğinden çetele otomatik güncellenir. Elle +/- sayım ve gece_cetelesi
+// tablosu kaldırıldı.
 router.get('/gece-cetelesi', async (req, res, next) => {
   try {
     // Çetele günü sabah 08:00'de döner (gece yarısında değil) → gece 00:00-08:00
     // arası akşam kontrolü çetelesi korunur.
     const tarih = req.query.tarih || ceteleGunuTR();
     const siteId = req.scopedSiteId;
-    const forceYenile = req.query.yenile === '1';
 
     const daireler = await db('daireler')
       .where({ site_id: siteId, aktif: true })
       .orderBy('blok')
       .orderBy('sira_no')
-      .select('id', 'daire_no', 'blok', 'sira_no');
+      .select('id as daire_id', 'daire_no', 'blok', 'sira_no', 'ikinci_arac_izinli');
 
-    if (daireler.length) {
-      // Tohumlama stratejisi (manuel kolonu ekseninde):
-      //  - yenile=1 → TÜM daireleri akşam tespitiyle ÜZERINE yaz + manuel=false
-      //    (görevlinin +/- sayımları dahil her şey sıfırlanır).
-      //  - normalde → SATIRI OLMAYAN daireleri tohumla; manuel=false MEVCUT
-      //    satırları güncel tespite YENİLE (bayat tohum fix, saha 2026-06-16:
-      //    geç yüklenen fotoğraflar yansısın, ilk açılışta kırmızı daireler
-      //    görünsün); manuel=true satırlara DOKUNMA (WHERE guard) → görevlinin
-      //    elle yaptığı +/- sayımı korunur, eşzamanlı PATCH yarışına da güvenli.
-      const counts = await dairBasinaIcerideSayisi(siteId, tarih);
-      const rows = daireler.map((d) => ({
-        site_id: siteId,
-        daire_id: d.id,
-        tarih,
-        arac_sayisi: counts.get(d.id) || 0,
-        manuel: false,
-        guncelleme_zamani: db.fn.now(),
-      }));
-      const q = db('gece_cetelesi').insert(rows).onConflict(['site_id', 'daire_id', 'tarih']);
-      if (forceYenile) {
-        // Her şeyi tespite döndür, manuel bayrağını da sıfırla.
-        await q.merge(['arac_sayisi', 'manuel', 'guncelleme_zamani']);
-      } else {
-        // Sadece manuel OLMAYAN satırların sayacını yenile; manuel satırlar korunur.
-        await q.merge(['arac_sayisi', 'guncelleme_zamani']).where('gece_cetelesi.manuel', false);
-      }
-    }
-
-    const liste = await db('daireler as d')
-      .leftJoin('gece_cetelesi as g', function () {
-        this.on('g.daire_id', '=', 'd.id')
-          .andOn('g.site_id', '=', db.raw('?', [siteId]))
-          .andOn('g.tarih', '=', db.raw('?', [tarih]));
-      })
-      .where({ 'd.site_id': siteId, 'd.aktif': true })
-      .orderBy('d.blok')
-      .orderBy('d.sira_no')
-      .select(
-        'd.id as daire_id',
-        'd.daire_no',
-        'd.blok',
-        'd.sira_no',
-        'd.ikinci_arac_izinli',
-        db.raw('COALESCE(g.arac_sayisi, 0)::int as arac_sayisi')
-      );
+    const byDaire = await dairBasinaPlakalar(siteId, tarih);
+    const liste = daireler.map((d) => {
+      const plakalar = byDaire.get(d.daire_id) || [];
+      return { ...d, plakalar, arac_sayisi: plakalar.length };
+    });
 
     res.json({ tarih, daireler: liste });
-  } catch (e) { next(e); }
-});
-
-// Bir dairenin gece çetelesi sayısını +1/-1 değiştir (0'ın altına inmez).
-// Atomik upsert: satır yoksa oluşturur, varsa GREATEST(0, sayi+delta) yapar.
-router.patch('/gece-cetelesi/:daireId', async (req, res, next) => {
-  try {
-    const daireId = parseInt(req.params.daireId, 10);
-    const siteId = req.scopedSiteId;
-    // GET ile aynı operasyon günü (08:00 reset) → görevlinin +/- yaptığı satır
-    // gördüğü çeteleyle aynı tarihe yazılır.
-    const tarih = req.body?.tarih || ceteleGunuTR();
-    const delta = parseInt(req.body?.delta, 10);
-    if (delta !== 1 && delta !== -1) {
-      return res.status(400).json({ error: 'delta yalnız +1 veya -1 olabilir.' });
-    }
-
-    // Daire bu site'e ait ve aktif mi? (cross-site/silinmiş daireye yazma)
-    const daire = await db('daireler')
-      .where({ id: daireId, site_id: siteId, aktif: true })
-      .first();
-    if (!daire) return res.status(404).json({ error: 'Daire bulunamadı.' });
-
-    const seedVal = Math.max(0, delta); // yeni satırda 0 + delta
-    // Elle değişim → manuel=true: bu satır artık GET re-seed'ine kapanır.
-    const result = await db.raw(
-      `INSERT INTO gece_cetelesi (site_id, daire_id, tarih, arac_sayisi, manuel)
-       VALUES (?, ?, ?, ?, true)
-       ON CONFLICT (site_id, daire_id, tarih)
-       DO UPDATE SET arac_sayisi = GREATEST(0, gece_cetelesi.arac_sayisi + ?),
-                     manuel = true,
-                     guncelleme_zamani = now()
-       RETURNING arac_sayisi`,
-      [siteId, daireId, tarih, seedVal, delta]
-    );
-    res.json({ daire_id: daireId, arac_sayisi: result.rows[0].arac_sayisi });
   } catch (e) { next(e); }
 });
 

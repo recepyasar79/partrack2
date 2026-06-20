@@ -27,6 +27,16 @@ Bazi daireler — site bazinda belirlenen KOTA dahilinde — gece otoparkta 2. a
 - **Frontend:** `DaireForm.jsx` + `Daireler.jsx` detay modalinda 2. araç hakki checkbox (teal). `AksamKontrolu.jsx` gece cetelesinde izinli daireler kutunun alt-sag yarisi **teal** (clip-path ucgen) ile ayristirilir; lejanta eklendi. `analiz.js` gece-cetelesi GET'i `ikinci_arac_izinli` doner.
 - **Testler:** `violations.test.js` (2/3 araç sinir), `routes/ikinci_arac.test.js` (CRUD+kota+analiz+cetele), `DaireForm.test.jsx` checkbox. Tum suite yesil (backend 492, frontend 42).
 
+## Gece cetelesi — manuel +/- kaldirildi, tamamen turev (2026-06-20)
+
+**Istek:** Cetele listesindeki elle artir/azalt (+/-) islemleri kalksin. Artik gece boyu arac GIRISI "Elle Plaka Ekle" ekranindan, CIKIS "Bugunun yuklemeleri" gridinden silme ile yapilacak; cetele bunlari OTOMATIK yansitsin. Cetelede daire butonu uzerine gelince (hover/tap) icerideki araclar gorunsun; daire bos/gri ise "Sitede suan arac gorunmuyor" yazsin.
+**Cozum:**
+- **Cetele artik TAMAMEN TUREV:** sayim `gunluk_kontroller`'den canli hesaplanir. Giris = `POST /kontroller/manuel` (kayit ekler), cikis = `DELETE /kontroller/:id` (kayit siler) → her ikisi de `gunluk_kontroller`'i degistirdiginden cetele GET her acilista guncel. Elle +/- sayim, `manuel` kolonu mantigi ve `?yenile=1` kaldirildi.
+- `analiz.js`: `dairBasinaIcerideSayisi` (Map<id,sayi>) → `dairBasinaPlakalar` (Map<id,string[]>) oldu (ayni eslestirme mantigi: kayitli arac + gun-bazli misafir, kayitsiz sayilmaz). `GET /gece-cetelesi` artik `gece_cetelesi` tablosuna YAZMAZ/OKUMAZ; her daire icin `{plakalar, arac_sayisi}` doner. **`PATCH /gece-cetelesi/:daireId` SILINDI.**
+- **`gece_cetelesi` tablosu + migration'lari (`20260615/16`) artik kullanilmiyor** (olu; dusurmedik, dusuk risk). Dev script'leri `diag_gece/verify_gece/seed_verify_gece` da bu tabloya bakar — guncel degil.
+- Frontend `AksamKontrolu.jsx` `GeceCetelesiModal`: alt +/- paneli kaldirildi → secili daire icin salt-okunur plaka listesi (mobil tap). Daire butonu `title` = icerideki plakalar VEYA bos ise "Sitede suan arac gorunmuyor" (hover). "Aksam tespitinden yenile" → basit "↻ Yenile" (re-fetch). Lejant/renk (0 gri,1 sari,2 kirmizi,3+ koyu) ve 2. arac teal ucgeni korundu.
+**Test:** `gece_cetelesi.test.js` bastan yazildi (turev sayim + plakalar + manuel-ekleme girisi + silme cikisi + misafir + ikinci_arac bayragi + 401; PATCH testleri kaldirildi). `ikinci_arac.test.js` cetele GET testi degismedi. (Lokal test DB 5433 kapali → CI'da dogrulanir.)
+
 ## Raporlar — Misafir Araç kutusu + Çoklu'dan misafir dusuldu (2026-06-18)
 
 **Istek:** Rapor ozetinde misafir araclar ayri kutu olsun; "Çoklu Araç" (fazla) sayisi misafirleri kapsiyorsa onlari dussun.
@@ -43,9 +53,19 @@ Bazi daireler — site bazinda belirlenen KOTA dahilinde — gece otoparkta 2. a
 ## Gece cetelesi — operasyon gunu 08:00'de doner (2026-06-18)
 
 **Istek:** Cetele listesi gece 00:00'da sifirlaniyordu; sifirlama sabah 08:00'e alindi (gece kontrolu suren gorevli 00:30'da bakinca aksamki sayim kaybolmasin).
-**Cozum:** `utils/timezone.js` → `ceteleGunuTR()` helper'i: TR saati `CETELE_RESET_SAATI` (08:00) altindaysa bir ONCEKI gunu, degilse takvim gununu doner. `analiz.js` `GET /gece-cetelesi` ve `PATCH /gece-cetelesi/:daireId` varsayilan tarihi `todayTR()` yerine `ceteleGunuTR()` kullaniyor (GET seed + PATCH yazma ayni operasyon gunune dusuyor). `?tarih=` override hala calisir. analiz-et/ihlaller takvim gunu (todayTR) kalir — sadece cetele etkilendi.
+**Cozum:** `utils/timezone.js` → `ceteleGunuTR()` helper'i: TR saati `CETELE_RESET_SAATI` (08:00) altindaysa bir ONCEKI gunu, degilse takvim gununu doner. `analiz.js` `GET /gece-cetelesi` ve `PATCH /gece-cetelesi/:daireId` varsayilan tarihi `todayTR()` yerine `ceteleGunuTR()` kullaniyor (GET seed + PATCH yazma ayni operasyon gunune dusuyor). `?tarih=` override hala calisir. (GUNCEL 2026-06-18: o gun analiz-et/ihlaller takvim gununde birakilmisti; asagidaki "Kontrol akisi tamamen operasyon gununde" notu ile bu da `ceteleGunuTR`'ye alindi — artik tum kontrol akisi tutarli.)
 **Not:** Cetele seed'i `gunluk_kontroller.kontrol_tarihi`'den okur; aksam fotograflari o takvim gununde yuklendiginden 00:00-08:00 arasi ayni tarihi referans alir, sorun yok.
 **Test:** `tests/timezone_cetele.test.js` (08:00 sinir birim testi, DB'siz — yesil). `gece_cetelesi.test.js` seed helper'lari `ceteleGunuTR()` ile hizalandi (00:00-08:00 penceresinde kosulsa da gecsin).
+
+## Kontrol akisi tamamen operasyon gununde (2026-06-18)
+
+**Istek:** Kontrol sayfasindaki "Bugunun tum yuklemeleri" listesi de gece 00:00'da sifirlaniyordu (cetele ile ayni dert); sabah 08:00'e kadar dayanmali — gece kontrolu suren gorevli 00:30'da bakinca aksamki yuklemeler kaybolmasin.
+**Cozum:** Cetele icin eklenen `ceteleGunuTR()` (08:00 operasyon gunu) artik **tum kontrol akisinda** kullaniliyor:
+- `routes/kontroller.js` `GET /` (liste) varsayilan tarihi `todayTR` → `ceteleGunuTR`.
+- `routes/kontroller.js` foto-upload + `POST /manuel` insert'lerinde `kontrol_tarihi` `todayTR` → `ceteleGunuTR` (gece yarisindan sonra yuklenen foto da ayni kontrol gunune dusup listede gorunsun).
+- `routes/analiz.js` `POST /analiz-et` varsayilan tarihi `todayTR` → `ceteleGunuTR` (upload'larla tutarli; gece yarisini gecen kontrolde yuklemeleri kacirmaz, midnight-spanning tekrar cagrilar ayni `kontrol_tarihi`'ne idempotent duser — `ihlaller` UNIQUE).
+**Onemli:** Gece yarisi ONCESI davranis birebir AYNI (`ceteleGunuTR == todayTR` saat >= 08:00 iken). Fark yalniz 00:00-08:00 penceresinde; orada operasyon gunu (bir onceki takvim gunu) dogru referans. `?tarih=`/body `tarih` override'lari korunur. raporlar.js tarih-araligi sorgulari ve foto-temizle retention bu degisiklikten anlamli etkilenmez (birkac saatlik kayma; 1/90 gun esikleri).
+**Test:** `kontroller.test.js` + `ikinci_arac.test.js` seed helper'lari `todayTR` → `ceteleGunuTR` ile hizalandi (CI 00:00-08:00 TR penceresinde kossa da seed↔sorgu tutarli). `bildirimler.test.js` explicit `tarih` veriyor (etkilenmez), `multi_tenant_isolation` GET'leri negatif izolasyon assert'i (etkilenmez). (Lokal test DB 5433 kapali → CI'da dogrulanir.)
 
 ## Raporlar — fazla arac sayimi 2. arac hakkini bilmiyordu (2026-06-17)
 

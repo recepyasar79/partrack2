@@ -232,10 +232,12 @@ export default function AksamKontrolu() {
   );
 }
 
-// "Gece Çetelesi" — akşam kontrolü sonrası daire bazlı canlı araç sayacı.
-// Açılışta sunucu akşam tespitinden tohumlar; güvenlik görevlisi gece boyu
-// araç giriş/çıkışında daireye dokunup +/- ile sayacı günceller. Renk: 0 pasif,
-// 1 sarı, 2 kırmızı, 3+ koyu kırmızı. Durum sunucuda (yenileme/cihaz dayanıklı).
+// "Gece Çetelesi" — daire bazlı canlı araç sayacı. Sayım tamamen TÜREVDIR:
+// gece boyu araç girişi "Elle Plaka Ekle", çıkış "Bugünün yüklemeleri"nden
+// silme ile yapılır; çetele bunları otomatik yansıtır (sunucu gunluk_kontroller'
+// den canlı hesaplar). Elle +/- sayım kaldırıldı — liste salt-okunurdur, daire
+// üstüne gelince içerideki plakalar görünür. Renk: 0 pasif, 1 sarı, 2 kırmızı,
+// 3+ koyu kırmızı.
 function ceteleRenk(n) {
   if (n >= 3) return 'bg-red-800 text-red-50 border-red-900 hover:bg-red-700';      // koyu kırmızı
   if (n === 2) return 'bg-red-500 text-white border-red-600 hover:bg-red-400';      // kırmızı
@@ -249,21 +251,21 @@ function GeceCetelesiModal({ onClose }) {
   const [yukleniyor, setYukleniyor] = useState(true);
   const [seciliId, setSeciliId] = useState(null);
   const [arama, setArama] = useState('');
-  const [guncellenen, setGuncellenen] = useState(null); // o an PATCH'lenen daire_id
+
+  async function ceteleYukle(sessiz) {
+    if (!sessiz) setYukleniyor(true);
+    try {
+      const { data } = await api.get('/kontroller/gece-cetelesi');
+      setDaireler(data.daireler || []);
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      setYukleniyor(false);
+    }
+  }
 
   useEffect(() => {
-    let iptal = false;
-    (async () => {
-      try {
-        const { data } = await api.get('/kontroller/gece-cetelesi');
-        if (!iptal) setDaireler(data.daireler || []);
-      } catch (e) {
-        if (!iptal) toast.error(apiError(e));
-      } finally {
-        if (!iptal) setYukleniyor(false);
-      }
-    })();
-    return () => { iptal = true; };
+    ceteleYukle(false);
   }, []); // eslint-disable-line
 
   useEffect(() => {
@@ -274,39 +276,12 @@ function GeceCetelesiModal({ onClose }) {
 
   const secili = daireler.find((d) => d.daire_id === seciliId) || null;
 
-  async function degistir(daireId, delta) {
-    setGuncellenen(daireId);
-    try {
-      const { data } = await api.patch(`/kontroller/gece-cetelesi/${daireId}`, { delta });
-      setDaireler((prev) => prev.map((d) =>
-        d.daire_id === daireId ? { ...d, arac_sayisi: data.arac_sayisi } : d
-      ));
-    } catch (e) {
-      toast.error(apiError(e));
-    } finally {
-      setGuncellenen(null);
+  // Bir dairenin hover/seçim metni: içerideki plakalar ya da boş mesajı.
+  function ceteleBaslik(d) {
+    if (d.arac_sayisi > 0) {
+      return `${d.daire_no} — İçeride: ${(d.plakalar || []).join(', ')}`;
     }
-  }
-
-  // Sayaçları akşam kontrolündeki tespit değerlerine geri al (gece boyu yapılan
-  // manuel +/- değişiklikleri siler). Tohum bir nedenle yanlış/eksik kaldıysa
-  // (ör. ekran erken açılmış) güvenlik görevlisinin elle düzeltme yolu.
-  async function yenile() {
-    if (!window.confirm(
-      'Sayaçlar akşam kontrolündeki tespit değerlerine sıfırlanacak.\n'
-      + 'Gece boyu yaptığınız +/- değişiklikler silinir. Devam edilsin mi?'
-    )) return;
-    setYukleniyor(true);
-    try {
-      const { data } = await api.get('/kontroller/gece-cetelesi?yenile=1');
-      setDaireler(data.daireler || []);
-      setSeciliId(null);
-      toast.success('Akşam tespitinden yenilendi.');
-    } catch (e) {
-      toast.error(apiError(e));
-    } finally {
-      setYukleniyor(false);
-    }
+    return 'Sitede şuan araç görünmüyor';
   }
 
   // Blok bazında grupla (liste zaten blok+sıra sıralı geliyor).
@@ -332,7 +307,7 @@ function GeceCetelesiModal({ onClose }) {
             <h2 className="text-lg font-bold text-slate-900 dark:text-slate-100">🌙 Gece Çetelesi</h2>
             <p className="text-xs text-slate-500 dark:text-slate-400">
               İçeride toplam <span className="font-semibold tabular-nums">{toplamIceride}</span> araç ·
-              daireye dokun, +/- ile güncelle
+              daire üstüne gel / dokun, içerideki araçları gör
             </p>
           </div>
           <button
@@ -357,12 +332,12 @@ function GeceCetelesiModal({ onClose }) {
             </div>
             <button
               type="button"
-              onClick={yenile}
+              onClick={() => ceteleYukle(false)}
               disabled={yukleniyor}
               className="text-xs font-medium text-brand-700 dark:text-brand-300 hover:underline disabled:opacity-50 whitespace-nowrap"
-              title="Sayaçları akşam tespitine sıfırla"
+              title="Çeteleyi güncelle"
             >
-              ↻ Akşam tespitinden yenile
+              ↻ Yenile
             </button>
           </div>
           <Input
@@ -392,7 +367,7 @@ function GeceCetelesiModal({ onClose }) {
                       key={d.daire_id}
                       type="button"
                       onClick={() => setSeciliId(d.daire_id)}
-                      title={d.ikinci_arac_izinli ? `${d.daire_no} — 2. araç hakkı (2 araca kadar ihlal sayılmaz)` : d.daire_no}
+                      title={`${ceteleBaslik(d)}${d.ikinci_arac_izinli ? ' · 2. araç hakkı' : ''}`}
                       className={`relative overflow-hidden min-h-[48px] rounded-lg border text-sm font-bold font-mono transition-colors ${ceteleRenk(d.arac_sayisi)} ${
                         seciliId === d.daire_id ? 'ring-2 ring-offset-1 ring-brand-500 dark:ring-offset-slate-900' : ''
                       }`}
@@ -420,38 +395,33 @@ function GeceCetelesiModal({ onClose }) {
           )}
         </div>
 
-        {/* Alt kontrol — seçili daire için +/- */}
+        {/* Alt panel — seçili daire için içerideki plakalar (salt-okunur) */}
         {secili && (
-          <div className="shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex items-center gap-3 animate-slide-up">
-            <div className="flex-1">
+          <div className="shrink-0 border-t border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-900 p-4 flex items-start gap-3 animate-slide-up">
+            <div className="flex-1 min-w-0">
               <div className="font-mono font-bold text-lg text-slate-900 dark:text-slate-100">{secili.daire_no}</div>
-              <div className="text-xs text-slate-500 dark:text-slate-400">
-                İçeride: <span className="font-semibold tabular-nums">{secili.arac_sayisi}</span> araç
-              </div>
+              {secili.arac_sayisi > 0 ? (
+                <>
+                  <div className="text-xs text-slate-500 dark:text-slate-400 mb-1">
+                    İçeride: <span className="font-semibold tabular-nums">{secili.arac_sayisi}</span> araç
+                  </div>
+                  <div className="flex flex-wrap gap-1.5">
+                    {(secili.plakalar || []).map((p) => (
+                      <span key={p} className="font-mono text-sm bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 rounded px-2 py-0.5">
+                        {p}
+                      </span>
+                    ))}
+                  </div>
+                </>
+              ) : (
+                <div className="text-sm text-slate-500 dark:text-slate-400">Sitede şuan araç görünmüyor</div>
+              )}
             </div>
-            <button
-              type="button"
-              onClick={() => degistir(secili.daire_id, -1)}
-              disabled={secili.arac_sayisi <= 0 || guncellenen === secili.daire_id}
-              aria-label="Azalt"
-              className="w-14 h-14 rounded-full bg-slate-200 dark:bg-slate-700 text-slate-800 dark:text-slate-100 text-3xl font-bold flex items-center justify-center disabled:opacity-40 active:scale-95 transition-transform"
-            >
-              −
-            </button>
-            <button
-              type="button"
-              onClick={() => degistir(secili.daire_id, 1)}
-              disabled={guncellenen === secili.daire_id}
-              aria-label="Artır"
-              className="w-14 h-14 rounded-full bg-brand-600 hover:bg-brand-500 text-white text-3xl font-bold flex items-center justify-center disabled:opacity-40 active:scale-95 transition-transform"
-            >
-              +
-            </button>
             <button
               type="button"
               onClick={() => setSeciliId(null)}
               aria-label="Paneli kapat"
-              className="w-10 h-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-400"
+              className="w-10 h-10 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 flex items-center justify-center text-slate-400 shrink-0"
             >
               <XMarkIcon className="w-5 h-5" />
             </button>
