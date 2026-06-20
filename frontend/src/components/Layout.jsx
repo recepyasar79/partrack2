@@ -233,14 +233,12 @@ export default function Layout({ children }) {
 
   return (
     <div className="min-h-full pb-20 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
-      <header className="bg-gradient-to-r from-brand-900 to-brand-800 dark:from-slate-900 dark:to-slate-800 text-white px-4 py-4 flex items-center justify-between sticky top-0 z-20 shadow-lg">
+      <header className="bg-gradient-to-r from-brand-900 to-brand-800 dark:from-slate-900 dark:to-slate-800 text-white px-4 py-4 flex flex-wrap items-center justify-between gap-x-2 gap-y-2 sticky top-0 z-20 shadow-lg">
         <Link to="/panel" className="flex items-center gap-2 min-w-0">
           <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0">
             <span className="text-lg">🅿️</span>
           </div>
-          {/* Mobilde yer aç: sayım kutuları + Ayarlar menüsü sığsın diye
-              wordmark'ı gizle (🅿️ logo kalır). sm+ ekranda tam görünür. */}
-          <span className="hidden sm:inline font-bold text-xl tracking-tight flex-shrink-0">ParkTrack</span>
+          <span className="font-bold text-xl tracking-tight flex-shrink-0">ParkTrack</span>
           {user?.site?.ad && (
             <span className="hidden sm:flex items-center gap-2 min-w-0">
               <span className="text-white/40" aria-hidden="true">·</span>
@@ -251,35 +249,41 @@ export default function Layout({ children }) {
           )}
         </Link>
         {user ? (
-          <div className="flex items-center gap-1.5 sm:gap-3 text-sm min-w-0">
-            {!isSuperadmin && user.site && (
-              <IceriOzetBadge parkKapasitesi={user.site.park_kapasitesi} />
-            )}
-            <span className="hidden sm:flex items-center gap-2 text-white/80">
-              <div className="w-8 h-8 bg-brand-600 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0">
-                {user.kullanici_adi?.charAt(0).toUpperCase()}
-              </div>
-              <span className="flex items-center gap-1.5 whitespace-nowrap">
-                <span className="font-medium text-white">{user.kullanici_adi}</span>
-                <span className="text-white/40" aria-hidden="true">·</span>
-                <span className="text-xs text-white/60">
-                  {ROL_LABEL[user.rol] || user.rol}
+          <>
+            {/* Üst satır sağ: kullanıcı + tema + Ayarlar + Çıkış. Mobilde
+                sayım şeridi alt tam-genişlik satıra sarar (order-3 basis-full). */}
+            <div className="order-2 sm:order-3 flex items-center gap-1 sm:gap-2 text-sm">
+              <span className="hidden sm:flex items-center gap-2 text-white/80">
+                <div className="w-8 h-8 bg-brand-600 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0">
+                  {user.kullanici_adi?.charAt(0).toUpperCase()}
+                </div>
+                <span className="flex items-center gap-1.5 whitespace-nowrap">
+                  <span className="font-medium text-white">{user.kullanici_adi}</span>
+                  <span className="text-white/40" aria-hidden="true">·</span>
+                  <span className="text-xs text-white/60">
+                    {ROL_LABEL[user.rol] || user.rol}
+                  </span>
                 </span>
               </span>
-            </span>
-            <div className="flex items-center gap-1 sm:gap-2 border-l border-white/20 pl-1.5 sm:pl-3 flex-shrink-0">
-              <ThemeToggle />
-              <SettingsMenu items={settingsItems} />
-              <span aria-hidden="true" className="w-px bg-white/20 self-stretch" />
-              <button
-                onClick={logout}
-                className="text-xs text-white/70 hover:text-white hover:bg-white/10 transition-colors px-2 py-2 rounded-lg flex items-center gap-1"
-              >
-                <LogoutIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Çıkış</span>
-              </button>
+              <div className="flex items-center gap-1 sm:gap-2 border-l border-white/20 pl-1.5 sm:pl-3 flex-shrink-0">
+                <ThemeToggle />
+                <SettingsMenu items={settingsItems} />
+                <span aria-hidden="true" className="w-px bg-white/20 self-stretch" />
+                <button
+                  onClick={logout}
+                  className="text-xs text-white/70 hover:text-white hover:bg-white/10 transition-colors px-2 py-2 rounded-lg flex items-center gap-1"
+                >
+                  <LogoutIcon className="w-4 h-4" />
+                  <span className="hidden sm:inline">Çıkış</span>
+                </button>
+              </div>
             </div>
-          </div>
+            {!isSuperadmin && user.site && (
+              <div className="order-3 basis-full flex justify-center sm:order-2 sm:basis-auto sm:justify-start">
+                <IceriOzetBadge parkKapasitesi={user.site.park_kapasitesi} />
+              </div>
+            )}
+          </>
         ) : (
           <ThemeToggle />
         )}

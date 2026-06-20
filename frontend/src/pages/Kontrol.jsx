@@ -352,8 +352,12 @@ export default function Kontrol() {
   // yüklenir).
   async function cikisYap(kontrolId) {
     if (cikisRef.current.has(kontrolId)) return;
-    cikisRef.current.add(kontrolId);
     const kayit = bugun.find((k) => k.id === kontrolId);
+    // Onay — yanlışlıkla çıkış (listeden kaldırma) önlensin.
+    if (!window.confirm(
+      `${kayit?.plaka || 'Bu araç'} için çıkış yapılsın mı?\nAraç listeden kaldırılacak (giriş/çıkış kaydı raporlarda kalır).`
+    )) return;
+    cikisRef.current.add(kontrolId);
     setBugun((prev) => prev.filter((k) => k.id !== kontrolId)); // iyimser kaldır
     try {
       await api.post(`/kontroller/${kontrolId}/cikis`);
