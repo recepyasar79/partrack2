@@ -86,19 +86,25 @@ function IceriOzetBadge({ parkKapasitesi }) {
   // Tek bölünmüş istatistik şeridi: sayı üstte, küçük etiket altta, ince
   // ayraçlarla. Müsait dolu→yeşil / 0→kırmızı; misafir küçük amber not.
   const musaitClass = musait === 0 ? 'text-rose-300' : 'text-emerald-300';
+  // Dar telefonda taşmasın diye: padding küçük, etiketler mobilde kısaltılır
+  // (İçeride→İç, Müsait→Boş). sm+ ekranda tam etiket.
+  const Seg = ({ children, label, kisa, ...rest }) => (
+    <div className="flex flex-col items-center justify-center px-2 sm:px-3.5 py-1 leading-none" {...rest}>
+      {children}
+      <span className="mt-0.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-white/55 whitespace-nowrap">
+        <span className="sm:hidden">{kisa}</span>
+        <span className="hidden sm:inline">{label}</span>
+      </span>
+    </div>
+  );
   return (
-    <div className="flex items-stretch rounded-xl bg-white/10 ring-1 ring-white/15 divide-x divide-white/10 overflow-hidden">
-      <div
-        className="flex flex-col items-center justify-center px-2.5 sm:px-3.5 py-1 leading-none"
-        title="Sitenin toplam park (otopark) kapasitesi"
-      >
-        <span className="text-sm sm:text-base font-bold tabular-nums text-white">
-          {park > 0 ? park : '—'}
-        </span>
-        <span className="mt-0.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-white/55">Park</span>
-      </div>
-      <div
-        className="flex flex-col items-center justify-center px-2.5 sm:px-3.5 py-1 leading-none"
+    <div className="flex items-stretch rounded-xl bg-white/10 ring-1 ring-white/15 divide-x divide-white/10 overflow-hidden flex-shrink-0">
+      <Seg label="Park" kisa="Park" title="Sitenin toplam park (otopark) kapasitesi">
+        <span className="text-sm sm:text-base font-bold tabular-nums text-white">{park > 0 ? park : '—'}</span>
+      </Seg>
+      <Seg
+        label="İçeride"
+        kisa="İç"
         title={`Şu an içeride ${iceride} araç${misafir > 0 ? ` (${misafir} misafir)` : ''}`}
       >
         <span className="text-sm sm:text-base font-bold tabular-nums text-white">
@@ -107,16 +113,11 @@ function IceriOzetBadge({ parkKapasitesi }) {
             <span className="ml-0.5 align-top text-[9px] font-semibold text-amber-300">{misafir}m</span>
           )}
         </span>
-        <span className="mt-0.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-white/55">İçeride</span>
-      </div>
+      </Seg>
       {musait !== null && (
-        <div
-          className="flex flex-col items-center justify-center px-2.5 sm:px-3.5 py-1 leading-none"
-          title={`Müsait park yeri (${park} − ${iceride})`}
-        >
+        <Seg label="Müsait" kisa="Boş" title={`Müsait park yeri (${park} − ${iceride})`}>
           <span className={`text-sm sm:text-base font-bold tabular-nums ${musaitClass}`}>{musait}</span>
-          <span className="mt-0.5 text-[9px] sm:text-[10px] uppercase tracking-wider text-white/55">Müsait</span>
-        </div>
+        </Seg>
       )}
     </div>
   );
