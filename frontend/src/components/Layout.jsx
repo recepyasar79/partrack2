@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
@@ -15,7 +15,9 @@ import {
   LogoutIcon,
   SunIcon,
   MoonIcon,
-  CreditCardIcon
+  CreditCardIcon,
+  CogIcon,
+  ChevronDownIcon,
 } from './ui/Icons';
 
 const navItems = [
@@ -119,10 +121,81 @@ function ThemeToggle() {
   );
 }
 
+// Header'daki "Ayarlar" açılır menüsü — admin nav linkleri (role göre) + Şifre
+// burada toplanır, böylece header kalabalıklaşmaz. Çıkış'ın hemen solunda durur.
+function SettingsMenu({ items }) {
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    function onDown(e) {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    }
+    function onKey(e) {
+      if (e.key === 'Escape') setOpen(false);
+    }
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [open]);
+
+  return (
+    <div className="relative" ref={ref}>
+      <button
+        type="button"
+        onClick={() => setOpen((o) => !o)}
+        aria-haspopup="menu"
+        aria-expanded={open}
+        className={`flex items-center gap-1 text-xs px-2.5 py-2 rounded-lg transition-colors ${
+          open ? 'bg-white/20 text-white' : 'text-white/70 hover:bg-white/10 hover:text-white'
+        }`}
+      >
+        <CogIcon className="w-4 h-4" />
+        <span className="hidden sm:inline">Ayarlar</span>
+        <ChevronDownIcon className={`w-3.5 h-3.5 transition-transform ${open ? 'rotate-180' : ''}`} />
+      </button>
+      {open && (
+        <div
+          role="menu"
+          className="absolute right-0 top-full mt-1 w-52 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl py-1.5 z-30 animate-scale-in origin-top-right"
+        >
+          {items.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              onClick={() => setOpen(false)}
+              className={({ isActive }) =>
+                `flex items-center gap-2.5 px-3.5 py-2.5 text-sm transition-colors ${
+                  isActive
+                    ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 font-medium'
+                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                }`
+              }
+            >
+              <item.Icon className="w-4 h-4 flex-shrink-0" />
+              <span>{item.label}</span>
+            </NavLink>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function Layout({ children }) {
   const { user, logout } = useAuth();
   const isSiteAdmin = user?.rol === 'site_yonetici';
   const isSuperadmin = user?.rol === 'superadmin';
+
+  // Ayarlar menüsü: role'e göre admin linkleri + her kullanıcı için Şifre.
+  const settingsItems = [
+    ...(isSuperadmin ? superadminItems : isSiteAdmin ? adminItems : []),
+    { to: '/sifre-degistir', label: 'Şifre Değiştir', Icon: LockClosedIcon },
+  ];
 
   return (
     <div className="min-h-full pb-20 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-slate-100 transition-colors">
@@ -147,48 +220,20 @@ export default function Layout({ children }) {
               <IceriOzetBadge parkKapasitesi={user.site.park_kapasitesi} />
             )}
             <span className="hidden sm:flex items-center gap-2 text-white/80">
-              <div className="w-8 h-8 bg-brand-600 rounded-full flex items-center justify-center text-xs font-semibold">
+              <div className="w-8 h-8 bg-brand-600 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0">
                 {user.kullanici_adi?.charAt(0).toUpperCase()}
               </div>
-              <div className="flex flex-col">
+              <span className="flex items-center gap-1.5 whitespace-nowrap">
                 <span className="font-medium text-white">{user.kullanici_adi}</span>
+                <span className="text-white/40" aria-hidden="true">·</span>
                 <span className="text-xs text-white/60">
                   {ROL_LABEL[user.rol] || user.rol}
                 </span>
-              </div>
+              </span>
             </span>
-            {(isSiteAdmin || isSuperadmin) && (
-              <span aria-hidden="true" className="hidden md:block w-px bg-white/20 self-stretch" />
-            )}
-            {(isSiteAdmin || isSuperadmin) && (
-              <div className="hidden md:flex gap-1">
-                {(isSuperadmin ? superadminItems : adminItems).map((item) => (
-                  <NavLink
-                    key={item.to}
-                    to={item.to}
-                    className={({ isActive }) =>
-                      `flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg transition-all ${
-                        isActive
-                          ? 'bg-white/20 text-white'
-                          : 'text-white/70 hover:bg-white/10 hover:text-white'
-                      }`
-                    }
-                  >
-                    <item.Icon className="w-4 h-4" />
-                    <span>{item.label}</span>
-                  </NavLink>
-                ))}
-              </div>
-            )}
             <div className="flex items-center gap-2 border-l border-white/20 pl-3">
               <ThemeToggle />
-              <Link
-                to="/sifre-degistir"
-                className="text-xs text-white/70 hover:text-white hover:bg-white/10 transition-colors flex items-center gap-1 px-2 py-2 rounded-lg"
-              >
-                <LockClosedIcon className="w-4 h-4" />
-                <span className="hidden sm:inline">Şifre</span>
-              </Link>
+              <SettingsMenu items={settingsItems} />
               <span aria-hidden="true" className="w-px bg-white/20 self-stretch" />
               <button
                 onClick={logout}
