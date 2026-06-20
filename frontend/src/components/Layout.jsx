@@ -3,6 +3,7 @@ import { Link, NavLink } from 'react-router-dom';
 import { useAuth } from '../auth/AuthContext';
 import { useTheme } from '../theme/ThemeContext';
 import { api } from '../services/api';
+import NumaralarModal from './NumaralarModal';
 import {
   BuildingIcon,
   CarIcon,
@@ -18,6 +19,7 @@ import {
   CreditCardIcon,
   CogIcon,
   ChevronDownIcon,
+  PhoneIcon,
 } from './ui/Icons';
 
 const navItems = [
@@ -78,6 +80,8 @@ function IceriOzetBadge({ parkKapasitesi }) {
   const park = parkKapasitesi ?? ozet?.park_kapasitesi ?? 0;
   const iceride = ozet?.icerideki_arac ?? 0;
   const misafir = ozet?.misafir_arac ?? 0;
+  // Müsait yer = kapasite - içeride (negatif olamaz). Kapasite tanımsızsa (0) gizle.
+  const musait = park > 0 ? Math.max(park - iceride, 0) : null;
 
   return (
     <div className="flex items-center gap-1.5">
@@ -102,6 +106,15 @@ function IceriOzetBadge({ parkKapasitesi }) {
           </span>
         )}
       </div>
+      {musait !== null && (
+        <div
+          className="flex items-center gap-1.5 rounded-lg bg-amber-500/20 ring-1 ring-amber-300/30 px-2.5 py-1"
+          title={`Müsait park yeri (${park} − ${iceride})`}
+        >
+          <span className="text-xs text-white/70 hidden md:inline">Müsait</span>
+          <span className="text-sm font-bold tabular-nums text-white">{musait}</span>
+        </div>
+      )}
     </div>
   );
 }
@@ -163,23 +176,35 @@ function SettingsMenu({ items }) {
           role="menu"
           className="absolute right-0 top-full mt-1 w-44 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 shadow-xl py-1.5 z-30 animate-scale-in origin-top-right"
         >
-          {items.map((item) => (
-            <NavLink
-              key={item.to}
-              to={item.to}
-              onClick={() => setOpen(false)}
-              className={({ isActive }) =>
-                `flex items-center gap-2.5 px-3.5 py-2.5 text-sm transition-colors ${
-                  isActive
-                    ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 font-medium'
-                    : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
-                }`
-              }
-            >
-              <item.Icon className="w-4 h-4 flex-shrink-0" />
-              <span>{item.label}</span>
-            </NavLink>
-          ))}
+          {items.map((item) =>
+            item.action ? (
+              <button
+                key={item.label}
+                type="button"
+                onClick={() => { setOpen(false); item.action(); }}
+                className="w-full flex items-center gap-2.5 px-3.5 py-2.5 text-sm text-left transition-colors text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800"
+              >
+                <item.Icon className="w-4 h-4 flex-shrink-0" />
+                <span>{item.label}</span>
+              </button>
+            ) : (
+              <NavLink
+                key={item.to}
+                to={item.to}
+                onClick={() => setOpen(false)}
+                className={({ isActive }) =>
+                  `flex items-center gap-2.5 px-3.5 py-2.5 text-sm transition-colors ${
+                    isActive
+                      ? 'bg-brand-50 dark:bg-brand-900/30 text-brand-700 dark:text-brand-300 font-medium'
+                      : 'text-slate-700 dark:text-slate-200 hover:bg-slate-50 dark:hover:bg-slate-800'
+                  }`
+                }
+              >
+                <item.Icon className="w-4 h-4 flex-shrink-0" />
+                <span>{item.label}</span>
+              </NavLink>
+            )
+          )}
         </div>
       )}
     </div>
@@ -187,13 +212,18 @@ function SettingsMenu({ items }) {
 }
 
 export default function Layout({ children }) {
-  const { user, logout } = useAuth();
+  const { user, logout, refresh } = useAuth();
   const isSiteAdmin = user?.rol === 'site_yonetici';
   const isSuperadmin = user?.rol === 'superadmin';
+  const [numaralarAcik, setNumaralarAcik] = useState(false);
 
-  // Ayarlar menüsü: role'e göre admin linkleri + her kullanıcı için Şifre.
+  // Ayarlar menüsü: role'e göre admin linkleri + (site yöneticisi) Yönetim
+  // Numaraları (modal) + her kullanıcı için Şifre.
   const settingsItems = [
     ...(isSuperadmin ? superadminItems : isSiteAdmin ? adminItems : []),
+    ...(isSiteAdmin
+      ? [{ label: 'Yönetim Numaraları', Icon: PhoneIcon, action: () => setNumaralarAcik(true) }]
+      : []),
     { to: '/sifre-degistir', label: 'Şifre Değiştir', Icon: LockClosedIcon },
   ];
 
@@ -291,6 +321,14 @@ export default function Layout({ children }) {
             ))}
           </div>
         </nav>
+      )}
+
+      {numaralarAcik && (
+        <NumaralarModal
+          mevcut={user?.site?.bildirim_telefonlari || []}
+          onClose={() => setNumaralarAcik(false)}
+          onSaved={async () => { await refresh(); setNumaralarAcik(false); }}
+        />
       )}
     </div>
   );
