@@ -24,6 +24,7 @@ Write-Host "Image: $IMAGE_REF"
 $JOBS = @(
   @{ Name = 'data-retention';         Schedule = 'daily';  NpmScript = 'job:data-retention' },
   @{ Name = 'foto-temizle';           Schedule = 'daily';  NpmScript = 'job:foto-temizle' },
+  @{ Name = 'gun-cikis';              Schedule = 'daily';  NpmScript = 'job:gun-cikis' },
   @{ Name = 'parasut-sync';           Schedule = 'daily';  NpmScript = 'job:parasut-sync' },
   @{ Name = 'subscription-lifecycle'; Schedule = 'daily';  NpmScript = 'job:subscription-lifecycle' },
   @{ Name = 'email-raporu';           Schedule = 'daily';  NpmScript = 'job:email-raporu' },

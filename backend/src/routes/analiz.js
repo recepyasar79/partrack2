@@ -25,6 +25,7 @@ router.post('/analiz-et', async (req, res, next) => {
 
     const kontroller = await db('gunluk_kontroller')
       .where({ kontrol_tarihi: tarih, site_id: siteId })
+      .whereNull('cikis_zamani') // yalnız hâlâ içeride olan araçlar (çıkış yapan düşer)
       .whereNotNull('plaka')
       .where('plaka', '!=', '');
     const plakalar = kontroller.map((k) => k.plaka);
@@ -260,6 +261,7 @@ router.get('/ihlaller/ozet', async (req, res, next) => {
 async function dairBasinaPlakalar(siteId, tarih) {
   const kontroller = await db('gunluk_kontroller')
     .where({ kontrol_tarihi: tarih, site_id: siteId })
+    .whereNull('cikis_zamani') // yalnız hâlâ içeride
     .whereNotNull('plaka')
     .where('plaka', '!=', '');
   const gorulen = new Set();
@@ -307,6 +309,7 @@ async function dairBasinaPlakalar(siteId, tarih) {
 async function iceriOzet(siteId, tarih) {
   const kontroller = await db('gunluk_kontroller')
     .where({ kontrol_tarihi: tarih, site_id: siteId })
+    .whereNull('cikis_zamani') // yalnız hâlâ içeride
     .whereNotNull('plaka')
     .where('plaka', '!=', '');
   const gorulen = new Set();

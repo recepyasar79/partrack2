@@ -16,6 +16,20 @@
 7. Misafir araclar aksam kontrolune **dahil edilir**; ilgili dairenin sayimina girer ve raporda plaka yaninda `misafir` notu gosterilir
 8. Aktif misafir plaka kayitsiz plaka olarak raporlanmaz; misafir kaydi yoksa kayitsiz plaka listesine duser
 
+## Araç Giriş/Çıkış logu — "Çıkış Yap" + 2 ay rapor (2026-06-21)
+
+**Istek (site yonetimi):** Her aracin giris-cikis zamani tutulsun; geriye donuk (≥2 ay) log + raporlama. Kullanici karari (netlestirildi): gunduz takip YOK (is oturana kadar); model = akşam yukleme = GIRIS (giris saati=yukleme_zamani), gece arac cikinca "Çıkış Yap" butonu, sabah 08:00'de acik kalan tum oturumlar otomatik kapanir; **is oturunca revize.**
+**Kok degisim:** `gunluk_kontroller` satiri artik bir PARK OTURUMU. Eskiden cikis = satiri SILMEK; artik cikis = `cikis_zamani` damgalamak. **"Icerde" = `cikis_zamani IS NULL`.**
+**Cozum:**
+- Migration `20260621000001`: `gunluk_kontroller.cikis_zamani timestamptz NULL` + kismi index (`WHERE cikis_zamani IS NULL`) + `(site_id, yukleme_zamani)` index. **CUTOVER:** mevcut tum satirlar kapanmis backfill (`cikis_zamani=yukleme_zamani`) → deploy gunu icerde listesi sismez.
+- `routes/kontroller.js`: **`POST /:id/cikis`** (sil yerine `cikis_zamani=now()`, idempotent `zaten_cikti`, audit `cikis_yap`). **`GET /log`** (rapor: tarih araligi varsayilan 60 gun, plaka·daire·giris·cikis·sure·iceride; once `autoCloseGecmisOturumlar` ile self-heal). `GET /` zaten `cikis_zamani`'ni doner (spread). Eski `DELETE /:id` korundu (yanlis tarama icin).
+- `routes/analiz.js`: `analiz-et` + `dairBasinaPlakalar` + `iceriOzet` sorgularina `.whereNull('cikis_zamani')` → cetele/musait/aksam ihlal hep "su an icerde" uzerinden. Operasyon gunu (08:00) filtresi board'u sabah ZATEN sifirlar; cron yalniz LOG butunlugu icin.
+- `utils/oturum.js` `autoCloseGecmisOturumlar(siteId?)`: `kontrol_tarihi < ceteleGunuTR()` & acik oturumlara MANTIKSAL `(kontrol_tarihi+1) 08:00 TR` cikis damgalar (cron saati onemsiz, idempotent). Job `jobs/gunCikis.js` (`job:gun-cikis`, **daily** cron — setup-fly-cron .sh/.ps1'e eklendi).
+- Frontend `Kontrol.jsx`: "Bugunun tum yuklemeleri"nde satir X'i yerine **"Çıkış Yap"** (iyimser; cikinca satir gri + "✓ HH:MM"). Sutun "Zaman"→"Giris"+"Cikis". Toplu "Son yuklenenleri sil" (gercek silme) korundu.
+- Frontend `Raporlar.jsx`: yeni **"Giriş/Çıkış"** sekmesi (plaka·daire·giris·cikis·sure·İçeride rozeti) + CSV + PDF. Tarih filtresi paylasimli (2 ay icin baslangici geri al).
+**Test:** `routes/giris_cikis.test.js` (cikis düşer+log'da kalir, idempotent, 404/401, auto-close gecmis vs bugun). Mevcut `gece_cetelesi`/`kontroller` testleri etkilenmez (fresh insert cikis_zamani NULL = icerde). (Lokal test DB 5433 kapali → CI'da dogrulanir.)
+**Acik konu:** Ayni plakanin ayni aksam iki kez yuklenmesi → iki acik oturum (cetele Set ile dedup sayar; log'da cift gorunur). Gercek kapi-kontrolu/dedup "is oturunca" ele alinacak.
+
 ## Site park kapasitesi + header "Park Yeri / İçeride" kutucugu (2026-06-20)
 
 **Istek:** Her site icin toplam park (otopark) adedi tutulsun; superadmin site tanimlarken/sonradan set etsin (aktif site id=1 icin **138**). Header'da kullanici adinin SOLUNA renkli kutucuklarla **Park Yeri Sayisi / Icerideki Arac Sayisi**; iceride misafir varsa **(x misafir)** notu.

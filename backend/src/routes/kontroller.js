@@ -6,6 +6,7 @@ const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { buildUpload, isR2Configured, sniffImageType } = require('../services/storage');
 const { ceteleGunuTR, normalizeMisafirZaman } = require('../utils/timezone');
+const { autoCloseGecmisOturumlar } = require('../utils/oturum');
 const { normalizePlaka, isValidPlakaSerbest } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
 const { recognizePlate } = require('../services/pythonOcr');
@@ -76,6 +77,69 @@ router.get('/', async (req, res) => {
     daire_misafir: k.plaka ? (daireByPlaka[k.plaka]?.misafir ?? false) : false,
   }));
   res.json({ tarih, kontroller });
+});
+
+// Giriş/Çıkış logu raporu — geriye dönük park oturumları (giriş=yukleme_zamani,
+// çıkış=cikis_zamani; NULL ise hâlâ içeride). Varsayılan son 60 gün. Tarih
+// filtresi kontrol_tarihi (operasyon günü) üzerinden. daire_no kayıtlı araçtan
+// best-effort çözülür. Önce geçmiş açık oturumları mantıksal 08:00 çıkışıyla
+// kapatıp (self-heal) log'u tutarlı gösteririz.
+router.get('/log', async (req, res, next) => {
+  try {
+    const siteId = req.scopedSiteId;
+    const dayjs = require('dayjs');
+    const { todayTR } = require('../utils/timezone');
+    const bitis = req.query.bitis || todayTR();
+    const baslangic = req.query.baslangic
+      || dayjs(bitis).subtract(60, 'day').format('YYYY-MM-DD');
+    const limit = Math.min(parseInt(req.query.limit, 10) || 5000, 20000);
+
+    await autoCloseGecmisOturumlar(siteId);
+
+    const rows = await db('gunluk_kontroller')
+      .where('site_id', siteId)
+      .andWhere('kontrol_tarihi', '>=', baslangic)
+      .andWhere('kontrol_tarihi', '<=', bitis)
+      .whereNotNull('plaka')
+      .where('plaka', '!=', '')
+      .orderBy('yukleme_zamani', 'desc')
+      .limit(limit)
+      .select('id', 'plaka', 'kontrol_tarihi', 'yukleme_zamani', 'cikis_zamani');
+
+    // daire_no: aktif kayıtlı araçtan eşle (rapor genelinde gün-bazlı misafir
+    // çözümü pahalı; kayıtlı eşleşme yeterli — kayıtsız/misafir daire_no=null).
+    const plakalar = [...new Set(rows.map((r) => r.plaka))];
+    const daireByPlaka = {};
+    if (plakalar.length) {
+      const reg = await db('araclar')
+        .join('daireler', 'araclar.daire_id', 'daireler.id')
+        .where('araclar.site_id', siteId)
+        .andWhere('araclar.aktif', true)
+        .whereIn('araclar.plaka', plakalar)
+        .select('araclar.plaka', 'daireler.daire_no');
+      for (const r of reg) if (!daireByPlaka[r.plaka]) daireByPlaka[r.plaka] = r.daire_no;
+    }
+
+    const kayitlar = rows.map((r) => {
+      const giris = r.yukleme_zamani;
+      const cikis = r.cikis_zamani;
+      const sure_dk = cikis
+        ? Math.max(0, Math.round((new Date(cikis) - new Date(giris)) / 60000))
+        : null;
+      return {
+        id: r.id,
+        plaka: r.plaka,
+        daire_no: daireByPlaka[r.plaka] ?? null,
+        kontrol_tarihi: r.kontrol_tarihi,
+        giris,
+        cikis,
+        sure_dk,
+        iceride: !cikis,
+      };
+    });
+
+    res.json({ baslangic, bitis, sayi: kayitlar.length, kayitlar });
+  } catch (e) { next(e); }
 });
 
 router.get('/:id/foto', async (req, res, next) => {
@@ -402,6 +466,36 @@ router.patch('/:id/plaka', async (req, res) => {
     ip_adres: req.ip,
   });
   res.json({ kontrol: updated });
+});
+
+// Çıkış Yap — park oturumunu kapatır (silmez): cikis_zamani damgalanır.
+// Idempotent: zaten kapanmışsa mevcut kaydı döner. Araç böylece "içeride"
+// sayımından düşer ama log'da giriş/çıkış kaydı yaşamaya devam eder.
+router.post('/:id/cikis', async (req, res, next) => {
+  try {
+    const id = parseInt(req.params.id, 10);
+    const k = await db('gunluk_kontroller')
+      .where({ id, site_id: req.scopedSiteId })
+      .first();
+    if (!k) return res.status(404).json({ error: 'Kontrol bulunamadı.' });
+    if (k.cikis_zamani) {
+      return res.json({ kontrol: k, zaten_cikti: true });
+    }
+    const [updated] = await db('gunluk_kontroller')
+      .where({ id, site_id: req.scopedSiteId })
+      .update({ cikis_zamani: db.fn.now() })
+      .returning('*');
+    await writeAudit({
+      user_id: req.user.id,
+      site_id: req.scopedSiteId,
+      eylem: 'cikis_yap',
+      tablo_adi: 'gunluk_kontroller',
+      kayit_id: id,
+      yeni_deger: { cikis_zamani: updated.cikis_zamani },
+      ip_adres: req.ip,
+    });
+    res.json({ kontrol: updated });
+  } catch (err) { next(err); }
 });
 
 router.delete('/:id', async (req, res) => {

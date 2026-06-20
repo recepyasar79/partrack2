@@ -38,6 +38,7 @@ echo "Image: $IMAGE_REF"
 JOBS=(
   "data-retention|daily|job:data-retention"
   "foto-temizle|daily|job:foto-temizle"
+  "gun-cikis|daily|job:gun-cikis"
   "parasut-sync|daily|job:parasut-sync"
   "subscription-lifecycle|daily|job:subscription-lifecycle"
   "email-raporu|daily|job:email-raporu"

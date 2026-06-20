@@ -15,6 +15,7 @@
     "seed": "knex seed:run --knexfile knexfile.js",
     "lint": "eslint src/",
     "job:foto-temizle": "node src/jobs/fotoTemizle.js",
+    "job:gun-cikis": "node src/jobs/gunCikis.js",
     "job:bildirim-retry": "node src/jobs/bildirimRetry.js",
     "job:parasut-sync": "node src/jobs/parasutSync.js",
     "job:data-retention": "node src/jobs/dataRetention.js",

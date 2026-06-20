@@ -70,6 +70,7 @@ export default function Kontrol() {
   // görünür/gizlenir. Her handleNewFiles çağrısı bunu son batch'e günceller.
   const [sonBatch, setSonBatch] = useState([]);
   const deletingRef = useRef(new Set());
+  const cikisRef = useRef(new Set());
   // silSonBatch tıklandığında en güncel items'a (kontrolId'leri set edilmiş)
   // erişmek için — closure bayatlığını önler.
   const itemsRef = useRef([]);
@@ -343,6 +344,29 @@ export default function Kontrol() {
       toast.success(`${p} onaylandı.`);
       loadBugun();
     } catch (e) { toast.error(apiError(e)); }
+  }
+
+  // Çıkış Yap — kaydı silmez, çıkış zamanını damgalar. Araç "içeride"
+  // sayımından düşer ama giriş/çıkış logunda kalır. Listede satır "çıktı"
+  // olarak işaretlenir (silinmez — günün hareket dökümü görünsün).
+  async function cikisYap(kontrolId) {
+    if (cikisRef.current.has(kontrolId)) return;
+    cikisRef.current.add(kontrolId);
+    // İyimser: satırı hemen "çıktı" işaretle.
+    const simdi = new Date().toISOString();
+    setBugun((prev) => prev.map((k) => (k.id === kontrolId ? { ...k, cikis_zamani: simdi } : k)));
+    try {
+      const { data } = await api.post(`/kontroller/${kontrolId}/cikis`);
+      const gercek = data?.kontrol?.cikis_zamani || simdi;
+      setBugun((prev) => prev.map((k) => (k.id === kontrolId ? { ...k, cikis_zamani: gercek } : k)));
+      toast.success('Çıkış kaydedildi.');
+    } catch (e) {
+      // Geri al
+      setBugun((prev) => prev.map((k) => (k.id === kontrolId ? { ...k, cikis_zamani: null } : k)));
+      toast.error(apiError(e));
+    } finally {
+      cikisRef.current.delete(kontrolId);
+    }
   }
 
   async function silKontrol(kontrolId, itemId) {
@@ -635,13 +659,13 @@ export default function Kontrol() {
               <tr className="bg-gradient-to-r from-slate-50 to-slate-100 dark:from-slate-800 dark:to-slate-800 text-left">
                 <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 w-20">Foto</th>
                 <th className="p-4 font-semibold text-slate-700 dark:text-slate-200">Plaka</th>
-                <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 hidden sm:table-cell">Zaman</th>
-                <th className="p-4"></th>
+                <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 hidden sm:table-cell">Giriş</th>
+                <th className="p-4 font-semibold text-slate-700 dark:text-slate-200 text-right">Çıkış</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
               {bugunFiltreli.map((k) => (
-                <tr key={k.id} className="hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors">
+                <tr key={k.id} className={`hover:bg-slate-50 dark:hover:bg-slate-800/40 transition-colors ${k.cikis_zamani ? 'opacity-55' : ''}`}>
                   <td className="p-2">
                     {k.foto_url ? (
                       <button
@@ -691,12 +715,22 @@ export default function Kontrol() {
                     ) : null}
                   </td>
                   <td className="p-4 hidden sm:table-cell text-xs text-slate-500 dark:text-slate-400">
-                    {new Date(k.yukleme_zamani).toLocaleTimeString('tr-TR')}
+                    {new Date(k.yukleme_zamani).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
                   </td>
                   <td className="p-4 text-right">
-                    <Button size="sm" variant="ghost" onClick={() => silKontrol(k.id)}>
-                      <XMarkIcon className="w-4 h-4" />
-                    </Button>
+                    {k.cikis_zamani ? (
+                      <span
+                        className="inline-flex items-center gap-1 text-xs font-medium text-slate-500 dark:text-slate-400 bg-slate-100 dark:bg-slate-800 rounded px-2 py-1"
+                        title={`Çıkış: ${new Date(k.cikis_zamani).toLocaleString('tr-TR')}`}
+                      >
+                        <CheckIcon className="w-3.5 h-3.5" />
+                        {new Date(k.cikis_zamani).toLocaleTimeString('tr-TR', { hour: '2-digit', minute: '2-digit' })}
+                      </span>
+                    ) : (
+                      <Button size="sm" variant="secondary" onClick={() => cikisYap(k.id)}>
+                        Çıkış Yap
+                      </Button>
+                    )}
                   </td>
                 </tr>
               ))}
