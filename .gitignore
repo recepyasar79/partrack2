@@ -73,3 +73,8 @@ scripts/misafir_*.json
 
 # Test/saha fotograflari - gercek plaka = kisisel veri (KVKK), repoya girmez
 fotoarac*/
+
+# Sohbette paylasilan ekran goruntuleri (repo kokunde, repoda olmamali)
+/*.png
+/*.jpeg
+/*.jpg
