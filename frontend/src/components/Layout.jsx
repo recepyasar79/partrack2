@@ -84,34 +84,37 @@ function IceriOzetBadge({ parkKapasitesi }) {
   const musait = park > 0 ? Math.max(park - iceride, 0) : null;
 
   return (
-    <div className="flex items-center gap-1.5">
+    <div className="flex items-center gap-1 sm:gap-1.5">
       <div
-        className="flex items-center gap-1.5 rounded-lg bg-sky-500/20 ring-1 ring-sky-300/30 px-2.5 py-1"
+        className="flex items-center gap-1 sm:gap-1.5 rounded-lg bg-sky-500/20 ring-1 ring-sky-300/30 px-1.5 sm:px-2.5 py-1"
         title="Sitenin toplam park (otopark) kapasitesi"
       >
         <span className="text-xs text-white/70 hidden md:inline">Park Yeri</span>
+        <span className="text-[10px] text-white/60 md:hidden">P</span>
         <span className="text-sm font-bold tabular-nums text-white">
           {park > 0 ? park : '—'}
         </span>
       </div>
       <div
-        className="flex items-center gap-1.5 rounded-lg bg-emerald-500/20 ring-1 ring-emerald-300/30 px-2.5 py-1"
+        className="flex items-center gap-1 sm:gap-1.5 rounded-lg bg-emerald-500/20 ring-1 ring-emerald-300/30 px-1.5 sm:px-2.5 py-1"
         title="Şu an site içinde tespit edilen araç sayısı"
       >
         <span className="text-xs text-white/70 hidden md:inline">İçeride</span>
+        <span className="text-[10px] text-white/60 md:hidden">İç</span>
         <span className="text-sm font-bold tabular-nums text-white">{iceride}</span>
         {misafir > 0 && (
-          <span className="text-[11px] font-medium text-amber-200 whitespace-nowrap">
+          <span className="text-[11px] font-medium text-amber-200 whitespace-nowrap hidden sm:inline">
             ({misafir} misafir)
           </span>
         )}
       </div>
       {musait !== null && (
         <div
-          className="flex items-center gap-1.5 rounded-lg bg-amber-500/20 ring-1 ring-amber-300/30 px-2.5 py-1"
+          className="flex items-center gap-1 sm:gap-1.5 rounded-lg bg-amber-500/20 ring-1 ring-amber-300/30 px-1.5 sm:px-2.5 py-1"
           title={`Müsait park yeri (${park} − ${iceride})`}
         >
           <span className="text-xs text-white/70 hidden md:inline">Müsait</span>
+          <span className="text-[10px] text-white/60 md:hidden">M</span>
           <span className="text-sm font-bold tabular-nums text-white">{musait}</span>
         </div>
       )}
@@ -234,7 +237,9 @@ export default function Layout({ children }) {
           <div className="w-8 h-8 bg-white/20 rounded-lg flex items-center justify-center backdrop-blur-sm flex-shrink-0">
             <span className="text-lg">🅿️</span>
           </div>
-          <span className="font-bold text-xl tracking-tight flex-shrink-0">ParkTrack</span>
+          {/* Mobilde yer aç: sayım kutuları + Ayarlar menüsü sığsın diye
+              wordmark'ı gizle (🅿️ logo kalır). sm+ ekranda tam görünür. */}
+          <span className="hidden sm:inline font-bold text-xl tracking-tight flex-shrink-0">ParkTrack</span>
           {user?.site?.ad && (
             <span className="hidden sm:flex items-center gap-2 min-w-0">
               <span className="text-white/40" aria-hidden="true">·</span>
@@ -245,7 +250,7 @@ export default function Layout({ children }) {
           )}
         </Link>
         {user ? (
-          <div className="flex items-center gap-3 text-sm">
+          <div className="flex items-center gap-1.5 sm:gap-3 text-sm min-w-0">
             {!isSuperadmin && user.site && (
               <IceriOzetBadge parkKapasitesi={user.site.park_kapasitesi} />
             )}
@@ -261,7 +266,7 @@ export default function Layout({ children }) {
                 </span>
               </span>
             </span>
-            <div className="flex items-center gap-2 border-l border-white/20 pl-3">
+            <div className="flex items-center gap-1 sm:gap-2 border-l border-white/20 pl-1.5 sm:pl-3 flex-shrink-0">
               <ThemeToggle />
               <SettingsMenu items={settingsItems} />
               <span aria-hidden="true" className="w-px bg-white/20 self-stretch" />
