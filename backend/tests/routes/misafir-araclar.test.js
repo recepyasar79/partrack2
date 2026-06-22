@@ -120,6 +120,74 @@ describe('POST /api/misafir-araclar', () => {
   });
 });
 
+describe('POST /api/misafir-araclar/hizli', () => {
+  async function kontrolEkle(plaka, yukleme) {
+    const today = new Date().toISOString().slice(0, 10);
+    const [k] = await db('gunluk_kontroller')
+      .insert({
+        site_id: 1,
+        plaka,
+        kontrol_tarihi: today,
+        yukleme_zamani: yukleme || new Date(),
+      })
+      .returning('*');
+    return k;
+  }
+
+  test('kayitsiz araci hizlica misafir yapar (201) — giris=kayit saati, cikis=o gunun 23:59', async () => {
+    const daire = await createTestDaire({ daire_no: 'B3' });
+    const yukleme = new Date();
+    const k = await kontrolEkle('34HIZ001', yukleme);
+    const res = await request(app)
+      .post('/api/misafir-araclar/hizli')
+      .set('Authorization', `Bearer ${guardToken}`)
+      .send({ kontrol_id: k.id, daire_no: 'b3' }); // küçük harf de kabul
+    expect(res.status).toBe(201);
+    expect(res.body.misafir.plaka).toBe('34HIZ001');
+    expect(res.body.misafir.daire_id).toBe(daire.id);
+    // Giriş = kaydın yükleme saati
+    expect(new Date(res.body.misafir.baslangic_tarihi).getTime())
+      .toBe(new Date(yukleme).getTime());
+    // Çıkış = aynı günün sonu (23:59); başlangıçtan sonra ve aynı takvim günü
+    expect(new Date(res.body.misafir.bitis_tarihi).getTime())
+      .toBeGreaterThan(new Date(yukleme).getTime());
+  });
+
+  test('olmayan daire ile 404', async () => {
+    const k = await kontrolEkle('34HIZ002');
+    const res = await request(app)
+      .post('/api/misafir-araclar/hizli')
+      .set('Authorization', `Bearer ${guardToken}`)
+      .send({ kontrol_id: k.id, daire_no: 'Z99' });
+    expect(res.status).toBe(404);
+  });
+
+  test('olmayan kontrol ile 404', async () => {
+    await createTestDaire({ daire_no: 'B4' });
+    const res = await request(app)
+      .post('/api/misafir-araclar/hizli')
+      .set('Authorization', `Bearer ${guardToken}`)
+      .send({ kontrol_id: 999999, daire_no: 'B4' });
+    expect(res.status).toBe(404);
+  });
+
+  test('daire_no bos ise 400', async () => {
+    const k = await kontrolEkle('34HIZ003');
+    const res = await request(app)
+      .post('/api/misafir-araclar/hizli')
+      .set('Authorization', `Bearer ${guardToken}`)
+      .send({ kontrol_id: k.id, daire_no: '' });
+    expect(res.status).toBe(400);
+  });
+
+  test('token yok ise 401', async () => {
+    const res = await request(app)
+      .post('/api/misafir-araclar/hizli')
+      .send({ kontrol_id: 1, daire_no: 'B3' });
+    expect(res.status).toBe(401);
+  });
+});
+
 describe('DELETE /api/misafir-araclar/:id', () => {
   test('yonetici misafir kaydini silebilir', async () => {
     const daire = await createTestDaire({ daire_no: 'A7' });

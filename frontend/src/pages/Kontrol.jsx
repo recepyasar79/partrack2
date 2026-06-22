@@ -71,6 +71,10 @@ export default function Kontrol() {
   const [sonBatch, setSonBatch] = useState([]);
   const deletingRef = useRef(new Set());
   const cikisRef = useRef(new Set());
+  // Kayıtsız aracı hızlı misafir yapma — hangi satır düzenleniyor + daire no.
+  const [misafirRow, setMisafirRow] = useState(null);
+  const [misafirDaire, setMisafirDaire] = useState('');
+  const misafirRef = useRef(new Set());
   // silSonBatch tıklandığında en güncel items'a (kontrolId'leri set edilmiş)
   // erişmek için — closure bayatlığını önler.
   const itemsRef = useRef([]);
@@ -368,6 +372,31 @@ export default function Kontrol() {
     } finally {
       cikisRef.current.delete(kontrolId);
     }
+  }
+
+  // Kayıtsız aracı tek hamlede bir daireye misafir yapar (giriş=kayıt saati,
+  // çıkış=o günün 23:59; backend hesaplar). Görevli yalnız daire no girer.
+  async function misafirYap(kontrolId) {
+    const dno = misafirDaire.trim().toUpperCase();
+    if (!dno) { toast.error('Daire no girin (örn. B3).'); return; }
+    if (misafirRef.current.has(kontrolId)) return;
+    misafirRef.current.add(kontrolId);
+    try {
+      await api.post('/misafir-araclar/hizli', { kontrol_id: kontrolId, daire_no: dno });
+      toast.success(`${dno} dairesine misafir olarak eklendi.`);
+      setMisafirRow(null);
+      setMisafirDaire('');
+      loadBugun(); // rozet "B3 · misafir" olarak güncellensin
+    } catch (e) {
+      toast.error(apiError(e));
+    } finally {
+      misafirRef.current.delete(kontrolId);
+    }
+  }
+
+  function misafirIptal() {
+    setMisafirRow(null);
+    setMisafirDaire('');
   }
 
   async function silKontrol(kontrolId, itemId) {
@@ -707,12 +736,48 @@ export default function Kontrol() {
                         {k.daire_no}{k.daire_misafir ? ' · misafir' : ''}
                       </span>
                     ) : k.plaka ? (
-                      <span
-                        className="mt-1 flex w-fit items-center text-[11px] font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5"
-                        title="Araç listesinde ve içerideki misafir listesinde yok"
-                      >
-                        kayıtsız
-                      </span>
+                      <div className="mt-1 flex flex-col gap-1.5">
+                        <span
+                          className="flex w-fit items-center text-[11px] font-medium bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 border border-amber-200 dark:border-amber-800 rounded px-1.5 py-0.5"
+                          title="Araç listesinde ve içerideki misafir listesinde yok"
+                        >
+                          kayıtsız
+                        </span>
+                        {misafirRow === k.id ? (
+                          <div className="flex items-center gap-1">
+                            <input
+                              value={misafirDaire}
+                              onChange={(e) => setMisafirDaire(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') misafirYap(k.id);
+                                else if (e.key === 'Escape') misafirIptal();
+                              }}
+                              placeholder="Daire (B3)"
+                              autoFocus
+                              className="w-24 px-2 py-1 text-sm rounded-lg border border-slate-300 dark:border-slate-600 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 uppercase focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                            />
+                            <Button size="sm" variant="success" onClick={() => misafirYap(k.id)}>
+                              Kaydet
+                            </Button>
+                            <button
+                              type="button"
+                              onClick={misafirIptal}
+                              className="text-xs text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 px-1"
+                            >
+                              İptal
+                            </button>
+                          </div>
+                        ) : (
+                          <button
+                            type="button"
+                            onClick={() => { setMisafirRow(k.id); setMisafirDaire(''); }}
+                            className="w-fit text-[11px] font-medium text-emerald-700 dark:text-emerald-300 hover:underline"
+                            title="Bu aracı bir daireye misafir yap (giriş=kayıt saati, çıkış=bugün 23:59)"
+                          >
+                            + Misafir yap
+                          </button>
+                        )}
+                      </div>
                     ) : null}
                   </td>
                   <td className="p-4 hidden sm:table-cell text-xs text-slate-500 dark:text-slate-400">

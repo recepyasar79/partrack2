@@ -3,7 +3,7 @@ const db = require('../db');
 const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
 const { writeAudit } = require('../middleware/audit');
 const { isValidPlakaSerbest, normalizePlaka } = require('../utils/validators');
-const { normalizeMisafirZaman } = require('../utils/timezone');
+const { normalizeMisafirZaman, dayjs, TR_TZ } = require('../utils/timezone');
 
 const router = express.Router();
 router.use(authRequired, requireScopedSite);
@@ -67,6 +67,57 @@ router.post('/', async (req, res) => {
     ip_adres: req.ip,
   });
   res.status(201).json({ misafir: created });
+});
+
+// Hızlı misafir: Kontrol ekranındaki kayıtsız bir aracı, misafir ekranına
+// gitmeden tek hamlede bir daireye misafir yapar. Görevli yalnız daire_no girer.
+// Giriş (baslangic) = kaydın yükleme saati; Çıkış (bitis) = o günün (TR) 23:59.
+// NOT (edge): kayıt gece yarısından sonra (00:00-08:00) girilmişse "o gün" =
+// takvim günü alınır; operasyon günü (ceteleGunuTR) bir önceki güne düşmüş
+// olabilir → bu nadir durumda kontrol listesindeki rozet hemen "misafir"e
+// dönmeyebilir (misafir kaydı yine doğru oluşur). İş oturunca revize.
+router.post('/hizli', async (req, res) => {
+  const { kontrol_id, daire_no } = req.body || {};
+  if (!kontrol_id) return res.status(400).json({ error: 'kontrol_id zorunlu.' });
+  const dno = String(daire_no || '').trim().toUpperCase();
+  if (!dno) return res.status(400).json({ error: 'Daire no zorunlu.' });
+
+  const kontrol = await db('gunluk_kontroller')
+    .where({ id: kontrol_id, site_id: req.scopedSiteId })
+    .first();
+  if (!kontrol) return res.status(404).json({ error: 'Kontrol kaydı bulunamadı.' });
+  const p = normalizePlaka(kontrol.plaka);
+  if (!isValidPlakaSerbest(p)) return res.status(400).json({ error: 'Plaka formatı geçersiz.' });
+
+  const daire = await db('daireler')
+    .where({ daire_no: dno, site_id: req.scopedSiteId, aktif: true })
+    .first();
+  if (!daire) return res.status(404).json({ error: `Daire bulunamadı: ${dno}` });
+
+  const baslangic = dayjs(kontrol.yukleme_zamani).toISOString();
+  const gunTR = dayjs(kontrol.yukleme_zamani).tz(TR_TZ).format('YYYY-MM-DD');
+  const bitis = normalizeMisafirZaman(gunTR, true); // o günün 23:59:59 (TR)
+
+  const [created] = await db('misafir_araclar').insert({
+    daire_id: daire.id,
+    plaka: p,
+    baslangic_tarihi: baslangic,
+    bitis_tarihi: bitis,
+    aciklama: 'Kontrol ekranından hızlı misafir',
+    ekleyen_user_id: req.user.id,
+    site_id: req.scopedSiteId,
+  }).returning('*');
+
+  await writeAudit({
+    user_id: req.user.id,
+    site_id: req.scopedSiteId,
+    eylem: 'olustur',
+    tablo_adi: 'misafir_araclar',
+    kayit_id: created.id,
+    yeni_deger: created,
+    ip_adres: req.ip,
+  });
+  res.status(201).json({ misafir: created, daire_no: daire.daire_no });
 });
 
 router.delete('/:id', requireSiteAdmin, async (req, res) => {
