@@ -151,8 +151,14 @@ router.post('/', requireSiteAdmin, async (req, res, next) => {
       });
     }
 
-    // sites.plan güncelle (limit kontrolleri buna bakar)
-    await db('sites').where({ id: req.scopedSiteId }).update({ plan });
+    // sites.plan'ı YALNIZ ödeme tamamlanınca (provider 'active') yükselt.
+    // 'pending' (→ status 'past_due') durumunda checkout henüz tamamlanmadı;
+    // ücretli plan limitleri/özellikleri açılmamalı. Plan, webhook
+    // 'subscription.activated' / 'payment.success' geldiğinde yükseltilir
+    // (routes/webhooks.js). Aksi halde kullanıcı ödeme yapmadan plana erişirdi.
+    if (created.status === 'active') {
+      await db('sites').where({ id: req.scopedSiteId }).update({ plan });
+    }
 
     await writeAudit({
       user_id: req.user.id,

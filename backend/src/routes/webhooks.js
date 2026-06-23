@@ -72,6 +72,9 @@ async function dispatchEvent(providerName, evt) {
       grace_period_ends_at: null,
       updated_at: db.fn.now(),
     });
+    // Ödeme tamamlandı → planı ŞİMDİ yükselt. POST /subscription ödeme
+    // 'pending'ken planı yükseltmiyor; gerçek yükseltme bu noktada olur.
+    await db('sites').where({ id: sub.site_id }).update({ plan: sub.plan });
     return;
   }
 
@@ -122,6 +125,9 @@ async function dispatchEvent(providerName, evt) {
         grace_period_ends_at: null,
         updated_at: db.fn.now(),
       });
+      // İlk aktivasyon (PayTR ilk ödeme past_due'dan gelir) → planı yükselt.
+      // POST /subscription pending'de yükseltmediği için gerçek yükseltme burada.
+      await db('sites').where({ id: sub.site_id }).update({ plan: sub.plan });
     }
     return;
   }

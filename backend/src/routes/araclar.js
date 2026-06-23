@@ -1,12 +1,13 @@
 const express = require('express');
 const db = require('../db');
 const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
+const { requireActiveSubscription } = require('../middleware/subscriptionGuard');
 const { writeAudit } = require('../middleware/audit');
 const { isValidPlakaSerbest, normalizePlaka } = require('../utils/validators');
 
 const router = express.Router();
 
-router.use(authRequired, requireScopedSite);
+router.use(authRequired, requireScopedSite, requireActiveSubscription);
 
 router.get('/', async (req, res) => {
   const { blok, q } = req.query;

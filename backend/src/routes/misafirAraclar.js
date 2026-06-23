@@ -1,12 +1,43 @@
 const express = require('express');
 const db = require('../db');
 const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
+const { requireActiveSubscription } = require('../middleware/subscriptionGuard');
 const { writeAudit } = require('../middleware/audit');
 const { isValidPlakaSerbest, normalizePlaka } = require('../utils/validators');
 const { normalizeMisafirZaman, dayjs, TR_TZ } = require('../utils/timezone');
 
 const router = express.Router();
-router.use(authRequired, requireScopedSite);
+
+// İş kuralı: bir daireye GÜNDE (TR takvim günü) en fazla bu kadar misafir
+// kaydı oluşturulabilir. Suistimal/yanlışlıkla seri kayıt frenidir; sayım
+// olusturma_zamani (kaydın atıldığı an) üzerinden yapılır, baslangic/bitis
+// değil — "kaç kayıt atıldı" sorusunun doğru cevabı odur.
+const MISAFIR_GUNLUK_KOTA_DAIRE = 200;
+
+/**
+ * Bugün (TR) bu daireye atılmış misafir kaydı sayısı kotayı doldurdu mu?
+ * @returns {Promise<{asildi: boolean, mevcut: number}>}
+ */
+async function gunlukKotaDurumu(siteId, daireId) {
+  const bugunTR = dayjs().tz(TR_TZ).format('YYYY-MM-DD');
+  const gunBasi = normalizeMisafirZaman(bugunTR, false);
+  const gunSonu = normalizeMisafirZaman(bugunTR, true);
+  const row = await db('misafir_araclar')
+    .where({ daire_id: daireId, site_id: siteId })
+    .andWhere('olusturma_zamani', '>=', gunBasi)
+    .andWhere('olusturma_zamani', '<=', gunSonu)
+    .count('* as c')
+    .first();
+  const mevcut = parseInt(row.c, 10) || 0;
+  return { asildi: mevcut >= MISAFIR_GUNLUK_KOTA_DAIRE, mevcut };
+}
+
+const kotaMesaji = `Bu daire için bugün en fazla ${MISAFIR_GUNLUK_KOTA_DAIRE} misafir kaydı oluşturulabilir.`;
+
+// Misafir oluşturma (POST /, /hizli) bilinçli olarak güvenlik rolüne de açık
+// (saha operasyon tercihi) — sadece DELETE site_yonetici ister. Tüm mutasyonlar
+// askıya alınmış (suspended) abonelikte requireActiveSubscription ile bloke olur.
+router.use(authRequired, requireScopedSite, requireActiveSubscription);
 
 router.get('/', async (req, res) => {
   const { tarih } = req.query;
@@ -49,6 +80,9 @@ router.post('/', async (req, res) => {
     .where({ id: daire_id, site_id: req.scopedSiteId, aktif: true })
     .first();
   if (!daire) return res.status(404).json({ error: 'Daire bulunamadı.' });
+
+  const kota = await gunlukKotaDurumu(req.scopedSiteId, daire_id);
+  if (kota.asildi) return res.status(429).json({ error: kotaMesaji, kota: MISAFIR_GUNLUK_KOTA_DAIRE, mevcut: kota.mevcut });
 
   const [created] = await db('misafir_araclar').insert({
     daire_id, plaka: p, baslangic_tarihi: baslangic, bitis_tarihi: bitis,
@@ -93,6 +127,9 @@ router.post('/hizli', async (req, res) => {
     .where({ daire_no: dno, site_id: req.scopedSiteId, aktif: true })
     .first();
   if (!daire) return res.status(404).json({ error: `Daire bulunamadı: ${dno}` });
+
+  const kota = await gunlukKotaDurumu(req.scopedSiteId, daire.id);
+  if (kota.asildi) return res.status(429).json({ error: kotaMesaji, kota: MISAFIR_GUNLUK_KOTA_DAIRE, mevcut: kota.mevcut });
 
   const baslangic = dayjs(kontrol.yukleme_zamani).toISOString();
   const gunTR = dayjs(kontrol.yukleme_zamani).tz(TR_TZ).format('YYYY-MM-DD');
