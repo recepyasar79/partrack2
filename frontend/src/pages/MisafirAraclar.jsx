@@ -5,12 +5,20 @@ import { useAuth } from '../auth/AuthContext';
 import { Button } from '../components/ui/Button';
 import { Input } from '../components/ui/Input';
 import { isValidPlakaSerbest, normalizePlaka } from '../utils/validation';
-import { bugunStr, icerideMi } from '../utils/misafir';
+import { icerideMi } from '../utils/misafir';
 
 function nowLocal() {
   const d = new Date();
   const pad = (n) => String(n).padStart(2, '0');
   return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+// Misafir kaydının varsayılan çıkışı: bugünün sonu (23:59). Böylece elle
+// eklenen misafir gün boyu "içeride" kalır; "Çıkış Yap" ile erkene çekilir.
+function endOfTodayLocal() {
+  const d = new Date();
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T23:59`;
 }
 
 function formatTarihSaat(iso) {
@@ -32,7 +40,7 @@ export default function MisafirAraclar() {
     daire_id: '',
     plaka: '',
     baslangic_tarihi: nowLocal(),
-    bitis_tarihi: nowLocal(),
+    bitis_tarihi: endOfTodayLocal(),
     aciklama: '',
   });
   const [busy, setBusy] = useState(false);
@@ -76,7 +84,6 @@ export default function MisafirAraclar() {
     return out;
   }, [form.daire_id, list]);
 
-  const bugun = useMemo(() => bugunStr(), []);
 
   // Arama + "içeridekiler üstte" sıralaması. Aktif misafirler listenin
   // başına alınır; aralarına render'da bir ayraç konur.
@@ -90,12 +97,12 @@ export default function MisafirAraclar() {
           )
         );
     // Array.prototype.sort stabildir → grup içi mevcut sıra (baslangic desc) korunur.
-    return [...base].sort((a, b) => Number(icerideMi(b, bugun)) - Number(icerideMi(a, bugun)));
-  }, [list, q, bugun]);
+    return [...base].sort((a, b) => Number(icerideMi(b)) - Number(icerideMi(a)));
+  }, [list, q]);
 
   const icerideSayisi = useMemo(
-    () => filtered.reduce((n, m) => n + (icerideMi(m, bugun) ? 1 : 0), 0),
-    [filtered, bugun]
+    () => filtered.reduce((n, m) => n + (icerideMi(m) ? 1 : 0), 0),
+    [filtered]
   );
 
   const paged = useMemo(
@@ -263,7 +270,7 @@ export default function MisafirAraclar() {
           <tbody>
             {paged.map((m, i) => {
               const globalIndex = (page - 1) * PER_PAGE + i;
-              const iceride = icerideMi(m, bugun);
+              const iceride = icerideMi(m);
               // Aktif (içeride) grup ile geçmiş kayıtlar arasına ayraç:
               // global index aktif sayısına eşitse bu, ilk geçmiş kayıttır.
               const ayrac = icerideSayisi > 0 && globalIndex === icerideSayisi;

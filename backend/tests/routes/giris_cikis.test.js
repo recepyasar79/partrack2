@@ -50,6 +50,27 @@ describe('Giriş/Çıkış — Çıkış Yap (soft exit)', () => {
     expect(kayit.sure_dk).toBeGreaterThanOrEqual(0);
   });
 
+  test('misafir aracın çıkışında misafir kaydının bitiş (çıkış) saati de güncellenir', async () => {
+    await createTestDaire({ daire_no: 'B5' });
+    const add = await auth(request(app).post('/api/kontroller/manuel')).send({ plaka: '34MIS100' });
+    const kid = add.body.kontrol.id;
+    // Kayıtsız aracı hızlı misafir yap (bitis = günün sonu)
+    const mis = await auth(request(app).post('/api/misafir-araclar/hizli'))
+      .send({ kontrol_id: kid, daire_no: 'B5' });
+    expect(mis.status).toBe(201);
+    const eskiBitis = new Date(mis.body.misafir.bitis_tarihi).getTime();
+
+    const cikis = await auth(request(app).post(`/api/kontroller/${kid}/cikis`));
+    expect(cikis.status).toBe(200);
+    const cikisZ = new Date(cikis.body.kontrol.cikis_zamani).getTime();
+
+    // Misafir kaydının bitişi gün sonundan çıkış anına çekilmeli
+    const row = await db('misafir_araclar').where({ id: mis.body.misafir.id }).first();
+    const yeniBitis = new Date(row.bitis_tarihi).getTime();
+    expect(yeniBitis).toBeLessThan(eskiBitis);
+    expect(Math.abs(yeniBitis - cikisZ)).toBeLessThan(3000);
+  });
+
   test('çıkış idempotent — ikinci çağrı zaten_cikti döner', async () => {
     const a1 = await createTestDaire({ daire_no: 'A2' });
     await createTestArac({ daire_id: a1.id, plaka: '34GC002' });
@@ -93,5 +114,40 @@ describe('Giriş/Çıkış logu — auto-close geçmiş açık oturumlar', () =>
     const kayit = log.body.kayitlar.find((k) => k.id === add.body.kontrol.id);
     expect(kayit.iceride).toBe(true);
     expect(kayit.cikis).toBeNull();
+  });
+});
+
+describe('Daire-Araç raporu — GET /daire-arac', () => {
+  test('yalnız kayıtlı araçlar, daire→plaka→giriş sıralı, daire_no+sahip_ad döner', async () => {
+    const b2 = await createTestDaire({ daire_no: 'B2', sahip_ad: 'Bahçe Sahibi' });
+    const a5 = await createTestDaire({ daire_no: 'A5', sahip_ad: 'Ali Veli' });
+    await createTestArac({ daire_id: b2.id, plaka: '34DA002' });
+    await createTestArac({ daire_id: a5.id, plaka: '34DA001' });
+    await auth(request(app).post('/api/kontroller/manuel')).send({ plaka: '34DA002' });
+    await auth(request(app).post('/api/kontroller/manuel')).send({ plaka: '34DA001' });
+    // Kayıtsız plaka — rapora GİRMEMELİ
+    await auth(request(app).post('/api/kontroller/manuel')).send({ plaka: '34KAYITSIZ9' });
+
+    const res = await auth(request(app).get('/api/kontroller/daire-arac'));
+    expect(res.status).toBe(200);
+    const k = res.body.kayitlar;
+    // Kayıtsız plaka yok
+    expect(k.find((r) => r.plaka === '34KAYITSIZ9')).toBeUndefined();
+    const ilgili = k.filter((r) => ['34DA001', '34DA002'].includes(r.plaka));
+    expect(ilgili.length).toBe(2);
+    // A5 (blok A) B2'den (blok B) önce gelir
+    const iA5 = k.findIndex((r) => r.plaka === '34DA001');
+    const iB2 = k.findIndex((r) => r.plaka === '34DA002');
+    expect(iA5).toBeLessThan(iB2);
+    // daire_no + sahip_ad dolu
+    const row = k.find((r) => r.plaka === '34DA001');
+    expect(row.daire_no).toBe('A5');
+    expect(row.sahip_ad).toBe('Ali Veli');
+    expect(row.giris).toBeTruthy();
+  });
+
+  test('token olmadan 401', async () => {
+    const r = await request(app).get('/api/kontroller/daire-arac');
+    expect(r.status).toBe(401);
   });
 });

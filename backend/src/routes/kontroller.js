@@ -145,6 +145,69 @@ router.get('/log', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Daire-Araç raporu — daireye TANIMLI (kayıtlı) araçların park oturumları,
+// Daire (A1→D34, blok+sıra) → Plaka → Giriş sırasıyla. Varsayılan son 60 gün.
+// /log'tan farkı: yalnız kayıtlı araçlar + daire/plaka/giriş sıralaması.
+// NOT: pencerede hiç giriş/çıkış oturumu olmayan kayıtlı araç listede çıkmaz
+// (oturum bazlı rapor). İş oturunca "hiç girmeyen araç" satırı eklenebilir.
+router.get('/daire-arac', async (req, res, next) => {
+  try {
+    const siteId = req.scopedSiteId;
+    const dayjs = require('dayjs');
+    const { todayTR } = require('../utils/timezone');
+    const bitis = req.query.bitis || todayTR();
+    const baslangic = req.query.baslangic
+      || dayjs(bitis).subtract(60, 'day').format('YYYY-MM-DD');
+    const limit = Math.min(parseInt(req.query.limit, 10) || 5000, 20000);
+
+    await autoCloseGecmisOturumlar(siteId);
+
+    const rows = await db('gunluk_kontroller as gk')
+      .join('araclar as a', function () {
+        this.on('a.plaka', '=', 'gk.plaka').andOn('a.site_id', '=', 'gk.site_id');
+      })
+      .join('daireler as d', 'a.daire_id', 'd.id')
+      .where('gk.site_id', siteId)
+      .andWhere('a.aktif', true)
+      .andWhere('gk.kontrol_tarihi', '>=', baslangic)
+      .andWhere('gk.kontrol_tarihi', '<=', bitis)
+      .whereNotNull('gk.plaka')
+      .where('gk.plaka', '!=', '')
+      .orderBy([
+        { column: 'd.blok', order: 'asc' },
+        { column: 'd.sira_no', order: 'asc' },
+        { column: 'gk.plaka', order: 'asc' },
+        { column: 'gk.yukleme_zamani', order: 'asc' },
+      ])
+      .limit(limit)
+      .select(
+        'gk.id', 'gk.plaka', 'd.daire_no', 'd.sahip_ad',
+        'gk.kontrol_tarihi', 'gk.yukleme_zamani', 'gk.cikis_zamani'
+      );
+
+    const kayitlar = rows.map((r) => {
+      const giris = r.yukleme_zamani;
+      const cikis = r.cikis_zamani;
+      const sure_dk = cikis
+        ? Math.max(0, Math.round((new Date(cikis) - new Date(giris)) / 60000))
+        : null;
+      return {
+        id: r.id,
+        daire_no: r.daire_no,
+        sahip_ad: r.sahip_ad,
+        plaka: r.plaka,
+        kontrol_tarihi: r.kontrol_tarihi,
+        giris,
+        cikis,
+        sure_dk,
+        iceride: !cikis,
+      };
+    });
+
+    res.json({ baslangic, bitis, sayi: kayitlar.length, kayitlar });
+  } catch (e) { next(e); }
+});
+
 router.get('/:id/foto', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
@@ -488,6 +551,21 @@ router.post('/:id/cikis', async (req, res, next) => {
       .where({ id, site_id: req.scopedSiteId })
       .update({ cikis_zamani: db.fn.now() })
       .returning('*');
+
+    // Bu plaka aynı anda bir misafir olarak da içerideyse, misafir kaydının
+    // çıkışını (bitis_tarihi) de aynı ana çek → misafir listesinde de "içeride"
+    // düşer ve çıkış saati gerçek çıkışı gösterir. Yalnız o an aktif olan(lar)ı
+    // ve sadece kısaltacak şekilde günceller (bitis >= çıkış).
+    const pCikis = normalizePlaka(k.plaka || '');
+    if (pCikis) {
+      await db('misafir_araclar')
+        .where('site_id', req.scopedSiteId)
+        .andWhere('plaka', pCikis)
+        .andWhere('baslangic_tarihi', '<=', updated.cikis_zamani)
+        .andWhere('bitis_tarihi', '>=', updated.cikis_zamani)
+        .update({ bitis_tarihi: updated.cikis_zamani });
+    }
+
     await writeAudit({
       user_id: req.user.id,
       site_id: req.scopedSiteId,

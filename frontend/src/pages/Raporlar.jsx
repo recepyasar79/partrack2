@@ -12,6 +12,7 @@ const EmailSchedulesPanel = lazy(() => import('../components/EmailSchedulesPanel
 const TABS = [
   { id: 'dashboard', label: 'Özet' },
   { id: 'giris_cikis', label: 'Giriş/Çıkış' },
+  { id: 'daire_arac', label: 'Daire-Araç' },
   { id: 'ihlal', label: 'İhlal Geçmişi' },
   { id: 'ozet', label: 'Daire Özeti' },
   { id: 'bildirim', label: 'Bildirim Logları' },
@@ -49,6 +50,7 @@ export default function Raporlar() {
   const [ozet, setOzet] = useState([]);
   const [bildirimler, setBildirimler] = useState([]);
   const [girisLog, setGirisLog] = useState([]);
+  const [daireArac, setDaireArac] = useState([]);
 
   async function loadGirisLog() {
     try {
@@ -56,6 +58,15 @@ export default function Raporlar() {
         params: { baslangic: filt.baslangic, bitis: filt.bitis },
       });
       setGirisLog(data.kayitlar);
+    } catch (e) { toast.error(apiError(e)); }
+  }
+
+  async function loadDaireArac() {
+    try {
+      const { data } = await api.get('/kontroller/daire-arac', {
+        params: { baslangic: filt.baslangic, bitis: filt.bitis },
+      });
+      setDaireArac(data.kayitlar);
     } catch (e) { toast.error(apiError(e)); }
   }
 
@@ -89,6 +100,7 @@ export default function Raporlar() {
     else if (tab === 'ozet') loadOzet();
     else if (tab === 'bildirim') loadBildirim();
     else if (tab === 'giris_cikis') loadGirisLog();
+    else if (tab === 'daire_arac') loadDaireArac();
   }, [tab, filt.baslangic, filt.bitis, filt.durum]); // eslint-disable-line
 
   function exportCsv() {
@@ -120,6 +132,16 @@ export default function Raporlar() {
         { key: 'sure_dk', label: 'Süre (dk)', get: (r) => (r.sure_dk ?? '') },
       ]);
       downloadCSV(`giris_cikis_${tarih}.csv`, csv);
+    } else if (tab === 'daire_arac') {
+      const csv = toCSV(daireArac, [
+        { key: 'daire_no', label: 'Daire', get: (r) => r.daire_no || '' },
+        { key: 'sahip_ad', label: 'Adı Soyadı', get: (r) => r.sahip_ad || '' },
+        { key: 'plaka', label: 'Plaka' },
+        { key: 'giris', label: 'Giriş', get: (r) => new Date(r.giris).toLocaleString('tr-TR') },
+        { key: 'cikis', label: 'Çıkış', get: (r) => (r.cikis ? new Date(r.cikis).toLocaleString('tr-TR') : 'İçeride') },
+        { key: 'sure_dk', label: 'Süre (dk)', get: (r) => (r.sure_dk ?? '') },
+      ]);
+      downloadCSV(`daire_arac_${tarih}.csv`, csv);
     } else {
       const csv = toCSV(bildirimler, [
         { key: 'olusturma_zamani', label: 'Zaman' },
@@ -209,6 +231,20 @@ export default function Raporlar() {
           ]),
         });
         pdf.save(`giris_cikis_${tarih}.pdf`);
+      } else if (tab === 'daire_arac') {
+        const pdf = await newRaporPDF({ baslik: 'Daire-Araç Raporu', altBaslik: `Dönem: ${donem} • ${daireArac.length} kayıt` });
+        pdf.addTable({
+          head: [['Daire', 'Adı Soyadı', 'Plaka', 'Giriş', 'Çıkış', 'Süre']],
+          body: daireArac.map((g) => [
+            g.daire_no || '—',
+            g.sahip_ad || '—',
+            g.plaka,
+            new Date(g.giris).toLocaleString('tr-TR'),
+            g.cikis ? new Date(g.cikis).toLocaleString('tr-TR') : 'İçeride',
+            fmtSure(g.sure_dk),
+          ]),
+        });
+        pdf.save(`daire_arac_${tarih}.pdf`);
       } else if (tab === 'bildirim') {
         const pdf = await newRaporPDF({ baslik: 'Bildirim Logları', altBaslik: `Dönem: ${donem} • ${bildirimler.length} kayıt` });
         pdf.addTable({
@@ -333,6 +369,42 @@ export default function Raporlar() {
               ))}
               {girisLog.length === 0 && (
                 <tr><td colSpan={5} className="p-6 text-center text-slate-500 dark:text-slate-400">Kayıt yok.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </div>
+      )}
+
+      {tab === 'daire_arac' && (
+        <div className="bg-white dark:bg-slate-900 rounded-2xl shadow dark:shadow-black/30 border border-transparent dark:border-slate-800 overflow-x-auto">
+          <table className="w-full text-base">
+            <thead className="bg-slate-100 dark:bg-slate-800 text-left text-slate-700 dark:text-slate-200">
+              <tr>
+                <th className="p-3">Daire</th>
+                <th className="p-3 hidden sm:table-cell">Adı Soyadı</th>
+                <th className="p-3">Plaka</th>
+                <th className="p-3 whitespace-nowrap">Giriş</th>
+                <th className="p-3 whitespace-nowrap">Çıkış</th>
+                <th className="p-3 hidden sm:table-cell">Süre</th>
+              </tr>
+            </thead>
+            <tbody>
+              {daireArac.map((g) => (
+                <tr key={g.id} className="border-t border-slate-100 dark:border-slate-800 text-slate-800 dark:text-slate-200">
+                  <td className="p-3 font-mono font-semibold">{g.daire_no}</td>
+                  <td className="p-3 hidden sm:table-cell">{g.sahip_ad || '—'}</td>
+                  <td className="p-3 font-mono">{g.plaka}</td>
+                  <td className="p-3 text-xs whitespace-nowrap">{new Date(g.giris).toLocaleString('tr-TR')}</td>
+                  <td className="p-3 text-xs whitespace-nowrap">
+                    {g.cikis
+                      ? new Date(g.cikis).toLocaleString('tr-TR')
+                      : <span className="inline-flex items-center text-emerald-700 dark:text-emerald-300 font-medium bg-emerald-50 dark:bg-emerald-900/30 rounded px-1.5 py-0.5">İçeride</span>}
+                  </td>
+                  <td className="p-3 hidden sm:table-cell whitespace-nowrap">{fmtSure(g.sure_dk)}</td>
+                </tr>
+              ))}
+              {daireArac.length === 0 && (
+                <tr><td colSpan={6} className="p-6 text-center text-slate-500 dark:text-slate-400">Kayıt yok.</td></tr>
               )}
             </tbody>
           </table>
