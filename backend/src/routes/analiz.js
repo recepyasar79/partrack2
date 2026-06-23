@@ -300,30 +300,35 @@ async function dairBasinaPlakalar(siteId, tarih) {
 }
 
 /**
- * Header kutucuğu için hafif özet: o gün içeride tespit edilen toplam araç
- * sayısı ve bunların kaçının misafir olduğu. Çeteleyle aynı eşleştirme mantığı
- * (kayıtlı + gün-bazlı misafir; kayıtsız sayılmaz). Misafir, kayıtlıya göre
- * önceliklidir — dairBasinaPlakalar ile tutarlı.
+ * Header kutucuğu için hafif özet: o gün İÇERİDE olan toplam araç sayısı ve
+ * bunların kaçının misafir olduğu. Sayı, Kontrol sayfasındaki "Site içindeki
+ * araçlar" listesiyle BİREBİR aynı kümeyi sayar (routes/kontroller.js GET /):
+ * açık oturum satırlarının tamamı — boş plaka ve kayıtsız plakalar dahil,
+ * tekrarlanan plakalar ayrı satır (her satır bir park oturumu = fiziksel araç).
+ * misafir_arac = listedeki yeşil "misafir" rozeti mantığı: plaka kayıtlı DEĞİL
+ * ama o gün aktif misafir olan satırlar (kayıtlı, misafire göre önceliklidir).
  * @returns {Promise<{ icerideki_arac: number, misafir_arac: number }>}
  */
 async function iceriOzet(siteId, tarih) {
+  // Liste ile aynı sorgu: cikis_zamani NULL olan tüm satırlar (plaka filtresi
+  // YOK — boş/kayıtsız da içeride sayılır ki header listedeki sayıya eşit olsun).
   const kontroller = await db('gunluk_kontroller')
     .where({ kontrol_tarihi: tarih, site_id: siteId })
-    .whereNull('cikis_zamani') // yalnız hâlâ içeride
-    .whereNotNull('plaka')
-    .where('plaka', '!=', '');
-  const gorulen = new Set();
-  for (const k of kontroller) {
-    const p = normalizePlaka(k.plaka);
-    if (p) gorulen.add(p);
-  }
-  if (!gorulen.size) return { icerideki_arac: 0, misafir_arac: 0 };
+    .whereNull('cikis_zamani')
+    .select('plaka');
+  const icerideki = kontroller.length;
+  if (!icerideki) return { icerideki_arac: 0, misafir_arac: 0 };
+
+  // Misafir rozeti: plaka kayıtlı değilse ama bugün aktif misafirse misafir say.
+  const plakalar = [...new Set(
+    kontroller.map((k) => normalizePlaka(k.plaka)).filter(Boolean)
+  )];
 
   const aktifAraclar = await db('araclar')
     .where({ site_id: siteId, aktif: true })
-    .select('plaka', 'daire_id');
-  const plakaToDaire = new Map();
-  for (const a of aktifAraclar) plakaToDaire.set(normalizePlaka(a.plaka), a.daire_id);
+    .whereIn('plaka', plakalar.length ? plakalar : [''])
+    .select('plaka');
+  const kayitliSet = new Set(aktifAraclar.map((a) => normalizePlaka(a.plaka)));
 
   const gunBasi = normalizeMisafirZaman(tarih, false);
   const gunSonu = normalizeMisafirZaman(tarih, true);
@@ -331,20 +336,15 @@ async function iceriOzet(siteId, tarih) {
     .where('site_id', siteId)
     .andWhere('baslangic_tarihi', '<=', gunSonu)
     .andWhere('bitis_tarihi', '>=', gunBasi)
-    .select('plaka', 'daire_id');
-  const misafirToDaire = new Map();
-  for (const m of misafirler) misafirToDaire.set(normalizePlaka(m.plaka), m.daire_id);
+    .whereIn('plaka', plakalar.length ? plakalar : [''])
+    .select('plaka');
+  const misafirSet = new Set(misafirler.map((m) => normalizePlaka(m.plaka)));
 
-  let icerideki = 0;
   let misafir = 0;
-  for (const p of gorulen) {
-    if (misafirToDaire.has(p)) {
-      icerideki += 1;
-      misafir += 1;
-    } else if (plakaToDaire.has(p)) {
-      icerideki += 1;
-    }
-    // kayıtsız → sayılmaz
+  for (const k of kontroller) {
+    const p = normalizePlaka(k.plaka);
+    // Kayıtlı önceliklidir; yalnız kayıtlı OLMAYAN ama misafir olan satır say.
+    if (p && !kayitliSet.has(p) && misafirSet.has(p)) misafir += 1;
   }
   return { icerideki_arac: icerideki, misafir_arac: misafir };
 }

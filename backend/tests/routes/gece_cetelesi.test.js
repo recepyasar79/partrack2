@@ -132,13 +132,30 @@ describe('Gece Çetelesi özeti (header kutucuğu)', () => {
     await gorulen('34AA001');
     await gorulen('34AA002');
     await gorulen('34MIS001');
-    await gorulen('34XX999'); // kayıtsız → sayılmaz
+    await gorulen('34XX999'); // kayıtsız → header artık liste ile aynı, İÇERİDE sayılır
 
     const res = await auth(request(app).get('/api/kontroller/gece-cetelesi/ozet'));
     expect(res.status).toBe(200);
-    expect(res.body.icerideki_arac).toBe(3); // 2 kayıtlı + 1 misafir
+    // Kontrol listesiyle birebir: tüm açık oturumlar (2 kayıtlı + 1 misafir + 1 kayıtsız)
+    expect(res.body.icerideki_arac).toBe(4);
     expect(res.body.misafir_arac).toBe(1);
     expect(res.body.park_kapasitesi).toBe(138); // migration backfill (site 1)
+  });
+
+  test('özet, Kontrol listesiyle aynı sayıyı verir (boş plaka + mükerrer dahil)', async () => {
+    const a1 = await createTestDaire({ daire_no: 'A1' });
+    await createTestArac({ daire_id: a1.id, plaka: '34AA001' });
+    await gorulen('34AA001');
+    await gorulen('34AA001'); // aynı plaka 2. kez → 2 açık oturum (liste 2 satır)
+    await gorulen('34XX999'); // kayıtsız
+    await gorulen('');        // OCR plaka bulamadı (boş) — yine içeride bir araç
+
+    const liste = await auth(request(app).get('/api/kontroller/'));
+    const ozet = await auth(request(app).get('/api/kontroller/gece-cetelesi/ozet'));
+    // Header sayısı, listedeki satır sayısına BİREBİR eşit olmalı.
+    expect(ozet.body.icerideki_arac).toBe(liste.body.kontroller.length);
+    expect(ozet.body.icerideki_arac).toBe(4);
+    expect(ozet.body.misafir_arac).toBe(0);
   });
 
   test('yükleme yokken sıfır döner', async () => {

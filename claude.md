@@ -31,6 +31,24 @@
 **Test:** `routes/giris_cikis.test.js` (cikis düşer+log'da kalir, idempotent, 404/401, auto-close gecmis vs bugun). Mevcut `gece_cetelesi`/`kontroller` testleri etkilenmez (fresh insert cikis_zamani NULL = icerde). (Lokal test DB 5433 kapali → CI'da dogrulanir.)
 **Acik konu:** Ayni plakanin ayni aksam iki kez yuklenmesi → iki acik oturum (cetele Set ile dedup sayar; log'da cift gorunur). Gercek kapi-kontrolu/dedup "is oturunca" ele alinacak.
 
+## Header "İçeride" = Kontrol listesiyle eşitlendi (2026-06-23)
+
+**Sorun:** Kontrol sayfasi "Site icindeki araclar (124)" gosterirken header "İçeride" rozeti **121** gosteriyordu; gece boyu sabit **3** fark.
+**Kok neden:** Iki sayi farkli kume sayiyordu. `GET /kontroller/` (liste) `whereNull(cikis_zamani)` olan **tum acik oturum satirlarini** sayar (bos plaka + kayitsiz + mukerrer dahil, dedup yok). Header `iceriOzet` (`analiz.js`) ise `whereNotNull(plaka)` + `Set` dedup + yalniz **kayitli+misafir** sayiyordu → bos plaka, kayitsiz ve mukerrer plakalar dususuyordu. Sabit 3 = gece boyu park eden ~3 kayitsiz/bos/mukerrer kayit.
+**Karar (kullanici):** Header listeyle eşitlensin (park doluluğu = gorevlinin fiziksel listesi).
+**Cozum:** `iceriOzet` artik liste ile **AYNI sorguyu** kullaniyor: `whereNull(cikis_zamani)` tum satirlar, plaka filtresi YOK → `icerideki_arac = satir sayisi` (liste uzunluguna birebir esit). `misafir_arac` = listedeki yesil rozet mantigi (plaka kayitli DEGIL ama o gun aktif misafir olan satirlar; kayitli misafire onceliklidir). Frontend degismedi — rozet `icerideki_arac` okur, "Müsait" = kapasite−içeride otomatik dogrulanir.
+**Test:** `gece_cetelesi.test.js` ozet describe guncellendi (kayitsiz artik İÇERİDE sayilir → 4; yeni test: ozet `icerideki_arac` == liste `kontroller.length`, bos+mukerrer dahil). (Lokal test DB 5433 kapali → CI'da dogrulanir.)
+
+## Hizli misafir + cikis senkronu + Daire-Arac raporu (2026-06-22)
+
+**Istek (3 parca):** (1) Kontrol ekranindaki kayitsiz araci misafir ekranina gitmeden tek hamlede daireye misafir yap. (2) Misafir araci "Çıkış Yap" yapilinca misafir tarafinda da iceriden dussun + cikis saati guncellensin. (3) Raporlara "Daire-Araç" raporu (daireye tanimli araclarin Daire→Plaka→Giris/Cikis sirali listesi).
+**Cozum:**
+- **Hizli misafir:** `POST /api/misafir-araclar/hizli {kontrol_id, daire_no}` — giris=kaydin yukleme_zamani (birebir), cikis=o gunun (TR) 23:59. Gorevli yalniz daire no girer. Frontend `Kontrol.jsx` kayitsiz rozetinin altinda **"+ Misafir yap"** inline input (Enter/Esc), kayit sonrasi `loadBugun()` → rozet "B3 · misafir"e doner.
+- **Cikis senkronu:** `POST /kontroller/:id/cikis` artik cikis damgaladiktan sonra **ayni plakanin o an aktif misafir kaydinin `bitis_tarihi`'ni cikis anina ceker** (yalniz aktif + kisaltma yonunde: `baslangic<=cikis<=bitis`). Frontend `utils/misafir.js icerideMi` **tarih-bazli → SAAT-bazli** (`baslangic<=now<=bitis`) oldu; boylece bitis cikis anina cekilince misafir listesinde "İçeride" duser ve cikis saati gercek cikisi gosterir. `MisafirAraclar.jsx` form bitis varsayilani `nowLocal()` → **`endOfTodayLocal()` (bugun 23:59)** (saat-bazli icerideMi ile elle eklenen misafir gun boyu icerde kalsin; regresyon onlendi). `icerideMi(m, bugun)` cagrilari → `icerideMi(m)` (AksamKontrolu zaten oyleydi).
+- **Daire-Araç raporu:** `GET /api/kontroller/daire-arac` — kayitli araclarin (araclar⋈daireler) park oturumlari, **Daire (blok+sira) → Plaka → Giris** sirali; daire_no·sahip_ad·giris·cikis·sure·iceride. Frontend `Raporlar.jsx` yeni **"Daire-Araç"** sekmesi + CSV + PDF.
+**Edge (is oturunca revize):** (a) hizli misafir gece 00:00-08:00 girilirse "o gun"=takvim gunu; operasyon gunu (ceteleGunuTR) bir oncekine dusmusse rozet hemen donmeyebilir (kayit dogru olusur). (b) Cikis, COK GUNLU misafir yetkisini de erken bitirir (cikis=ayrilis modeli geregi kabul). (c) Daire-Araç raporu oturum-bazli: pencerede hic girisi olmayan kayitli arac listede cikmaz.
+**Test:** `misafir-araclar.test.js` (hizli: 201+giris/cikis zamani+404/400/401), `giris_cikis.test.js` (misafir cikis senkronu: bitis cikis anina cekilir; Daire-Araç: yalniz kayitli+sirali+kayitsiz dislanir+401). (Lokal test DB 5433 kapali → CI'da dogrulanir.)
+
 ## Site park kapasitesi + header "Park Yeri / İçeride" kutucugu (2026-06-20)
 
 **Istek:** Her site icin toplam park (otopark) adedi tutulsun; superadmin site tanimlarken/sonradan set etsin (aktif site id=1 icin **138**). Header'da kullanici adinin SOLUNA renkli kutucuklarla **Park Yeri Sayisi / Icerideki Arac Sayisi**; iceride misafir varsa **(x misafir)** notu.
