@@ -103,6 +103,47 @@ describe('POST /api/misafir-araclar', () => {
     expect(res.status).toBe(400);
   });
 
+  test('günlük kota: aynı daireye bugün 200 kayıttan sonra 429', async () => {
+    const daire = await createTestDaire({ daire_no: 'A9' });
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = Array.from({ length: 200 }, (_, i) => ({
+      site_id: 1,
+      daire_id: daire.id,
+      plaka: `34KT${i}`,
+      baslangic_tarihi: today,
+      bitis_tarihi: today,
+      ekleyen_user_id: admin.id,
+    }));
+    await db('misafir_araclar').insert(rows);
+    const res = await request(app)
+      .post('/api/misafir-araclar')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ site_id: 1, daire_id: daire.id, plaka: '34ZZ99', baslangic_tarihi: today, bitis_tarihi: today });
+    expect(res.status).toBe(429);
+    expect(res.body.kota).toBe(200);
+    expect(res.body.mevcut).toBe(200);
+  });
+
+  test('günlük kota daire başına ayrı — dolu daire başka daireyi etkilemez', async () => {
+    const dolu = await createTestDaire({ daire_no: 'A10' });
+    const bos = await createTestDaire({ daire_no: 'A11' });
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = Array.from({ length: 200 }, (_, i) => ({
+      site_id: 1,
+      daire_id: dolu.id,
+      plaka: `34KU${i}`,
+      baslangic_tarihi: today,
+      bitis_tarihi: today,
+      ekleyen_user_id: admin.id,
+    }));
+    await db('misafir_araclar').insert(rows);
+    const res = await request(app)
+      .post('/api/misafir-araclar')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ site_id: 1, daire_id: bos.id, plaka: '34BOS01', baslangic_tarihi: today, bitis_tarihi: today });
+    expect(res.status).toBe(201);
+  });
+
   test('guvenlik de misafir ekleyebilir', async () => {
     const daire = await createTestDaire({ daire_no: 'A6' });
     const today = new Date().toISOString().slice(0, 10);
@@ -151,6 +192,26 @@ describe('POST /api/misafir-araclar/hizli', () => {
     // Çıkış = aynı günün sonu (23:59); başlangıçtan sonra ve aynı takvim günü
     expect(new Date(res.body.misafir.bitis_tarihi).getTime())
       .toBeGreaterThan(new Date(yukleme).getTime());
+  });
+
+  test('günlük kota dolu daireye hızlı misafir → 429', async () => {
+    const daire = await createTestDaire({ daire_no: 'B9' });
+    const today = new Date().toISOString().slice(0, 10);
+    const rows = Array.from({ length: 200 }, (_, i) => ({
+      site_id: 1,
+      daire_id: daire.id,
+      plaka: `34HK${i}`,
+      baslangic_tarihi: today,
+      bitis_tarihi: today,
+      ekleyen_user_id: admin.id,
+    }));
+    await db('misafir_araclar').insert(rows);
+    const k = await kontrolEkle('34HIZKOTA');
+    const res = await request(app)
+      .post('/api/misafir-araclar/hizli')
+      .set('Authorization', `Bearer ${guardToken}`)
+      .send({ kontrol_id: k.id, daire_no: 'B9' });
+    expect(res.status).toBe(429);
   });
 
   test('olmayan daire ile 404', async () => {

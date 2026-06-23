@@ -1,13 +1,14 @@
 const express = require('express');
 const db = require('../db');
 const { authRequired, requireScopedSite, requireSiteAdmin } = require('../middleware/auth');
+const { requireActiveSubscription } = require('../middleware/subscriptionGuard');
 const { writeAudit } = require('../middleware/audit');
 const { sendTemplate, buildMessage, sendSummaryTemplate } = require('../services/whatsapp');
 const { isValidTelefon } = require('../utils/validators');
 const { ceteleGunuTR } = require('../utils/timezone');
 
 const router = express.Router();
-router.use(authRequired, requireScopedSite);
+router.use(authRequired, requireScopedSite, requireActiveSubscription);
 const MAX_DENEME = 3;
 const MAX_BILDIRIM_TEL = 5;
 

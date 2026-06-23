@@ -52,6 +52,41 @@ describe('POST /api/site/subscription', () => {
     expect(r.body.invoice.status).toBe('paid');
   });
 
+  test('ödeme active → sites.plan hemen yükselir', async () => {
+    await db('sites').where({ id: 1 }).update({ plan: 'baslangic' });
+    const r = await request(app)
+      .post('/api/site/subscription')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ plan: 'standart', cycle: 'monthly' });
+    expect(r.status).toBe(201);
+    const site = await db('sites').where({ id: 1 }).first();
+    expect(site.plan).toBe('standart');
+  });
+
+  test('ödeme pending → sub past_due VE sites.plan yükselmez (ödeme öncesi plan açılmaz)', async () => {
+    const billingMock = require('../../src/services/billing/mock');
+    const spy = jest.spyOn(billingMock, 'createSubscription').mockResolvedValue({
+      provider_subscription_id: 'mocksub_pending_route',
+      checkout_url: 'https://mock-checkout.example/go',
+      status: 'pending',
+    });
+    await db('sites').where({ id: 1 }).update({ plan: 'baslangic' });
+    try {
+      const r = await request(app)
+        .post('/api/site/subscription')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ plan: 'standart', cycle: 'monthly' });
+      expect(r.status).toBe(201);
+      expect(r.body.subscription.status).toBe('past_due');
+      expect(r.body.invoice.status).toBe('pending');
+      expect(r.body.checkout_url).toBeTruthy();
+      const site = await db('sites').where({ id: 1 }).first();
+      expect(site.plan).toBe('baslangic'); // ödeme tamamlanana kadar yükselmez
+    } finally {
+      spy.mockRestore();
+    }
+  });
+
   test('aktif abonelik varsa 409', async () => {
     await request(app).post('/api/site/subscription')
       .set('Authorization', `Bearer ${adminToken}`)
@@ -109,6 +144,52 @@ describe('GET /api/site/subscription', () => {
     expect(r.status).toBe(200);
     expect(r.body.subscription.plan).toBe('standart');
     expect(r.body.invoices.length).toBe(1);
+  });
+});
+
+describe('requireActiveSubscription guard (wiring)', () => {
+  function insertSub(status, extra = {}) {
+    return db('subscriptions').insert({
+      site_id: 1, plan: 'standart', billing_cycle: 'monthly', status,
+      provider: 'mock', provider_subscription_id: `mocksub_${status}_${Date.now()}`,
+      current_period_start: new Date(),
+      current_period_end: new Date(Date.now() + 30 * 86400 * 1000),
+      ...extra,
+    });
+  }
+
+  test('suspended sub → mutating 402, okuma (GET) serbest', async () => {
+    await insertSub('suspended', { grace_period_ends_at: new Date(Date.now() - 86400 * 1000) });
+    // Mutating: POST daire → guard route handler'dan ÖNCE 402 döner (body geçerliliği önemsiz)
+    const post = await request(app)
+      .post('/api/daireler')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ daire_no: 'A1', sahip_ad: 'X', sahip_tel: '05551234567' });
+    expect(post.status).toBe(402);
+    expect(post.body.reason).toBe('subscription_suspended');
+    // Okuma: GET daireler → serbest
+    const get = await request(app)
+      .get('/api/daireler')
+      .set('Authorization', `Bearer ${adminToken}`);
+    expect(get.status).toBe(200);
+  });
+
+  test('active sub → mutating gate geçer (402 değil)', async () => {
+    await insertSub('active');
+    const post = await request(app)
+      .post('/api/daireler')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ daire_no: 'A3', sahip_ad: 'Y', sahip_tel: '05551234567' });
+    expect(post.status).not.toBe(402);
+  });
+
+  test('abonelik yok (baslangic ücretsiz) → mutating gate geçer', async () => {
+    // subscriptions boş (beforeEach temizliyor) → guard izin verir
+    const post = await request(app)
+      .post('/api/daireler')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ daire_no: 'A4', sahip_ad: 'Z', sahip_tel: '05551234567' });
+    expect(post.status).not.toBe(402);
   });
 });
 

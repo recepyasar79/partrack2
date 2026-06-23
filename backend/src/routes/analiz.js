@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { authRequired, requireScopedSite } = require('../middleware/auth');
+const { requireActiveSubscription } = require('../middleware/subscriptionGuard');
 const { writeAudit } = require('../middleware/audit');
 const { detectViolations } = require('../utils/violations');
 const { ceteleGunuTR, normalizeMisafirZaman } = require('../utils/timezone');
@@ -8,7 +9,7 @@ const { normalizePlaka } = require('../utils/validators');
 
 const router = express.Router();
 
-router.use(authRequired, requireScopedSite);
+router.use(authRequired, requireScopedSite, requireActiveSubscription);
 
 const IHLAL_MESAJI =
   'Sayın {sahip}, {daire} numaralı dairenize tanımlı birden fazla araç ({plakalar}) site otoparkında tespit edildi. ' +

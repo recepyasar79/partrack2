@@ -3,6 +3,7 @@ const path = require('path');
 const fs = require('fs');
 const db = require('../db');
 const { authRequired, requireScopedSite } = require('../middleware/auth');
+const { requireActiveSubscription } = require('../middleware/subscriptionGuard');
 const { writeAudit } = require('../middleware/audit');
 const { buildUpload, isR2Configured, sniffImageType } = require('../services/storage');
 const { ceteleGunuTR, normalizeMisafirZaman } = require('../utils/timezone');
@@ -22,7 +23,7 @@ const router = express.Router();
 const storage = buildUpload();
 
 // Tüm endpoint'ler için site_id zorunlu
-router.use(authRequired, requireScopedSite);
+router.use(authRequired, requireScopedSite, requireActiveSubscription);
 
 router.get('/', async (req, res) => {
   // Operasyon günü: sabah 08:00'e kadar bir önceki güne sayılır. Gece kontrolü

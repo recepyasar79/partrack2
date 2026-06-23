@@ -19,6 +19,12 @@ const db = require('../db');
 
 async function requireActiveSubscription(req, res, next) {
   try {
+    // Okuma serbest — kullanıcı verisini görmeye + ödeme yapmaya devam
+    // edebilsin ("ödeme bekleniyor" UX'i). Yalnız mutating method'lar gate'lenir.
+    // Bu sayede guard tek satırla router.use zincirine eklenebilir.
+    if (req.method === 'GET' || req.method === 'HEAD' || req.method === 'OPTIONS') {
+      return next();
+    }
     const siteId = req.scopedSiteId;
     if (siteId == null) {
       return res.status(400).json({ error: 'site_id gerekli.' });

@@ -84,6 +84,40 @@ describe('POST /api/webhooks/iyzico', () => {
     expect(updated.grace_period_ends_at).toBeNull();
   });
 
+  test('subscription.activated → sites.plan yükselir (ödeme öncesi açılmamıştı)', async () => {
+    await db('sites').where({ id: 1 }).update({ plan: 'baslangic' });
+    await seedActiveSub({ status: 'past_due', refCode: 'iyz_plan_up' });
+    const body = JSON.stringify({
+      eventType: 'subscription.activated',
+      subscriptionReferenceCode: 'iyz_plan_up',
+    });
+    await request(app)
+      .post('/api/webhooks/iyzico')
+      .set('Content-Type', 'application/json')
+      .set('x-iyz-signature-v3', sign(body))
+      .send(body);
+    const site = await db('sites').where({ id: 1 }).first();
+    expect(site.plan).toBe('standart');
+  });
+
+  test('past_due→active payment.success → sites.plan yükselir', async () => {
+    await db('sites').where({ id: 1 }).update({ plan: 'baslangic' });
+    await seedActiveSub({ status: 'past_due', refCode: 'iyz_plan_pay' });
+    const body = JSON.stringify({
+      eventType: 'payment.success',
+      subscriptionReferenceCode: 'iyz_plan_pay',
+      paymentId: 'iyz_plan_pay_1',
+      paymentStatus: 'SUCCESS',
+    });
+    await request(app)
+      .post('/api/webhooks/iyzico')
+      .set('Content-Type', 'application/json')
+      .set('x-iyz-signature-v3', sign(body))
+      .send(body);
+    const site = await db('sites').where({ id: 1 }).first();
+    expect(site.plan).toBe('standart');
+  });
+
   test('payment.success → invoice paid + payment_attempts insert', async () => {
     const { sub, inv } = await seedActiveSub({ refCode: 'iyz_pay_1' });
     const body = JSON.stringify({

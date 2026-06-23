@@ -6,8 +6,21 @@ const { hashPassword } = require('../../backend/src/utils/auth');
  * (02_bootstrap_superadmin.js) ve farklı env vars var.
  */
 exports.seed = async function (knex) {
-  const adminUser = process.env.BOOTSTRAP_ADMIN_USER || 'admin';
-  const adminPass = process.env.BOOTSTRAP_ADMIN_PASS || 'ChangeMeOnFirstLogin!';
+  const adminUser = process.env.BOOTSTRAP_ADMIN_USER;
+  const adminPass = process.env.BOOTSTRAP_ADMIN_PASS;
+
+  // GÜVENLİK: varsayılan kimlik bilgisi YOK. Env set değilse seed atlanır.
+  // Aksi halde fresh prod'da bilinen `admin` / sabit şifreli bir site_yonetici
+  // oluşur; default site slug'ı da sabit olduğundan login yüzeyi tamamen
+  // tahmin edilebilir hale gelir (02_bootstrap_superadmin ile aynı kalıp).
+  if (!adminUser || !adminPass) {
+    console.log('[seed] BOOTSTRAP_ADMIN_USER/PASS set değil, bootstrap admin seed atlanıyor.');
+    return;
+  }
+  if (adminPass.length < 10) {
+    console.warn('[seed] BOOTSTRAP_ADMIN_PASS çok kısa (<10 karakter), bootstrap admin seed atlanıyor.');
+    return;
+  }
 
   const existing = await knex('users').where({ kullanici_adi: adminUser }).first();
   if (existing) {

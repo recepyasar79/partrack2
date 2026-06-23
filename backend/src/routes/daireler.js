@@ -1,6 +1,7 @@
 const express = require('express');
 const db = require('../db');
 const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middleware/auth');
+const { requireActiveSubscription } = require('../middleware/subscriptionGuard');
 const { writeAudit } = require('../middleware/audit');
 const { isValidTelefon } = require('../utils/validators');
 const { isValidDaireInSite, parseDaireNoFlexible } = require('../utils/siteYapisi');
@@ -29,7 +30,7 @@ const ikinciAracKotaMesaji = (kapasite) =>
 // Tüm endpoint'ler authRequired + requireScopedSite ile başlar — site_id
 // zorunlu. Site-bağlı user'lar otomatik kendi site'sini görür, superadmin
 // '?siteId=N' parametresiyle başka site'ye geçiş yapar.
-router.use(authRequired, requireScopedSite);
+router.use(authRequired, requireScopedSite, requireActiveSubscription);
 
 router.get('/', async (req, res) => {
   const { blok, q, includeInactive } = req.query;
