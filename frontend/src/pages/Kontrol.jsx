@@ -1045,9 +1045,45 @@ function ManuelPlakaModal({ onClose, onSaved }) {
   const toast = useToast();
   const [plaka, setPlaka] = useState('');
   const [busy, setBusy] = useState(false);
+  const [oneriler, setOneriler] = useState([]);
+  const [ariyor, setAriyor] = useState(false);
+  // Seçim yapıldıktan sonra aynı değer için tekrar arama yapıp listeyi
+  // yeniden açmamak için son seçileni hatırla.
+  const secilenRef = useRef('');
 
-  async function kaydet() {
-    const p = normalizePlaka(plaka);
+  // Son 3 hane senaryosu: kullanıcı yazdıkça eşleşen kayıtlı + misafir
+  // plakaları getir (debounce'lu). Görevli listeden seçince tam plaka dolar.
+  useEffect(() => {
+    const q = plaka.toUpperCase().replace(/[^0-9A-Z]/g, '');
+    if (q.length < 2 || q === secilenRef.current) {
+      setOneriler([]);
+      setAriyor(false);
+      return;
+    }
+    setAriyor(true);
+    const t = setTimeout(async () => {
+      try {
+        const { data } = await api.get('/kontroller/plaka-ara', { params: { q } });
+        setOneriler(data.sonuclar || []);
+      } catch {
+        setOneriler([]);
+      } finally {
+        setAriyor(false);
+      }
+    }, 250);
+    return () => clearTimeout(t);
+  }, [plaka]);
+
+  // Görevli listeden seçince plakayı doğrudan kaydet (hızlı akış).
+  function secOneri(o) {
+    secilenRef.current = o.plaka;
+    setPlaka(o.plaka);
+    setOneriler([]);
+    kaydet(o.plaka);
+  }
+
+  async function kaydet(deger) {
+    const p = normalizePlaka(typeof deger === 'string' ? deger : plaka);
     if (!isValidPlakaSerbest(p)) return toast.error('Plaka formatı geçersiz.');
     setBusy(true);
     try {
@@ -1080,20 +1116,48 @@ function ManuelPlakaModal({ onClose, onSaved }) {
           <CarCartoonIcon className="w-28 h-20" />
         </div>
         <p className="text-sm text-slate-500 dark:text-slate-400">
-          Fotoğraf çekilemeyen araçlar için plakayı elle girin. Kayıt akşam
-          kontrolü analizine dahil edilir.
+          Fotoğraf çekilemeyen araçlar için plakayı elle girin. Son 3 haneyi
+          yazınca kayıtlı ve misafir araçlardan eşleşenler listelenir; seçince
+          tam plaka hızlıca dolar. Kayıt akşam kontrolü analizine dahil edilir.
         </p>
-        <Input
-          value={plaka}
-          onChange={(e) => setPlaka(e.target.value.toUpperCase())}
-          onKeyDown={(e) => { if (e.key === 'Enter') kaydet(); }}
-          placeholder="34ABC123"
-          className="font-mono text-lg"
-          autoFocus
-        />
+        <div className="relative">
+          <Input
+            value={plaka}
+            onChange={(e) => setPlaka(e.target.value.toUpperCase())}
+            onKeyDown={(e) => { if (e.key === 'Enter') kaydet(); }}
+            placeholder="34ABC123 — veya son 3 haneyi yazın"
+            className="font-mono text-lg"
+            autoFocus
+          />
+          {(ariyor || oneriler.length > 0) && (
+            <div className="absolute z-10 left-0 right-0 mt-1 max-h-60 overflow-y-auto rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 shadow-lg">
+              {ariyor && oneriler.length === 0 && (
+                <div className="px-3 py-2 text-sm text-slate-400 flex items-center gap-2">
+                  <LoadingSpinner className="w-4 h-4" /> Aranıyor…
+                </div>
+              )}
+              {oneriler.map((o, i) => (
+                <button
+                  key={`${o.plaka}-${o.daire_no}-${o.kaynak}-${i}`}
+                  type="button"
+                  onClick={() => secOneri(o)}
+                  className="w-full text-left px-3 py-2 flex items-center justify-between gap-2 hover:bg-brand-50 dark:hover:bg-slate-800 border-b border-slate-100 dark:border-slate-800 last:border-0"
+                >
+                  <span className="flex flex-col">
+                    <span className="font-mono font-semibold text-slate-900 dark:text-slate-100">{o.plaka}</span>
+                    <span className="text-xs text-slate-500 dark:text-slate-400">{o.daire_no} · {o.sahip_ad}</span>
+                  </span>
+                  <span className={`text-xs px-2 py-0.5 rounded-full whitespace-nowrap ${o.kaynak === 'misafir' ? 'bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300' : 'bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300'}`}>
+                    {o.kaynak === 'misafir' ? 'misafir' : 'kayıtlı'}
+                  </span>
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
         <div className="flex gap-2 justify-end">
           <Button variant="secondary" onClick={onClose}>İptal</Button>
-          <Button onClick={kaydet} disabled={busy} loading={busy}>
+          <Button onClick={() => kaydet()} disabled={busy} loading={busy}>
             {busy ? 'Kaydediliyor…' : 'Kaydet'}
           </Button>
         </div>

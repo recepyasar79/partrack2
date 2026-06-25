@@ -209,6 +209,49 @@ router.get('/daire-arac', async (req, res, next) => {
   } catch (e) { next(e); }
 });
 
+// Elle plaka ekleme ekranında hızlı seçim için: girilen parça (örn. plakanın
+// son 3 hanesi) ile eşleşen KAYITLI araçlar + TÜM misafir araçlar. Görevli
+// son 3 haneyi yazınca eşleşen tam plakaları daire bilgisiyle görüp seçer.
+// Eşleşme: plakanın SONU girilen parçaya uyan kayıtlar (ends-with), site bazlı.
+router.get('/plaka-ara', async (req, res, next) => {
+  try {
+    const q = String(req.query.q || '').toUpperCase().replace(/[^0-9A-Z]/g, '');
+    if (q.length < 2) return res.json({ sonuclar: [] });
+    const like = `%${q}`; // plakanın sonu eşleşsin (son 3 hane senaryosu)
+
+    const kayitli = await db('araclar')
+      .join('daireler', 'araclar.daire_id', 'daireler.id')
+      .where('araclar.site_id', req.scopedSiteId)
+      .andWhere('araclar.aktif', true)
+      .andWhere('daireler.aktif', true)
+      .andWhere('araclar.plaka', 'ilike', like)
+      .select('araclar.plaka', 'daireler.daire_no', 'daireler.sahip_ad')
+      .orderBy('araclar.plaka')
+      .limit(20);
+
+    const misafir = await db('misafir_araclar')
+      .join('daireler', 'misafir_araclar.daire_id', 'daireler.id')
+      .where('misafir_araclar.site_id', req.scopedSiteId)
+      .andWhere('misafir_araclar.plaka', 'ilike', like)
+      .select('misafir_araclar.plaka', 'daireler.daire_no', 'daireler.sahip_ad')
+      .orderBy('misafir_araclar.baslangic_tarihi', 'desc')
+      .limit(20);
+
+    // Aynı plaka hem kayıtlı hem misafir olabilir; kayıtlıya öncelik ver,
+    // ardından plaka+daire bazında tekilleştir.
+    const seen = new Set();
+    const sonuclar = [];
+    for (const r of [...kayitli.map((r) => ({ ...r, kaynak: 'kayitli' })),
+                     ...misafir.map((r) => ({ ...r, kaynak: 'misafir' }))]) {
+      const key = `${r.plaka}|${r.daire_no}|${r.kaynak}`;
+      if (seen.has(key)) continue;
+      seen.add(key);
+      sonuclar.push(r);
+    }
+    res.json({ sonuclar });
+  } catch (e) { next(e); }
+});
+
 router.get('/:id/foto', async (req, res, next) => {
   try {
     const id = parseInt(req.params.id, 10);
