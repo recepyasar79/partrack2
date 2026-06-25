@@ -3,15 +3,16 @@ name: OCR Schedule
 # parktrack-ocr makinelerini yalniz aksam kontrolu penceresinde acik tutar.
 # OCR gunde ~1-2 saat kullaniliyor; 2x shared-cpu-2x/4GB 7/24 ~$40/ay idle
 # yaniyordu. Bu workflow ~%75 tasarruf saglar.
-#   BASLAT 15:00 UTC = 18:00 TR (aksam kontrolu 20:00 TR'den 2 saat once isit)
+#   BASLAT 16:45 UTC = 19:45 TR (aksam kontrolu 20:00 TR'den 15 dk once isit)
 #   DURDUR 20:00 UTC = 23:00 TR
 # Not: min_machines_running=0 olmali (backend/python_ocr/fly.toml) yoksa Fly
 # durdurulan makineyi geri acar. GH Actions cron'u best-effort (gecikebilir);
-# 2 saat tampon bunu karsilar. Kacirilirsa auto_start=true cold-start ile kurtarir.
+# 15 dk tampon dar — asil emniyet agi fly.toml'daki auto_start_machines=true:
+# cron kacsa/gecikse bile 20:00'de ilk foto makineyi cold-start (70s) ile uyandirir.
 
 on:
   schedule:
-    - cron: '0 15 * * *'   # BASLAT (18:00 TR)
+    - cron: '45 16 * * *'   # BASLAT (19:45 TR)
     - cron: '0 20 * * *'   # DURDUR (23:00 TR)
   workflow_dispatch:
     inputs:
@@ -33,7 +34,7 @@ jobs:
         run: |
           if [ "${{ github.event.schedule }}" = "0 20 * * *" ]; then
             echo "action=stop" >> "$GITHUB_OUTPUT"
-          elif [ "${{ github.event.schedule }}" = "0 15 * * *" ]; then
+          elif [ "${{ github.event.schedule }}" = "45 16 * * *" ]; then
             echo "action=start" >> "$GITHUB_OUTPUT"
           else
             echo "action=${{ github.event.inputs.action }}" >> "$GITHUB_OUTPUT"

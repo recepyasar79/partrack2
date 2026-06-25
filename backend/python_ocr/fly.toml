@@ -18,12 +18,26 @@ primary_region = 'fra'
   force_https = true
   # ZAMANLI OLCEKLEME (2026-06-16): min_machines_running=0 + GitHub Actions cron
   # (.github/workflows/ocr-schedule.yml) makineleri yalniz aksam penceresinde
-  # (18:00-23:00 TR) baslatir/durdurur. Neden: OCR gunde ~1-2 saat (aksam
+  # (19:45-23:00 TR) baslatir/durdurur. Neden: OCR gunde ~1-2 saat (aksam
   # kontrolu) kullaniliyor; 2x shared-cpu-2x/4GB 7/24 ~$40/ay idle yaniyordu.
   # min=0 SART: yoksa Fly durdurulan makineyi tabani 2'de tutmak icin geri acar.
   # auto_stop='off': cron baslatinca aksam boyu acik kalir (idle'da suspend olup
-  # batch-ortasi resume gecikmesi yasanmaz). auto_start=true: cron kacirirsa ya
-  # da gunduz beklenmedik istek gelirse ilk foto cold-start (70s) ile yine calisir.
+  # batch-ortasi resume gecikmesi yasanmaz).
+  #
+  # START SAATI (2026-06-25): 18:00 -> 19:45 TR. 18:00 baslatma ~2 saat bosuna
+  #   idle yakiyordu; kontrol 20:00 oldugu icin start'i 15 dk oncesine cektik.
+  #
+  # EMNIYET AGI (2026-06-25, option a): auto_start_machines FALSE -> TRUE geri.
+  #   Gerekce: GH Actions zamanli cron best-effort (2026-06-25 18:00 cron'u HIC
+  #   tetiklenmedi → makineler 20:19'a kadar kapali kaldi). 19:45 start + yalniz
+  #   15 dk tampon ile cron kacarsa 20:00 kontrolde OCR olu kalirdi. auto_start
+  #   =true: cron kacsa/gecikse bile ilk foto makineyi cold-start (70s) ile
+  #   uyandirir = self-heal. ESKI FATURA SIZINTISI (2026-06-24) zaten cozuldu:
+  #   pencere DISI tek wake kaynagi saatlik ocr-saglik health-ping'di, o da artik
+  #   pencere disi atlaniyor (ocrSaglik.js) → basibos istek yoksa makine pencere
+  #   disi uyanmaz. KALAN RISK: pencere disi beklenmedik bir istek (bot/monitor)
+  #   gelirse auto_stop='off' yuzunden 23:00 stop'a kadar acik kalir; gerekirse
+  #   auto_stop='suspend'e cevrilebilir (tradeoff: batch-ortasi resume gecikmesi).
   auto_stop_machines = 'off'
   auto_start_machines = true
   min_machines_running = 0

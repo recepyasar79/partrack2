@@ -5,6 +5,26 @@
 - **Amaç:** Site içindeki araç park düzenini otomatikleştirerek her dairenin sadece 1 aracının gece konaklamasını sağlamak
 - **Hedef Kullanıcılar:** Güvenlik görevlileri, site yöneticileri
 
+## Elle plaka ekleme — son-3-hane hızlı öneri (2026-06-25)
+
+**İstek (site yönetimi):** Elle Plaka Ekle ekranında daha hızlı kayıt — görevli plakanın son 3 hanesini yazınca eşleşen kayıtlar liste halinde çıksın, seçtiğini hızlıca kaydetsin.
+**Karar (kullanıcı):** Öneri kaynağı = **kayıtlı araçlar (`araclar`) + TÜM misafir araçlar (`misafir_araclar`)** (tarih penceresi filtresi YOK — tüm misafir listesi).
+**Çözüm:**
+- **Backend** `routes/kontroller.js` → **`GET /kontroller/plaka-ara?q=`**: `q` normalize edilir (`[^0-9A-Z]` temizlenir), **<2 karakter boş döner**. Eşleşme **ends-with** (`plaka ilike '%q'`) — son-3-hane senaryosuna göre plakanın SONU eşleşir (ortada geçen düşer). `araclar⋈daireler` (aktif) + `misafir_araclar⋈daireler`, site bazlı (`req.scopedSiteId`), her kaynak `limit 20`. Sonuç `{plaka, daire_no, sahip_ad, kaynak:'kayitli'|'misafir'}`; plaka+daire+kaynak bazında tekilleştirilir, **kayıtlıya öncelik**. Route `/:id/foto`'dan ÖNCE tanımlı (literal path, çakışma yok).
+- **Frontend** `Kontrol.jsx` `ManuelPlakaModal`: input altında **canlı öneri dropdown** (250ms debounce; `useEffect` plaka değişiminde arar). Her satır plaka + `daire_no·sahip_ad` + renkli rozet (sky=kayıtlı, emerald=misafir). **Seçince doğrudan kaydeder** (`secOneri → kaydet(o.plaka)`, kullanıcı isteği "seçince hızlıca kaydetsin"). `secilenRef` ile seçilen değer için tekrar arama/dropdown açılmaz. Tam plaka yazıp Kaydet/Enter yolu korundu (`kaydet(deger?)` — argümansız çağrıda `plaka` state'i).
+**Test:** `routes/plaka_ara.test.js` (kayıtlı+misafir eşleşmesi+kaynak/daire alanları, ends-with ortada-geçen düşer, <2 karakter boş, 401). CI'da yeşil; backend+frontend deploy edildi (commit `9f8daa3`).
+
+## OCR start-cron 19:45'e çekildi + auto_start emniyet ağı geri (2026-06-25)
+
+**Bağlam (saha teşhisi):** Kullanıcı "son 1 saatte fazla OCR hatası/çözümleyememe/zehirli öğrenme" şüphesiyle akşam oturumunu inceletti. **Veri (101 okuma, 21:08–21:22 TR):** unreachable=0, zehir=0 (son 1 saatteki 3 öğrenme meşru — ham kayıtlı değil→kayıtlıya düzeltme), ~%10 kullanıcı düzeltme, ~%97 final kayıtlı plakaya oturdu, ~%22 ücretli PR (sonda kümelenmiş, zor plakalar). Yani **normal aralık.** Ders: dünkü (06-24) `auto_start=false` maliyet değişikliği yalnız makine ERİŞİLEBİLİRLİĞİNİ değiştirir; yanlış-okuma/zehir ÜRETEMEZ (onlar matcher/öğrenme; doğruluğa dokunan tek "maliyet" işi 06-16 PR-fallback kalibrasyonu, dünkü değil).
+**Bulgu:** 18:00 TR start-cron'u HİÇ tetiklenmedi (GH Actions zamanlı cron best-effort, tamamen düşebilir); makineler 00:24→20:19 kapalı kaldı (event log `start|user 20:19`). Kontrol 20:00 → `auto_start=false` ile emniyet ağı yoktu = görevli 20:00'de yüklese her foto sert "çözümleyememe" ile düşer, self-heal olmazdı. Bu gece görevli 21:08'e kadar başlamadığı için ıskalandı.
+**Karar + çözüm:**
+- **Start-cron 18:00 → 19:45 TR** (`.github/workflows/ocr-schedule.yml`: `0 15 * * *` → `45 16 * * *`); ~2 saat boşuna idle yakma kısaldı.
+- **`auto_start_machines` false → true** (`backend/python_ocr/fly.toml`, option a): cron kaçsa/gecikse bile 20:00'de ilk foto makineyi cold-start (70s) ile uyandırır = self-heal. Eski fatura sızıntısı (pencere dışı `ocr-saglik` health-ping'inin makineyi uyandırması) zaten kapalı — ocrSaglik pencere dışı çıkıyor.
+- **`OCR_PENCERE_BASLANGIC` 18 → 20** (`backend/src/jobs/ocrSaglik.js`): makineler 19:45'te kalkar; ilk saatlik health tick (20:00) onları ayakta bulur → 18:00/19:00'da yanlış alarm + erken uyandırma yok.
+- **Reddedildi:** parktrack-ocr 2→1 makine (eşzamanlılık 2→1 = batch'te kuyruk/timeout→ücretli PR'a kayış + yedeklilik kaybı; ~$5/ay kazanç değmez). parktrack-backend zaten tek app makinesi (min=1 always-warm), cron'lar ayrı zamanlı makineler.
+**Deploy:** `fly.toml` → `flyctl deploy -a parktrack-ocr` (backend/python_ocr/ dizininden); `ocrSaglik.js` → backend redeploy; workflow → master commit (GH zamanlı cron'u default branch'ten okur).
+
 ## Güvenlik düzeltmeleri — bootstrap cred + ödeme öncesi plan (2026-06-23)
 
 **İnceleme bulguları (kullanıcı güvenlik taraması):** 3 yüksek/kritik bulgu doğrulandı; en kritik ikisi düzeltildi.

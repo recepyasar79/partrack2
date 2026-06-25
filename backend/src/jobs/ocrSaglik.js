@@ -3,23 +3,47 @@
  *
  * Saatte bir çalışır (Fly scheduled machine, `--schedule hourly`). Python OCR
  * servisinin (`parktrack-ocr`) /health'ini sorgular; sağlıksızsa `OCR_ALERT_EMAIL`
- * adresine Resend (SMTP) ile alarm maili atar. OCR makineleri always-on
- * (`auto_stop='off'`) + tek worker (OOM fix 2026-06-15) → normalde hep ayakta;
- * bu job deploy/host-bakım/nadir crash gibi durumları yakalayıp haber verir.
+ * adresine Resend (SMTP) ile alarm maili atar.
+ *
+ * PENCERE KONTROLU (fatura fix 2026-06-24, guncellendi 2026-06-25): OCR
+ * makineleri yalniz aksam penceresinde (OCR_PENCERE_BASLANGIC..OCR_PENCERE_BITIS
+ * TR, default 20-23) acik; disinda kapali. auto_start_machines=true'ya geri
+ * donuldugu icin (2026-06-25 option a) bu job'un pencere disi health-ping'i
+ * makineyi UYANDIRIR → eski fatura sizintisini geri getirirdi. O yuzden pencere
+ * disinda job hicbir sey yapmadan cikar (ping bile atmaz). Ayrica pencere disi
+ * makine kasitli kapali oldugundan kontrol kacinilmaz "saglksiz" doner → yanlis
+ * alarm yagardi. BASLANGIC=20: makineler 19:45'te (GH cron) acilir; ilk saatlik
+ * health tick (20:00) onlari ayakta bulur. Yalniz pencere ICINDE gercek
+ * crash/deploy sorunlarini yakalar.
  *
  * Daha ince (5 dk) izleme için harici UptimeRobot önerilir; bu, server-tarafı
  * saatlik yedek alarmdır. DB bağlantısı gerektirmez (sadece HTTP + mail).
  *
  * Env: OCR_ALERT_EMAIL (alıcı; yoksa mail atlanır, durum yine loglanır).
+ *      OCR_PENCERE_BASLANGIC / OCR_PENCERE_BITIS (TR saati, default 20 / 23).
  *      PYTHON_OCR_URL, SMTP_* (mailer).
  */
 const { healthCheck } = require('../services/pythonOcr');
 const { sendMail, isConfigured } = require('../services/mailer');
 const { dayjs, TR_TZ } = require('../utils/timezone');
 
+// OCR akşam penceresi (TR saati). GH Actions cron 16:45 UTC (19:45 TR) baslatir,
+// 20:00 UTC (23 TR) durdurur; saglik kontrolu makineler ayagga kalktiktan
+// (ilk tick 20:00) sonra basliyor ki pencere disi false alarm/uyandirma olmasin.
+const PENCERE_BASLANGIC = Number(process.env.OCR_PENCERE_BASLANGIC || 20);
+const PENCERE_BITIS = Number(process.env.OCR_PENCERE_BITIS || 23);
+
 async function runOcrSaglik() {
   const now = dayjs().tz(TR_TZ).format('YYYY-MM-DD HH:mm');
   const alertEmail = process.env.OCR_ALERT_EMAIL || '';
+
+  // Pencere disi: makineler kasitli kapali → kontrolu/alarmi atla.
+  const saat = dayjs().tz(TR_TZ).hour();
+  if (saat < PENCERE_BASLANGIC || saat >= PENCERE_BITIS) {
+    // eslint-disable-next-line no-console
+    console.log(`[ocrSaglik] ${now} pencere disi (${PENCERE_BASLANGIC}-${PENCERE_BITIS} TR) — kontrol atlandi`);
+    return { ok: true, skipped: true, alerted: false };
+  }
 
   const h = await healthCheck(); // { ok, status, paddle_loaded, ... } | { ok:false, error }
   const saglikli = h.ok && h.status === 'ok';
