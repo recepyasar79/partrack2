@@ -217,3 +217,56 @@ describeIfDb('plateMatcher DB integration', () => {
     expect(match.substitutionBonus).toBeGreaterThan(0);
   });
 });
+
+// Gövde-eşleştirme (saf çekirdek, DB'siz) — saha 2026-06-29: OCR plaka gövdesini
+// okuyup il kodunu ("34") kaçırdığı vakaları kayıttan tekil eşleşmeyle kurtarır.
+describe('bodyMatchFromPlates — gövde-suffix + tekillik (il kodu eksik kurtarma)', () => {
+  const { bodyMatchFromPlates, plateBody } = require('../src/services/plateMatcher');
+  const norm = (s) => (s || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  // Bu akşamki gerçek kayıtlı plakalar + ayırt edici çeldiriciler
+  const REG = ['34NPE797', '34DEB464', '34JH5323', '34FNE724', '34DT1657', '34MEL657', '34ABC123', '34AB12'];
+
+  test('plateBody il kodunu çıkarır', () => {
+    expect(plateBody('34NPE797')).toBe('NPE797');
+    expect(plateBody('34 DEB 464')).toBe('DEB464');
+    expect(plateBody('CC1234')).toBeNull(); // standart TR değil
+  });
+
+  test('gövde ham metinde tekil → il kodu kayıttan çıkar (NPE797 → 34NPE797)', () => {
+    const r = bodyMatchFromPlates(norm('NPE797 L MKSIE5CO5'), REG);
+    expect(r).toBeTruthy();
+    expect(r.plaka).toBe('34NPE797');
+    expect(r.source).toBe('body-registered');
+  });
+
+  test('fazladan OCR hanesine rağmen pencere eşleşir (DEB 4641 → 34DEB464)', () => {
+    const r = bodyMatchFromPlates(norm('DEB 4641 EJDEROT0 02166214505'), REG);
+    expect(r && r.plaka).toBe('34DEB464');
+  });
+
+  test('gürültü önekine rağmen gövde yakalanır (BLFNE724 → 34FNE724)', () => {
+    const r = bodyMatchFromPlates(norm('8 BLFNE724 TR COVCDI T'), REG);
+    expect(r && r.plaka).toBe('34FNE724');
+  });
+
+  test('BELİRSİZ gövde (657 → DT1657 + MEL657) → null (tahmin etme, elle kalsın)', () => {
+    const r = bodyMatchFromPlates(norm('2 DML657 TRI SOLARKUN'), REG);
+    expect(r).toBeNull();
+  });
+
+  test('hiçbir kayıtlı gövdeye yakın değil → null', () => {
+    const r = bodyMatchFromPlates(norm('ZZZ 999 QWPLMX'), REG);
+    expect(r).toBeNull();
+  });
+
+  test('ayırt edici olmayan gövde (AB12 = 2 rakam) değerlendirmeye alınmaz', () => {
+    // raw "AB12" geçse bile 34AB12 (2 rakam <3) elenir → null
+    const r = bodyMatchFromPlates(norm('AB12 FOO BAR'), REG);
+    expect(r).toBeNull();
+  });
+
+  test('çok kısa ham metin → null', () => {
+    expect(bodyMatchFromPlates('AB', REG)).toBeNull();
+    expect(bodyMatchFromPlates('', REG)).toBeNull();
+  });
+});

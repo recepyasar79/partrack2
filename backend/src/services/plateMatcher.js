@@ -421,6 +421,66 @@ async function findBestMatchFromRaw(rawText, siteId, minScore = 88) {
 }
 
 /**
+ * Plakanın GÖVDESİ — il kodu çıkarılmış harf+rakam bloğu (34NPE797 → NPE797).
+ * Standart TR plakası değilse null.
+ */
+function plateBody(plate) {
+  const norm = (plate || '').toUpperCase().replace(/[^A-Z0-9]/g, '');
+  const m = /^(\d{2})([A-Z]{1,3})(\d{2,4})$/.exec(norm);
+  return m ? m[2] + m[3] : null;
+}
+
+/**
+ * GÖVDE-EŞLEŞMESİ (saf çekirdek, DB'siz — test edilebilir).
+ *
+ * Saha 2026-06-29: OCR plaka GÖVDESİNİ doğru okuyup il kodunu ("34") HİÇ
+ * yakalayamadığında (mavi AB şeridi küçük/kesik) tam-plaka eşleşmesi tutmuyor
+ * (findBestMatchFromRaw "34" bitişik olmadığı için skor<88). Ama gövde
+ * ("NPE797"/"DEB464") ham token'larda duruyor ve kayıtlı listede TEKİL bir
+ * plakaya denk geliyorsa il kodunu kayıttan çıkarabiliriz.
+ *
+ * GÜVENLİK (snapEligible dersi — kayıtsız misafiri kayıtlıya snaplemek ihlal
+ * gizler): yalnız (a) gövde AYIRT EDİCİ (≥2 harf + ≥3 rakam — kısa/zayıf gövde
+ * elenir), (b) en iyi aday skor ≥ minScore, (c) TEKİL — farklı bir plakaya ait
+ * ikinci aday ile en az `margin` fark var. Aksi halde null → görevli elle yazar.
+ *
+ * @param {string} rawNorm  Normalize ham metin (A-Z0-9, boşluksuz)
+ * @param {string[]} registeredPlates  Site'nin kayıtlı + bugünkü misafir plakaları
+ * @returns {{plaka, score, source}|null}
+ */
+function bodyMatchFromPlates(rawNorm, registeredPlates, { minScore = 90, margin = 8 } = {}) {
+  if (!rawNorm || rawNorm.length < 5) return null;
+  const scored = [];
+  for (const plate of registeredPlates || []) {
+    const body = plateBody(plate);
+    if (!body) continue;
+    const letters = (body.match(/[A-Z]/g) || []).length;
+    const digits = (body.match(/[0-9]/g) || []).length;
+    if (letters < 2 || digits < 3) continue; // ayırt edici değil → atla
+    const score = bestWindowScore(rawNorm, body);
+    if (score >= minScore) scored.push({ plaka: plate, score });
+  }
+  if (!scored.length) return null;
+  scored.sort((a, b) => b.score - a.score);
+  const top = scored[0];
+  // Tekillik: farklı bir plakaya ait rakip skor top'a margin'den yakınsa belirsiz.
+  const rival = scored.find((s) => s.plaka !== top.plaka);
+  if (rival && top.score - rival.score < margin) return null;
+  return { plaka: top.plaka, score: top.score, source: 'body-registered' };
+}
+
+/**
+ * bodyMatchFromPlates'in DB sarmalayıcısı — site'nin plakalarını çekip uygular.
+ */
+async function findByBody(rawText, siteId, opts) {
+  if (!rawText || siteId == null) return null;
+  const rawNorm = rawText.toUpperCase().replace(/[^A-Z0-9]/g, '');
+  if (rawNorm.length < 5) return null;
+  const registeredPlates = await getAllRegisteredPlates(siteId);
+  return bodyMatchFromPlates(rawNorm, registeredPlates, opts);
+}
+
+/**
  * OCR çıktısını düzelt — site_id zorunlu.
  * @param {string} ocrGuess - OCR'ın çıkardığı tek plaka tahmini
  * @param {number} siteId   - Kullanıcının site'si
@@ -452,7 +512,19 @@ async function correctOCRGuess(ocrGuess, siteId, rawText = null) {
     }
   }
 
-  const chosen = (rawMatch && (!match || rawMatch.score > match.score)) ? rawMatch : match;
+  let chosen = (rawMatch && (!match || rawMatch.score > match.score)) ? rawMatch : match;
+
+  // SON ÇARE: normal yollar (tek-plaka fuzzy + ham tam-plaka) boş döndüyse,
+  // OCR'ın okuduğu GÖVDEyi kayıttan eşle (il kodu eksik vakaları kurtarır).
+  // Yalnız tekil + yüksek skorda döner; aksi halde null (görevli elle yazar).
+  if (!chosen && rawText) {
+    try {
+      const bodyMatch = await findByBody(rawText, siteId);
+      if (bodyMatch) chosen = bodyMatch;
+    } catch (e) {
+      // opsiyonel iyileştirme; hata olursa elle giriş akışı sürsün
+    }
+  }
 
   if (chosen) {
     result.corrected = chosen.plaka;
@@ -666,6 +738,9 @@ module.exports = {
   snapEligible,
   findBestMatch,
   findBestMatchFromRaw,
+  plateBody,
+  bodyMatchFromPlates,
+  findByBody,
   plateOrderForms,
   bestWindowScore,
   correctOCRGuess,

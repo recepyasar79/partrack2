@@ -459,10 +459,19 @@ def _strip_noise(text: str) -> str:
     return text
 
 
-def _search_plate(items):
+def _search_plate(items, allow_permute=True):
     """items: [(text, conf)] → (plate, conf, sub_strategy) | None.
     Birleşik (okuma sırası) → tekil → permütasyon (plaka kutulara bölünmüş
-    olabilir; eğik plakada il kodu harflerden SONRA sıralanabiliyor)."""
+    olabilir; eğik plakada il kodu harflerden SONRA sıralanabiliyor).
+
+    allow_permute=False ise permütasyon atlanır. İri+küçük (big+small)
+    fallback'inde permütasyon KAPALI çağrılır: küçük kutular (telefon/reklam/
+    "TR" ülke kodu) permüte edilince geçerli FORMATTA ama SEMANTİK YANLIŞ
+    plaka uydurabiliyor (2026-06-29 sahası: all/permuted 5 okumanın 3'ü yanlış
+    — 34NPE797→75CO51, 34DEB464→64IDE80, 34JH5323→23VCO46). İri kutularda
+    permütasyon mükemmel (big/permuted 22/0) çünkü orada yalnız plaka-boyu
+    metin var; sorun küçük kutuların permütasyona girmesi. Yanlış üretmektense
+    None dön → görevli elle yazar / PR fallback devreye girer."""
     items = [(t, c) for t, c in items if t]
     if not items:
         return None
@@ -480,7 +489,7 @@ def _search_plate(items):
     # Permütasyon sayısı sınırlı kalsın diye token sayısı 2-4 ile sınırlı
     # (4! = 24, her biri ucuz substring taraması). Yalnız sıralı join'ler
     # başarısızsa çalışır, çözülen vakaları bozmaz.
-    if 2 <= len(items) <= 4:
+    if allow_permute and 2 <= len(items) <= 4:
         from itertools import permutations
         for perm in permutations(items):
             candidate = best_plate_from_substrings("".join(t for t, _ in perm))
@@ -523,12 +532,17 @@ def extract_plate(detections):
     small = [(t, c) for t, c, h in dets if h < threshold]
 
     # 1) Önce iri kutular (plaka-boyutu metin) — bayi telefon/web yazısı dışta.
-    found = _search_plate(big)
+    #    Permütasyon İZİNLİ: iri kutular yalnız plaka parçaları olduğundan
+    #    yeniden sıralama bölünmüş plakayı toparlar (big/permuted saha 22/0).
+    found = _search_plate(big, allow_permute=True)
     if found:
         return found[0], found[1], f"big/{found[2]}"
 
-    # 2) Regresyon emniyeti: iri kutular plaka vermezse tüm kutuları dene.
-    found = _search_plate(big + small)
+    # 2) Regresyon emniyeti: iri kutular plaka vermezse tüm kutuları dene —
+    #    ama permütasyon KAPALI. Küçük kutular (telefon/reklam) permüte edilince
+    #    sahte plaka uyduruyordu (saha: all/permuted 3/5 yanlış). joined+single
+    #    okuma sırasını koruduğundan çok daha güvenli; bulamazsa None → elle/PR.
+    found = _search_plate(big + small, allow_permute=False)
     if found:
         return found[0], found[1], f"all/{found[2]}"
 
@@ -574,6 +588,12 @@ def recognize(image_bytes: bytes, debug: bool = False):
 
     debug_info = {"strategies": []}
     best = {"plate": None, "confidence": 0.0, "strategy": None, "raw": []}
+    # Plaka KABUL EDİLMESE bile en zengin ham token seti burada tutulur. Node
+    # tarafı bunu gövde-eşleşmesinde (plateMatcher.findByBody) kullanır: OCR
+    # plaka gövdesini okuyup il kodunu ("34") kaçırdığında (mavi AB şeridi
+    # küçük/kesik) extract_plate None döner ama "NPE797"/"DEB464" gövdesi ham
+    # token'larda durur → kayıttan tekil plaka çıkarılır (saha 2026-06-29).
+    raw_fallback = []
 
     def out_of_budget():
         return (time.monotonic() - started) > TIME_BUDGET_S
@@ -596,6 +616,11 @@ def recognize(image_bytes: bytes, debug: bool = False):
             best["confidence"] = conf
             best["strategy"] = f"{label}/{sub_strategy}"
             best["raw"] = [t for t, _c, _h in detections]
+        # Plaka kabul edilmese de en çok metin içeren pass'in token'larını sakla
+        # (plaka gövdesi tipik olarak metin-zengin tam-görüntü pass'inde okunur).
+        texts = [t for t, _c, _h in detections if t]
+        if sum(len(t) for t in texts) > sum(len(t) for t in raw_fallback):
+            raw_fallback[:] = texts
 
     # Pass 1: region-first. Plaka crop'larında EasyOCR çağrısı küçük görüntü
     # sayesinde ~0.3-1s; tam görüntüde 5-15s. Önce ucuz yolu dene, geçerli
@@ -668,7 +693,7 @@ def recognize(image_bytes: bytes, debug: bool = False):
         "strategy": best["strategy"],
         "engine": engine,
         "elapsed_ms": int(elapsed * 1000),
-        "raw_text": " ".join(best["raw"]) if best["raw"] else "",
+        "raw_text": " ".join(best["raw"]) if best["raw"] else " ".join(raw_fallback),
         "needs_manual_review": needs_manual_review,
     }
     if debug:
