@@ -5,6 +5,16 @@
 - **Amaç:** Site içindeki araç park düzenini otomatikleştirerek her dairenin sadece 1 aracının gece konaklamasını sağlamak
 - **Hedef Kullanıcılar:** Güvenlik görevlileri, site yöneticileri
 
+## OCR saha teyidi — permütasyon kapısı + gövde-eşleşme çalışıyor (2026-06-30 batch)
+
+**Bağlam:** 06-29 fix'lerinden (permütasyon kapısı + gövde-eşleşme) sonraki ilk tam akşam batch'i analiz edildi (`scripts/ocr_dun_aksam.js`, prod `ocr_metrics`, pencere 06-30 18:00→07-01 02:00 TR). **Temiz gece.**
+**Rakamlar (110 okuma):** final kayıtlıya oturdu **106/110 (%96)**; kullanıcı düzeltmesi **3 (%2.7 — düşük)**; matcher değiştirdi 59; **0 timeout / 0×502 / 0 fail**; gecikme p50 **1.6s** / p95 **10.2s** (bimodal: `region-*` tespit tutunca <1.5s, `full-*` fallback ~7-10s zaman bütçesine yakın — normal).
+**Teyitler:**
+- **Permütasyon kapısı sağlam:** bu batch'te **HİÇ `all/permuted` yok** (06-29'daki asıl sızıntı yolu). `big/permuted` 18 okuma / yalnız 1 düzeltme. Küçük-kutu/telefon/reklam yazısı artık sahte plaka uydurmuyor.
+- **Gövde-eşleşme (`body-registered`) sahada İLK kez tetiklendi ve doğru kurtardı:** `ham="FIAT BLKT5716 TR"` → permütasyon kapısı plaka=boş → gövde-eşleşme il kodunu kayıttan çıkarıp **34KT5716** (skor 100). Tek `body-registered` vakası meşru kayıtlıydı → **izlenen risk (kayıtsız misafiri snaplama) bu gece gerçekleşmedi.**
+- Düzeltmelerden biri gerçek yakalama: `ham="120 EHHPS 185"` matcher kayıtsız bırakmıştı, görevli **34HPS185** (kayıtlı) düzeltti.
+**Sonuç:** 06-29 iki-düzeltmesi sahada teyitli; eşik (gövde skor 90) kalibrasyonu için henüz yeterli `body-registered` hacmi yok (1 vaka) — biriktikçe bakılacak.
+
 ## OCR — küçük-kutu permütasyon kapısı + gövde-eşleştirme (2026-06-29)
 
 **Bağlam (saha analizi):** Akşam batch'i (99 okuma) incelendi. Genel tablo normal (0 hata/timeout, %13 düzeltme, %20 PR), AMA kalabalık karelerde (kamyon/ticari araç — marka/telefon/bayi yazısı dolu) OCR yanlış token'ı plaka sanıyordu. Strateji kırılımı: `big/joined` 58 (5 düzeltme), **`big/permuted` 22 (0 düzeltme — kusursuz)**, `all/joined` 7 (2), **`all/permuted` 5 (3 yanlış — asıl sızıntı)**. 5 `all/permuted` okumanın 2'si yüksek güvenle (≥0.60) YANLIŞ oto-onaylanmıştı (gizli ihlal + öğrenme zehri riski). **Kullanıcı içgörüsü (kritik):** "küçük karakterli telefon/reklam yazısı plaka değerlendirmesine hiç girmemeliydi" + "raw'ı boyuta göre sıralayıp en büyük gövdeyi al."
