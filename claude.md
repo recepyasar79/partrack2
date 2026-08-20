@@ -5,6 +5,15 @@
 - **Amaç:** Site içindeki araç park düzenini otomatikleştirerek her dairenin sadece 1 aracının gece konaklamasını sağlamak
 - **Hedef Kullanıcılar:** Güvenlik görevlileri, site yöneticileri
 
+## Gece 00:00 sonrası hızlı misafir eklenmiyordu — operasyon günü penceresi genişletildi (2026-08-20)
+
+**Şikayet:** Kontrol sayfasında gece yarısından sonra bir kayıtsız aracı "+ Misafir yap" ile misafir yapmaya çalışınca eklenmiyordu.
+**Kök neden:** `misafir_araclar.hizli` (POST) bitiş saatini `kontrol.yukleme_zamani`'nin (gerçek an) TAKVİM gününden hesaplıyordu (o günün 23:59:59). Ama kontrol kaydının `kontrol_tarihi`'i (operasyon günü) `ceteleGunuTR()` ile hesaplanır — saat TR 08:00'den önceyse BİR ÖNCEKİ takvim gününe yazılır. 00:00-08:00 arası yüklenen fotoğraflarda bu iki gün ayrışıyordu:
+- **Görünür (cosmetic) etki:** `kontroller.js` GET `/` listesindeki misafir rozet eşleştirmesi `tarih=ceteleGunuTR()` (operasyon günü) penceresini kullanıyor; misafir kaydı YENİ takvim gününe yazılınca pencereler çakışmıyor → kayıt DB'de oluşuyor ama satır "kayıtsız" görünmeye devam ediyor, kullanıcı "eklenmedi" sanıyor.
+- **Gerçek hata (daha kötü uç durum):** bitiş = ÖNCEKİ günün 23:59:59, başlangıç = gerçek yükleme saati (YENİ günün 00:xx) → başlangıç bitişten SONRA → `mis_tarih_chk` (`bitis_tarihi >= baslangic_tarihi`) CHECK constraint ihlali → insert 500 ile reddediliyor. Kayıt gerçekten hiç oluşmuyor.
+**Fix:** `utils/timezone.js`'e `operasyonGunuSonu(tarih)` eklendi — verilen operasyon gününün penceresini `ceteleGunuTR` ile TUTARLI şekilde bir SONRAKİ takvim gününün TR 08:00'ine kadar uzatır (23:59:59 değil). `misafirAraclar.js hizli` artık bitişi `kontrol.kontrol_tarihi`'nden (takvim gününden değil) bu helper ile hesaplıyor — hem CHECK constraint her zaman sağlanıyor (bitiş her zaman gerçek yükleme saatinden sonra) hem de liste penceresiyle örtüşüyor. Aynı tutarsızlık `kontroller.js` GET `/` rozet eşleştirmesi + `analiz.js`'deki 3 yerde (`analiz-et`, `dairBasinaPlakalar`, `iceriOzet`) de vardı — hepsi `operasyonGunuSonu` kullanacak şekilde güncellendi (tek kaynak, tutarlı pencere). `misafirAraclar.js` GET `/` (kullanıcının elle tarih seçtiği rapor listesi) kasıtlı olarak dokunulmadı — orada `tarih` kullanıcı seçimi, takvim günü semantiği doğru.
+**Test:** `tests/routes/misafir-araclar.test.js` yeni senaryo — `kontrol_tarihi` dün, `yukleme_zamani` gerçek an; 201 dönüyor + GET `/kontroller?tarih=dün` listesinde rozet `daire_misafir:true` görünüyor. (Lokal test DB 5433 kapalı → CI'da doğrulanır.)
+
 ## OCR saha teyidi — permütasyon kapısı + gövde-eşleşme çalışıyor (2026-06-30 batch)
 
 **Bağlam:** 06-29 fix'lerinden (permütasyon kapısı + gövde-eşleşme) sonraki ilk tam akşam batch'i analiz edildi (`scripts/ocr_dun_aksam.js`, prod `ocr_metrics`, pencere 06-30 18:00→07-01 02:00 TR). **Temiz gece.**

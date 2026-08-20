@@ -194,6 +194,42 @@ describe('POST /api/misafir-araclar/hizli', () => {
       .toBeGreaterThan(new Date(yukleme).getTime());
   });
 
+  test('gece yarisi sonrasi yuklenen kontrol icin de misafir eklenir (operasyon gunu = onceki gun)', async () => {
+    // Saha bug'i: foto 00:00-08:00 arasi yuklenince kontrol_tarihi (operasyon
+    // gunu) BIR ONCEKI takvim gunune yaziliyor, ama yukleme_zamani (gercek an)
+    // hala YENI takvim gununde. Bitis eskiden yukleme_zamani'nin takvim gununden
+    // hesaplaniyordu (= onceki gunden ONCE) -> DB CHECK (bitis>=baslangic) ihlali.
+    const daire = await createTestDaire({ daire_no: 'B7' });
+    const dun = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
+    const gerçekYukleme = new Date(); // "şu an" gece yarısından sonra gibi düşünülsün
+    const [k] = await db('gunluk_kontroller')
+      .insert({
+        site_id: 1,
+        plaka: '34GECE01',
+        kontrol_tarihi: dun, // operasyon günü bir önceki takvim günü
+        yukleme_zamani: gerçekYukleme, // gerçek zaman (bugün)
+      })
+      .returning('*');
+    const res = await request(app)
+      .post('/api/misafir-araclar/hizli')
+      .set('Authorization', `Bearer ${guardToken}`)
+      .send({ kontrol_id: k.id, daire_no: 'B7' });
+    expect(res.status).toBe(201);
+    // Bitiş gerçek girişten SONRA olmalı (CHECK ihlali oluşmamalı)
+    expect(new Date(res.body.misafir.bitis_tarihi).getTime())
+      .toBeGreaterThanOrEqual(new Date(gerçekYukleme).getTime());
+
+    // Kontrol listesi (GET /kontroller) rozeti de aynı operasyon günü
+    // penceresiyle bu misafiri bulmalı — eskiden pencereler çakışmazdı.
+    const listRes = await request(app)
+      .get('/api/kontroller')
+      .query({ tarih: dun })
+      .set('Authorization', `Bearer ${guardToken}`);
+    const satir = listRes.body.kontroller.find((r) => r.plaka === '34GECE01');
+    expect(satir?.daire_no).toBe('B7');
+    expect(satir?.daire_misafir).toBe(true);
+  });
+
   test('günlük kota dolu daireye hızlı misafir → 429', async () => {
     const daire = await createTestDaire({ daire_no: 'B9' });
     const today = new Date().toISOString().slice(0, 10);

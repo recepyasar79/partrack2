@@ -4,7 +4,7 @@ const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { requireActiveSubscription } = require('../middleware/subscriptionGuard');
 const { writeAudit } = require('../middleware/audit');
 const { detectViolations } = require('../utils/violations');
-const { ceteleGunuTR, normalizeMisafirZaman } = require('../utils/timezone');
+const { ceteleGunuTR, normalizeMisafirZaman, operasyonGunuSonu } = require('../utils/timezone');
 const { normalizePlaka } = require('../utils/validators');
 
 const router = express.Router();
@@ -54,7 +54,7 @@ router.post('/analiz-et', async (req, res, next) => {
     // bırakıp plakayı kayıtsıza düşürüyordu (kontroller GET ile tutarsızdı).
     // Gün başı/sonu sınırlarıyla eşle (kontroller/misafirAraclar GET ile aynı).
     const gunBasi = req.body?.referans_zaman || normalizeMisafirZaman(tarih, false);
-    const gunSonu = normalizeMisafirZaman(tarih, true);
+    const gunSonu = operasyonGunuSonu(tarih);
     const misafirler = await db('misafir_araclar')
       .join('daireler', 'misafir_araclar.daire_id', 'daireler.id')
       .where('misafir_araclar.site_id', siteId)
@@ -281,7 +281,7 @@ async function dairBasinaPlakalar(siteId, tarih) {
   // Misafir muafiyeti gün bazlı: o gün herhangi bir anda aktif misafiri eşle
   // (analiz-et ile tutarlı; tek nokta 20:00 referansı kaldırıldı).
   const gunBasi = normalizeMisafirZaman(tarih, false);
-  const gunSonu = normalizeMisafirZaman(tarih, true);
+  const gunSonu = operasyonGunuSonu(tarih);
   const misafirler = await db('misafir_araclar')
     .where('site_id', siteId)
     .andWhere('baslangic_tarihi', '<=', gunSonu)
@@ -332,7 +332,7 @@ async function iceriOzet(siteId, tarih) {
   const kayitliSet = new Set(aktifAraclar.map((a) => normalizePlaka(a.plaka)));
 
   const gunBasi = normalizeMisafirZaman(tarih, false);
-  const gunSonu = normalizeMisafirZaman(tarih, true);
+  const gunSonu = operasyonGunuSonu(tarih);
   const misafirler = await db('misafir_araclar')
     .where('site_id', siteId)
     .andWhere('baslangic_tarihi', '<=', gunSonu)

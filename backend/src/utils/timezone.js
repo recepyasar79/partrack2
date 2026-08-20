@@ -42,4 +42,19 @@ function normalizeMisafirZaman(value, isEnd) {
   return d.isValid() ? d.toISOString() : null;
 }
 
-module.exports = { TR_TZ, TZ: TR_TZ, nowTR, todayTR, toTR, isBefore20TR, ceteleGunuTR, CETELE_RESET_SAATI, dayjs, normalizeMisafirZaman };
+// Operasyon günü misafir eşleştirme penceresinin BİTİŞİ. ceteleGunuTR ile
+// tutarlı: "gün" takvim gece yarısında değil, TR 08:00'de biter — 00:00-08:00
+// arası yüklenen kontroller de aynı operasyon gününe (kontrol_tarihi) düşer,
+// o saatlerde eklenen misafir kaydı da aynı pencereyle eşleşmeli. Düz
+// normalizeMisafirZaman(tarih, true) (takvim günü 23:59:59) bu pencereyi
+// kapsamaz → gece yarısından sonra eklenen misafir "kayıtsız" görünür kalırdı.
+function operasyonGunuSonu(tarih) {
+  return dayjs
+    .tz(`${tarih} 00:00:00`, TR_TZ)
+    .add(1, 'day')
+    .add(CETELE_RESET_SAATI, 'hour')
+    .subtract(1, 'second')
+    .toISOString();
+}
+
+module.exports = { TR_TZ, TZ: TR_TZ, nowTR, todayTR, toTR, isBefore20TR, ceteleGunuTR, CETELE_RESET_SAATI, dayjs, normalizeMisafirZaman, operasyonGunuSonu };

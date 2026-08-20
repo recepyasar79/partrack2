@@ -6,7 +6,7 @@ const { authRequired, requireScopedSite } = require('../middleware/auth');
 const { requireActiveSubscription } = require('../middleware/subscriptionGuard');
 const { writeAudit } = require('../middleware/audit');
 const { buildUpload, isR2Configured, sniffImageType } = require('../services/storage');
-const { ceteleGunuTR, normalizeMisafirZaman } = require('../utils/timezone');
+const { ceteleGunuTR, normalizeMisafirZaman, operasyonGunuSonu } = require('../utils/timezone');
 const { autoCloseGecmisOturumlar } = require('../utils/oturum');
 const { normalizePlaka, isValidPlakaSerbest } = require('../utils/validators');
 const { correctOCRGuess, recordLearning } = require('../services/plateMatcher');
@@ -59,7 +59,7 @@ router.get('/', async (req, res) => {
       // misafir kaydını dışarda bırakırdı → araç "kayıtsız" görünürdü. Gün
       // başı/sonu sınırlarıyla kıyasla (misafirAraclar GET ile aynı mantık).
       const gunBasi = normalizeMisafirZaman(tarih, false);
-      const gunSonu = normalizeMisafirZaman(tarih, true);
+      const gunSonu = operasyonGunuSonu(tarih);
       const mis = await db('misafir_araclar')
         .join('daireler', 'misafir_araclar.daire_id', 'daireler.id')
         .where('misafir_araclar.site_id', req.scopedSiteId)

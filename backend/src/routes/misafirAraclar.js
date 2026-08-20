@@ -4,7 +4,7 @@ const { authRequired, requireSiteAdmin, requireScopedSite } = require('../middle
 const { requireActiveSubscription } = require('../middleware/subscriptionGuard');
 const { writeAudit } = require('../middleware/audit');
 const { isValidPlakaSerbest, normalizePlaka } = require('../utils/validators');
-const { normalizeMisafirZaman, dayjs, TR_TZ } = require('../utils/timezone');
+const { normalizeMisafirZaman, dayjs, TR_TZ, operasyonGunuSonu } = require('../utils/timezone');
 
 const router = express.Router();
 
@@ -105,11 +105,15 @@ router.post('/', async (req, res) => {
 
 // Hızlı misafir: Kontrol ekranındaki kayıtsız bir aracı, misafir ekranına
 // gitmeden tek hamlede bir daireye misafir yapar. Görevli yalnız daire_no girer.
-// Giriş (baslangic) = kaydın yükleme saati; Çıkış (bitis) = o günün (TR) 23:59.
-// NOT (edge): kayıt gece yarısından sonra (00:00-08:00) girilmişse "o gün" =
-// takvim günü alınır; operasyon günü (ceteleGunuTR) bir önceki güne düşmüş
-// olabilir → bu nadir durumda kontrol listesindeki rozet hemen "misafir"e
-// dönmeyebilir (misafir kaydı yine doğru oluşur). İş oturunca revize.
+// Giriş (baslangic) = kaydın yükleme saati; Çıkış (bitis) = kontrol kaydının
+// OPERASYON GÜNÜNÜN (kontrol_tarihi — ceteleGunuTR ile aynı gün) bitişi
+// (operasyonGunuSonu — TR 08:00'e kadar bir sonraki takvim gününü kapsar).
+// Kontrol listesi (GET /kontroller) rozet eşleştirmesi de aynı pencereyi
+// kullanır (routes/kontroller.js). Bitiş düz takvim gününden (23:59:59)
+// hesaplanırsa 00:00-08:00 arası yüklenen fotoğraflarda iki sorun çıkar:
+// (1) pencereler çakışmaz → rozet "kayıtsız" kalır, kullanıcı eklenmedi sanır;
+// (2) baslangic (gerçek yükleme saati, örn. 00:30) bitis'ten (önceki günün
+// 23:59:59) sonra kalır → DB CHECK (bitis>=baslangic) ihlali, kayıt reddedilir.
 router.post('/hizli', async (req, res) => {
   const { kontrol_id, daire_no } = req.body || {};
   if (!kontrol_id) return res.status(400).json({ error: 'kontrol_id zorunlu.' });
@@ -132,8 +136,7 @@ router.post('/hizli', async (req, res) => {
   if (kota.asildi) return res.status(429).json({ error: kotaMesaji, kota: MISAFIR_GUNLUK_KOTA_DAIRE, mevcut: kota.mevcut });
 
   const baslangic = dayjs(kontrol.yukleme_zamani).toISOString();
-  const gunTR = dayjs(kontrol.yukleme_zamani).tz(TR_TZ).format('YYYY-MM-DD');
-  const bitis = normalizeMisafirZaman(gunTR, true); // o günün 23:59:59 (TR)
+  const bitis = operasyonGunuSonu(kontrol.kontrol_tarihi);
 
   const [created] = await db('misafir_araclar').insert({
     daire_id: daire.id,
