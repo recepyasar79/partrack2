@@ -195,19 +195,24 @@ describe('POST /api/misafir-araclar/hizli', () => {
   });
 
   test('gece yarisi sonrasi yuklenen kontrol icin de misafir eklenir (operasyon gunu = onceki gun)', async () => {
-    // Saha bug'i: foto 00:00-08:00 arasi yuklenince kontrol_tarihi (operasyon
-    // gunu) BIR ONCEKI takvim gunune yaziliyor, ama yukleme_zamani (gercek an)
-    // hala YENI takvim gununde. Bitis eskiden yukleme_zamani'nin takvim gununden
-    // hesaplaniyordu (= onceki gunden ONCE) -> DB CHECK (bitis>=baslangic) ihlali.
+    // Saha bug'i: foto 00:00-08:00 (TR) arasi yuklenince kontrol_tarihi (operasyon
+    // gunu, ceteleGunuTR) BIR ONCEKI takvim gunune yaziliyor, ama yukleme_zamani
+    // (gercek an) hala YENI takvim gununde. Bitis eskiden yukleme_zamani'nin
+    // takvim gununden hesaplaniyordu (= onceki gunden ONCE) -> DB CHECK
+    // (bitis>=baslangic) ihlali. Senaryoyu CI'nin calistigi gercek saatten
+    // BAGIMSIZ hale getirmek icin yukleme_zamani sabit "bugun TR 02:30" olarak
+    // kurulur, kontrol_tarihi de ayni ceteleGunuTR() ile turetilir (hardcoded
+    // takvim aritmetigi degil) — boylece her zaman gecerli/tutarli bir vaka.
+    const { ceteleGunuTR, dayjs, TR_TZ } = require('../../src/utils/timezone');
     const daire = await createTestDaire({ daire_no: 'B7' });
-    const dun = new Date(Date.now() - 24 * 60 * 60 * 1000).toISOString().slice(0, 10);
-    const gerçekYukleme = new Date(); // "şu an" gece yarısından sonra gibi düşünülsün
+    const gerçekYukleme = dayjs().tz(TR_TZ).hour(2).minute(30).second(0).millisecond(0);
+    const operasyonGunu = ceteleGunuTR(gerçekYukleme); // hour=2 < 8 -> bir onceki gun
     const [k] = await db('gunluk_kontroller')
       .insert({
         site_id: 1,
         plaka: '34GECE01',
-        kontrol_tarihi: dun, // operasyon günü bir önceki takvim günü
-        yukleme_zamani: gerçekYukleme, // gerçek zaman (bugün)
+        kontrol_tarihi: operasyonGunu, // operasyon günü bir önceki takvim günü
+        yukleme_zamani: gerçekYukleme.toDate(), // gerçek zaman (bugün TR 02:30)
       })
       .returning('*');
     const res = await request(app)
@@ -217,13 +222,13 @@ describe('POST /api/misafir-araclar/hizli', () => {
     expect(res.status).toBe(201);
     // Bitiş gerçek girişten SONRA olmalı (CHECK ihlali oluşmamalı)
     expect(new Date(res.body.misafir.bitis_tarihi).getTime())
-      .toBeGreaterThanOrEqual(new Date(gerçekYukleme).getTime());
+      .toBeGreaterThanOrEqual(gerçekYukleme.toDate().getTime());
 
     // Kontrol listesi (GET /kontroller) rozeti de aynı operasyon günü
     // penceresiyle bu misafiri bulmalı — eskiden pencereler çakışmazdı.
     const listRes = await request(app)
       .get('/api/kontroller')
-      .query({ tarih: dun })
+      .query({ tarih: operasyonGunu })
       .set('Authorization', `Bearer ${guardToken}`);
     const satir = listRes.body.kontroller.find((r) => r.plaka === '34GECE01');
     expect(satir?.daire_no).toBe('B7');
